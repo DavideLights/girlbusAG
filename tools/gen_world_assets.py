@@ -4,7 +4,7 @@ GIRLBUS: NEON STOP (girlbusAG) — World, Bus Stops, Vehicles, Police, Bosses,
 Projectiles & Street Tiles Pixel-Art Generator.
 
 Generates 1x native PNG sprites and nearest-neighbor inspection previews in:
-    /home/davidel/girlbusAG/assets/sprites/world/
+    assets/sprites/world/ (1x) and tools/previews/world/ (previews)
 """
 
 import os
@@ -13,6 +13,7 @@ from typing import Dict, List
 
 # Allow running from any working directory
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(TOOLS_DIR)
 if TOOLS_DIR not in sys.path:
     sys.path.insert(0, TOOLS_DIR)
 
@@ -25,7 +26,7 @@ from pixel_canvas import (
     save_asset_and_preview,
 )
 
-OUT_DIR = "/home/davidel/girlbusAG/assets/sprites/world"
+OUT_DIR = os.path.join(ROOT_DIR, "assets", "sprites", "world")
 
 # Extended palette for street tiles (exact bible asphalt/sidewalk hexes)
 WORLD_PALETTE: Dict[str, RGBA] = {
@@ -583,6 +584,132 @@ BOSS_MOM_36: List[str] = [
     "....................................",  # 35
 ]
 
+# 4D. Boss 4: L'Amante (36x36)
+# Glamorous chibi 3/4 character in crimson/magenta cocktail dress, dramatic wavy dark/burgundy
+# hair, dark sunglasses, holding a crimson lipstick!
+BOSS_LOVER_36: List[str] = [
+    "....................................",  # 00
+    "...........OOOOOOOOOOOOOO...........",  # 01 - Wavy hair crown
+    ".........OOHAAHHHHHHHHhhHOO.........",  # 02 - Top-left highlight + dark/burgundy hair
+    "........OHAxHHkkHHHHkkHHxhhO........",  # 03 - Burgundy waves
+    ".......OHHHxkkkHHHHHHkkkxhHhO.......",  # 04 - Voluminous wavy hair
+    "......OHHxkHHHHHHHHHHHHHHkxhHO......",  # 05
+    "......OHHxHHHHHHHHHHHHHHHHxhHO......",  # 06
+    ".....OOHkHHHSSHHHHHHHHSSHHHkHOO.....",  # 07 - Parted bangs
+    ".....OHxkHHSSSSSSOOSSSSSSHHkxHO.....",  # 08 - Forehead
+    ".....OHxHSOOOOOOSSSSOOOOOOSHxhO.....",  # 09 - Cat-eye sunglasses top rim
+    "....OOHkHSOPMPOSSSSSSOPMPOOSHkHOO...",  # 10 - Sleek dark sunglasses + subtle rim glint
+    "....OHxkHSOPPPPOSSSSOPPPPOSHkxHO....",  # 11 - Dark tinted lenses + nose bridge
+    ".....OHkHSOOOOOOSSSSOOOOOOSHkHO.....",  # 12 - Sunglasses bottom rim
+    ".....OHkHSSbbSSSSSSSSSSbbSSHkHO.....",  # 13 - Rosy glam cheeks
+    ".....OHxHSSSSSSSRRmRSSSSSSSHxHO.....",  # 14 - Bold crimson lipstick smirk
+    ".....OHxkOScccccSSSScccccSOkxhO.....",  # 15 - Soft chin + wavy side locks
+    ".....OOHxOOOOOOOOOOOOOOOOOOkHOO.....",  # 16 - Chin outline + cascading waves
+    "......OHhO..OSSSSGGGGSSSSO....OOO...",  # 17 - Gold necklace + Lipstick tip top!
+    ".......OO...OSSFWWWWWWFSSO...ORFFO..",  # 18 - Sweetheart neckline + Crimson lipstick tip
+    "...........ORRRRRKKKKKRRRRO..ORRFO..",  # 19 - Crimson/magenta cocktail dress + lipstick
+    "..........ORRRoRRKKKKKRRoRRO.OMWMO..",  # 20 - Arms + silver lipstick collar
+    ".........OSSO.ORRRRRRRRROSSOOGGDGGO.",  # 21 - Left hand on hip + right hand + gold tube
+    ".........OccO.OKKKKKKKKOSSO..OSSOO..",  # 22 - Hand + waist
+    "..........OO..ORRRGGGGGRRRO...OO....",  # 23 - Gold belt trim
+    ".............ORRRRRKKKRRRRRO........",  # 24 - Cocktail dress skirt
+    ".............ORRRrRKKKRrRRRO........",  # 25 - Dress folds
+    ".............OKKKkRRRRRkKKKO........",  # 26 - Magenta/crimson hem
+    ".............OOOOOOOOOOOOOOO........",  # 27 - Dress outline
+    "..............OSccO...OSccO.........",  # 28 - Legs
+    "..............OSccO...OSccO.........",  # 29 - Legs
+    "...........sssORrrOsssORrrOsss......",  # 30 - Crimson heels
+    "............ssOOOOOsssOOOOOss.......",  # 31 - Heels outline
+    "............ssssssssssssssss........",  # 32 - Ground shadow
+    "....................................",  # 33
+    "....................................",  # 34
+    "....................................",  # 35
+]
+
+# 4E. Boss 5: La Dirigente Aziendale (36x36)
+# Sharp chibi 3/4 corporate boss in tailored navy/slate suit, glasses, slick bun/bob hair,
+# holding a gleaming golden briefcase!
+BOSS_EXECUTIVE_36: List[str] = [
+    "....................................",  # 00
+    "............OOOOOOOOOOOO............",  # 01 - Slick executive bun top
+    "...........OAAHHHHHHHHhhO...........",  # 02 - Tight top bun
+    "...........OHHHHHHHHHHHhO...........",  # 03 - Bun base
+    ".........OOOHHHHHHHHHHHHhhOO........",  # 04 - Bob crown outline
+    "........OAAHHHHHHHHHHHHHHhhHO.......",  # 05 - Sleek bob volume
+    "........OHHHHHHHHHHHHHHHHHhhO.......",  # 06 - Sleek side bob
+    "........OHHhSSSHHHHHHHSSShHhO.......",  # 07 - Sharp parted bangs
+    "........OHhSSSSSOOOOOOSSSSShO.......",  # 08 - Forehead
+    "........OHoSOOOSSSSSSSSOOOSoO.......",  # 09 - Sharp executive eyebrows
+    ".......OOScSMMMMOSSSSOMMMMScoOO.....",  # 10 - Rectangular silver glasses top
+    ".......OScOSMWEPOSSSSOMWEPOScSO.....",  # 11 - Stern eyes behind glasses + top-left W!
+    ".......OScOSMMMMOSSSSOMMMMOscSO.....",  # 12 - Glasses bottom rim
+    "........OOOSccSSSSSSSSSSccSOO.......",  # 13 - Cheeks
+    ".........OOSSSSSSmmmmSSSSSSOO.......",  # 14 - Stern corporate mouth
+    "..........OSccccSSSSSSccccSO........",  # 15 - Jawline
+    "...........OOOOOOOOOOOOOOOO.........",  # 16 - Chin outline
+    "..........ONNNWWWWWWWWWWNNNO........",  # 17 - Tailored navy suit collar + crisp white shirt
+    ".........ONNNNWWWRRRRWWWNNNNO.......",  # 18 - Suit shoulders + crimson power tie
+    "........ONNNNNNNWWRRWWNNNNNNnO......",  # 19 - Structured corporate blazer
+    "........ONNNoNNNNWRRWNNNNoNNnO......",  # 20 - Sleeves + blazer lapels
+    "........OSSOONNNNGGGNNNNNOOSSO......",  # 21 - Hands + gold blazer button
+    "........OccOONNNNNNNNNNNNOOTTO......",  # 22 - Waist + Briefcase handle!
+    "..........OOONNNNnnnnNNNNOOGGGGO....",  # 23 - Tailored pencil skirt + Golden Briefcase top!
+    "...........ONNNNNnnnnNNNNOGWWGGDO...",  # 24 - Skirt + Briefcase highlight & clasp
+    "...........ONNNNnNNNNnNNNOGGOGGDO...",  # 25 - Skirt + Briefcase lock!
+    "...........ONNNNNnnnnNNNNOGGGGGDO...",  # 26 - Skirt + Briefcase body
+    "...........OOOOOOOOOOOOOOOGDDDDDO...",  # 27 - Skirt outline + Briefcase shadow
+    "............OSccO...OSccO.OOOOOOO...",  # 28 - Legs + Briefcase bottom
+    "............OSccO...OSccO...........",  # 29 - Legs
+    ".........sssONnnOsssONnnOsss........",  # 30 - Tailored navy heels
+    "..........ssOOOOOsssOOOOOss.........",  # 31 - Heels outline
+    "............sssssssssssss...........",  # 32 - Ground shadow
+    "....................................",  # 33
+    "....................................",  # 34
+    "....................................",  # 35
+]
+
+# 4F. Boss 6: La Rettrice (36x36)
+# Regal academic boss in royal purple & gold ceremonial toga/robe, silver/white hair,
+# golden medallion & ceremonial staff!
+BOSS_RECTOR_36: List[str] = [
+    "....................................",  # 00
+    "............OOOOOOOOOOOO............",  # 01 - Golden academic coronet/laurel top
+    "...........OGGGWWGGGGGGDO......OOO..",  # 02 - Coronet + Staff orb top!
+    "..........OOWWWWWWWWWWWwOO....O3XGO.",  # 03 - Silver-white hair + Glowing staff orb!
+    "........OOWWWWWWWWWWWWWwwWO...OGXGO.",  # 04 - Regal silver hair + Staff finial
+    ".......OWWWWWWWWWWWWWWWWwwWO...OGO..",  # 05 - Hair volume + Staff collar
+    ".......OWwWWWWWWWWWWWWWWwwWO...OTO..",  # 06 - Silver waves + Staff shaft
+    "......OWwWWWSSSWWWWWWWSSSWwwO..OTO..",  # 07 - Parted silver bangs
+    "......OWwWSSSSSSWWWWWSSSSSWwO..OTO..",  # 08 - Forehead
+    "......OWwSSOOOSSSWWWSSSOOOSwO..OTO..",  # 09 - Dignified silver brows
+    "......OSSOSSWIOSSSSSSOIWSSwSO..OTO..",  # 10 - Commanding ruby/violet eyes (top-left W!)
+    "......OScOSSIuOSSSSSSOuISSOSO..OTO..",  # 11 - Eyes mid + Staff shaft
+    ".......OOOSSccSSSSSSSSccSSOO...OTO..",  # 12 - Cheeks
+    "........OOSSSSSSmmmmmSSSSSOO...OTO..",  # 13 - Regal stern expression
+    ".........OSccccSSSSSSSccccSO...OTO..",  # 14 - Jawline
+    "..........OOOOOOOOOOOOOOOOO....OTO..",  # 15 - Chin outline
+    ".........OUUUGGGWWWWWWGGGUUO...OGO..",  # 16 - Royal purple robe + golden stole + Staff ring
+    "........OUUUUGGWWWRRWWWGGUUuO..OTO..",  # 17 - Gold stole + crimson academic tie
+    ".......OUUUUUGGWWRGGRWWGGUUuuO.OTO..",  # 18 - Robe shoulders + Gold Medallion!
+    "......OUUUUoUUGGWRRRRWGGUUoUUuOOTO..",  # 19 - Wide ceremonial sleeves + Medallion
+    "......OSSOOUUUGGGGGGGGGGUUOOSSOGDO..",  # 20 - Hands gripping Golden Staff!
+    "......OccOOUUUUUUUGGUUUUUUOOccOOTO..",  # 21 - Stole drape + Staff
+    "........OOUUUUUUUGDDGUUUUUUOO..OTO..",  # 22 - Ceremonial robe waist
+    "........OUUUUUUUGGDDGGUUUUUuO..OTO..",  # 23 - Flowing royal purple toga
+    ".......OUUUUUuuUGGDDGGUuuUUUuO.OTO..",  # 24 - Robe pleats + golden center stole
+    ".......OUUUUuuuuGGDDGGuuuuUUuO.OTO..",  # 25 - Lower ceremonial robe
+    ".......OGGGGGGGGGGGGGGGGGGGGGO.OTO..",  # 26 - Ornate golden robe hem!
+    ".......OOOOOOOOOOOOOOOOOOOOOOO.OTO..",  # 27 - Robe outline
+    "...........OSccO.....OSccO.....OTO..",  # 28 - Shoes peek
+    "...........OSccO.....OSccO.....OTO..",  # 29
+    "........sssODddOsssssODddOsss..OGO..",  # 30 - Gold-trimmed ceremonial shoes + Staff tip
+    ".........ssOOOOOsssssOOOOOss...OOO..",  # 31 - Shoes & Staff bottom outline
+    "..........ssssssssssssssssss........",  # 32 - Ground shadow
+    "....................................",  # 33
+    "....................................",  # 34
+    "....................................",  # 35
+]
+
 
 # ==============================================================================
 # 5. PROJECTILES (16x16 each)
@@ -705,6 +832,66 @@ BULLET_CIABATTA_16: List[str] = [
     "...OOOO.........",  # 12
     "................",  # 13
     "................",  # 14
+    "................",  # 15
+]
+
+# 5G. L'Amante's crimson-magenta lipstick projectile (R,F,K,G,W,O)
+BULLET_LIPSTICK_16: List[str] = [
+    "................",  # 00
+    ".........OOOO...",  # 01
+    "........ORFFRO..",  # 02
+    ".......ORWFFRRO.",  # 03
+    "......ORWFFRKKO.",  # 04
+    ".....ORFFRRKKO..",  # 05
+    "....ORFFRRKKO...",  # 06
+    "....OOGGGGOO....",  # 07
+    "...OGGWWWWGO....",  # 08
+    "...OGGGGGDDO....",  # 09
+    "..OMWWWWMMO.....",  # 10
+    "..OMMMMddO......",  # 11
+    "..OMMMddO.......",  # 12
+    "..OddddO........",  # 13
+    "...OOOO.........",  # 14
+    "................",  # 15
+]
+
+# 5H. La Dirigente's red-tape corporate contract projectile (W,C,w,R,F,d,O)
+BULLET_CONTRACT_16: List[str] = [
+    "................",  # 00
+    "..OOOOOOOOOO....",  # 01
+    "..OWWWWWWWWwO...",  # 02
+    "..OWddddddWWwO..",  # 03
+    "..OWWWWWWWWWwO..",  # 04
+    "..OWdddWWddWWwO.",  # 05
+    "..ORRRRRRRRRRRO.",  # 06
+    "..OFFFFFFFFFFFO.",  # 07
+    "..OWdddWWdddWwO.",  # 08
+    "..OWWWWWWWWWWwO.",  # 09
+    "..OWddddWWGGOwO.",  # 10
+    "..OWWWWWWGWROwO.",  # 11
+    "..OWCCCCCGGGGwO.",  # 12
+    "..OwwwwwwwwwwwO.",  # 13
+    "..OOOOOOOOOOOOO.",  # 14
+    "................",  # 15
+]
+
+# 5I. La Rettrice's gold/crimson academic wax seal orb projectile (G,D,R,F,W,O)
+BULLET_SEAL_16: List[str] = [
+    "................",  # 00
+    ".....OOOOOO.....",  # 01
+    "...OOGGGGGGOO...",  # 02
+    "..OGGWWWWWWGGO..",  # 03
+    "..OGWRRRRRRWGO..",  # 04
+    ".OGWRFFFFFFRWGO.",  # 05
+    ".OGWRFFWWFFRWGO.",  # 06
+    ".OGWRFFFFFFRrDO.",  # 07
+    ".OGWRRRRRRRRrDO.",  # 08
+    "..OGDRRRRRRDDO..",  # 09
+    "..OOGDDDDDDGOO..",  # 10
+    "...OORROOORRO...",  # 11
+    "..ORRRO..ORRRO..",  # 12
+    "..ORrO....OrRO..",  # 13
+    "...OO......OO...",  # 14
     "................",  # 15
 ]
 
@@ -836,11 +1023,14 @@ def main() -> None:
     car_canvas = grid_to_canvas(POLICE_CAR_48, 48, 32, PALETTE)
     save_asset_and_preview(car_canvas, OUT_DIR, "police_car", zoom=6)
 
-    # 4. 3 Iconic Boss Gatekeepers (36x36)
+    # 4. All 6 Iconic Boss Gatekeepers (36x36)
     bosses_36 = {
         "boss_best_friend": BOSS_BEST_FRIEND_36,
         "boss_professor": BOSS_PROFESSOR_36,
         "boss_mom": BOSS_MOM_36,
+        "boss_lover": BOSS_LOVER_36,
+        "boss_executive": BOSS_EXECUTIVE_36,
+        "boss_rector": BOSS_RECTOR_36,
     }
     for name, grid in bosses_36.items():
         canvas = grid_to_canvas(grid, 36, 36, PALETTE)
@@ -854,6 +1044,9 @@ def main() -> None:
         "bullet_flash": BULLET_FLASH_16,
         "bullet_police": BULLET_POLICE_16,
         "bullet_ciabatta": BULLET_CIABATTA_16,
+        "bullet_lipstick": BULLET_LIPSTICK_16,
+        "bullet_contract": BULLET_CONTRACT_16,
+        "bullet_seal": BULLET_SEAL_16,
     }
     for name, grid in bullets_16.items():
         canvas = grid_to_canvas(grid, 16, 16, PALETTE)
@@ -869,7 +1062,8 @@ def main() -> None:
     for name, canvas in tiles_32.items():
         save_asset_and_preview(canvas, OUT_DIR, name, zoom=6)
 
-    print(f"Successfully generated all 21 world sprites (+ previews) in {OUT_DIR}")
+    total = len(stops_48) + 1 + 1 + 2 + len(bosses_36) + len(bullets_16) + len(tiles_32)
+    print(f"Successfully generated all {total} world sprites (+ previews in tools/previews/world) in {OUT_DIR}")
 
 
 if __name__ == "__main__":

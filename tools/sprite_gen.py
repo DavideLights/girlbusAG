@@ -438,7 +438,8 @@ def build_street_showcase(
 
 
 def main() -> None:
-    out_dir = "/home/davidel/girlbusAG/assets/sprites/benchmark"
+    tools_dir = os.path.dirname(os.path.abspath(__file__))
+    out_dir = os.path.join(tools_dir, "previews", "benchmark")
     os.makedirs(out_dir, exist_ok=True)
 
     # 1. Build Alfredo Base (32x32)

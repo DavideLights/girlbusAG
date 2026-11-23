@@ -28,7 +28,7 @@ func TestDistrictTopologyAndNoOverlaps(t *testing.T) {
 	var buildings, cars, trees int
 	for _, p := range w.Props {
 		switch p.Kind {
-		case PropBuildingKonbini, PropBuildingCoffee, PropBuildingArcade:
+		case PropBuildingKonbini, PropBuildingCoffee, PropBuildingArcade, PropBuildingRamen, PropBuildingBookstore, PropBuildingMetro:
 			buildings++
 		case PropCarRed, PropCarYellow, PropCarMint:
 			cars++
@@ -38,6 +38,9 @@ func TestDistrictTopologyAndNoOverlaps(t *testing.T) {
 	}
 	if buildings != 8 || cars != 4 || trees != 4 {
 		t.Fatalf("unexpected prop counts: buildings=%d cars=%d trees=%d", buildings, cars, trees)
+	}
+	if len(w.SlotMachines) != 2 {
+		t.Fatalf("expected 2 SlotMachines, got %d", len(w.SlotMachines))
 	}
 
 	// Verify alleys and central cross-street are open (no solid prop inside alleys)
@@ -62,11 +65,18 @@ func TestDistrictTopologyAndNoOverlaps(t *testing.T) {
 		}
 	}
 
-	// Verify VendingShops are accessible (not inside solid props)
+	// Verify VendingShops and SlotMachines are accessible (not inside solid props)
 	for _, sh := range w.Shops {
 		for _, p := range w.Props {
 			if p.Solid && p.CollideRect.Contains(sh.X, sh.Y) {
 				t.Fatalf("VendingShop %+v is inside solid prop %+v", sh, p)
+			}
+		}
+	}
+	for _, sm := range w.SlotMachines {
+		for _, p := range w.Props {
+			if p.Solid && p.CollideRect.Contains(sm.X, sm.Y) {
+				t.Fatalf("SlotMachine %+v is inside solid prop %+v", sm, p)
 			}
 		}
 	}
@@ -114,7 +124,7 @@ func TestEvaluateAimAndBusBayBonuses(t *testing.T) {
 
 	foundPopup := false
 	for _, p := range w.Popups {
-		if p.Text == "🚏 BUS BAY +25% SPEED!" {
+		if p.Text == "BUS BAY +25% VELOCITA!" {
 			foundPopup = true
 			break
 		}

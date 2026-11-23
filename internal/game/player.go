@@ -32,9 +32,10 @@ type Player struct {
 
 	SelectedStopArch Archetype
 	UnlockedArchs    [ArchCount]bool
+	Relics           [RelicCount]bool
 
-	// "Castrated" Lv1 stats that scale dramatically via In-Run Level-Up Upgrades
-	StopCooldownBase     float32 // Starts at 7.0s, upgrades down to 1.5s
+	// Balanced Lv1 baseline stats that scale dramatically via In-Run Level-Up Upgrades
+	StopCooldownBase     float32 // Starts at 9.0s, upgrades down to 1.5s
 	StopCooldownTimer    float32
 	MaxSimultaneousStops int     // Starts at 1, upgrades up to 4
 	MaxMultiHook         int     // Starts at 1 girl per stop, upgrades up to 12
@@ -42,12 +43,19 @@ type Player struct {
 	ChronosTimeScale     float32 // Starts at 0.55, upgrades down to 0.20 ("Katana Zero Time")
 	BasslinePulseTimer   float32 // Emits passive rhythm ring every 2.5s
 
-	// Combat status timers
-	ThrowAnimTimer float32
-	StunTimer      float32
-	SlowTimer      float32
-	GroundedTimer  float32 // La Mamma "In Punizione!" temporary slot penalty
-	SpeedMult      float32
+	// Combat status & game-feel timers
+	ThrowAnimTimer       float32
+	StunTimer            float32
+	SlowTimer            float32
+	GroundedTimer        float32 // La Mamma "In Punizione!" temporary slot penalty
+	SpeedMult            float32
+	DashBufferTimer      float32
+	ThrowBufferTimer     float32
+	DashParryHitStopDone bool
+	DashParryShaveUsed   float32
+	ChronosToggledOn     bool
+	SlipstreamTimer      float32
+	SlipstreamPopupCD    float32
 }
 
 // NewPlayer initializes Alfredo at the center of the arena with Lv1 baseline stats.
@@ -64,7 +72,7 @@ func NewPlayer() Player {
 		NextLevelXP:          50,
 		SelectedStopArch:     ArchEmo,
 		UnlockedArchs:        [ArchCount]bool{true, true, true, true},
-		StopCooldownBase:     7.0,
+		StopCooldownBase:     9.0,
 		MaxSimultaneousStops: 1,
 		MaxMultiHook:         1,
 		RangeMult:            0.85,
@@ -72,6 +80,91 @@ func NewPlayer() Player {
 		BasslinePulseTimer:   BasslinePulsePeriod,
 		SpeedMult:            1.0,
 	}
+}
+
+// HasRelic reports whether Alfredo owns the specified passive relic this run.
+func (p *Player) HasRelic(r RelicKind) bool {
+	if r < 0 || r >= RelicCount {
+		return false
+	}
+	return p.Relics[r]
+}
+
+// RelicCountOwned returns how many passive relics Alfredo has collected this run.
+func (p *Player) RelicCountOwned() int {
+	n := 0
+	for _, has := range p.Relics {
+		if has {
+			n++
+		}
+	}
+	return n
+}
+
+// EffectiveStopCooldown returns the base throw cooldown adjusted by passive relics.
+func (p *Player) EffectiveStopCooldown() float32 {
+	cd := p.StopCooldownBase
+	if p.HasRelic(RelicNoiseCancel) {
+		cd *= 0.85
+	}
+	if cd < 1.2 {
+		cd = 1.2
+	}
+	return cd
+}
+
+// EffectiveRangeMult returns ThrowRange / CaptureRadius multiplier adjusted by relics.
+func (p *Player) EffectiveRangeMult() float32 {
+	rm := p.RangeMult
+	if p.HasRelic(RelicMonthlyPass) {
+		rm += 0.15
+	}
+	return rm
+}
+
+// EffectiveMaxMultiHook returns max girls hooked per stop including relics.
+func (p *Player) EffectiveMaxMultiHook() int {
+	return clampInt(p.MaxMultiHook, 1, 12)
+}
+
+// ShieldBonus returns extra BusStop back-glass shield pips from passive relics.
+func (p *Player) ShieldBonus() int {
+	bonus := 0
+	if p.HasRelic(RelicMonthlyPass) {
+		bonus++
+	}
+	if p.HasRelic(RelicArmoredGlass) {
+		bonus += 3
+	}
+	return bonus
+}
+
+// MinigameSpeedMult returns minigame charge speed multiplier from passive relics.
+func (p *Player) MinigameSpeedMult() float32 {
+	if p.HasRelic(RelicDoubleEspresso) {
+		return 1.25
+	}
+	return 1.0
+}
+
+// CashBonusMult returns passive cash multiplier from relics.
+func (p *Player) CashBonusMult() float32 {
+	m := float32(1.0)
+	if p.HasRelic(RelicLuckySocks) {
+		m += 0.15
+	}
+	if p.HasRelic(RelicFakeVIPPass) {
+		m += 0.25
+	}
+	return m
+}
+
+// XPBonusMult returns passive XP multiplier from relics.
+func (p *Player) XPBonusMult() float32 {
+	if p.HasRelic(RelicFakeVIPPass) {
+		return 1.25
+	}
+	return 1.0
 }
 
 // EffectiveMaxStops returns current allowed simultaneous stops, factoring in La Mamma's Grounded debuff.
@@ -91,8 +184,19 @@ func (p *Player) IsInvulnerable() bool {
 	return p.DashTimer > 0 || p.InvulnTimer > 0
 }
 
+// ReduceStopCooldown shaves sec seconds off the active Bus Stop throw cooldown.
+func (p *Player) ReduceStopCooldown(sec float32) {
+	if sec <= 0 || p.StopCooldownTimer <= 0 {
+		return
+	}
+	p.StopCooldownTimer -= sec
+	if p.StopCooldownTimer < 0 {
+		p.StopCooldownTimer = 0
+	}
+}
+
 // Update advances Alfredo's movement, dash, Chronos focus, cooldowns, and animations.
-func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog bool) (basslineTriggered bool) {
+func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog bool, streakCount int) (basslineTriggered bool, dashed bool) {
 	p.AnimTimer += dt
 
 	if p.InvulnTimer > 0 {
@@ -137,6 +241,30 @@ func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog 
 			p.GroundedTimer = 0
 		}
 	}
+	if p.DashBufferTimer > 0 {
+		p.DashBufferTimer -= dt
+		if p.DashBufferTimer < 0 {
+			p.DashBufferTimer = 0
+		}
+	}
+	if p.ThrowBufferTimer > 0 {
+		p.ThrowBufferTimer -= dt
+		if p.ThrowBufferTimer < 0 {
+			p.ThrowBufferTimer = 0
+		}
+	}
+	if p.SlipstreamTimer > 0 {
+		p.SlipstreamTimer -= dt
+		if p.SlipstreamTimer < 0 {
+			p.SlipstreamTimer = 0
+		}
+	}
+	if p.SlipstreamPopupCD > 0 {
+		p.SlipstreamPopupCD -= dt
+		if p.SlipstreamPopupCD < 0 {
+			p.SlipstreamPopupCD = 0
+		}
+	}
 
 	// Fade dash afterimages
 	for i := range p.Afterimages {
@@ -148,26 +276,43 @@ func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog 
 		}
 	}
 
-	// Archetype selection (keys 1-4)
+	// Archetype selection (keys 1-4 / wheel / tab)
 	if in.SelectArchetype >= 0 && in.SelectArchetype < int(ArchCount) {
 		if p.UnlockedArchs[in.SelectArchetype] {
 			p.SelectedStopArch = Archetype(in.SelectArchetype)
 		}
 	}
 
-	// Chronos ("Rizz-Focus") drain & regen
-	if in.ChronosHeld && p.ChronosMeter > 1.0 && p.StunTimer <= 0 {
+	// Chronos ("Rizz-Focus") Hold or Toggle mode
+	wantChronos := in.ChronosHeld
+	if in.ChronosToggleMode {
+		if in.ChronosJustPressed {
+			p.ChronosToggledOn = !p.ChronosToggledOn
+		}
+		if p.ChronosMeter <= 1.0 || p.StunTimer > 0 {
+			p.ChronosToggledOn = false
+		}
+		wantChronos = p.ChronosToggledOn
+	} else {
+		p.ChronosToggledOn = false
+	}
+
+	if wantChronos && p.ChronosMeter > 1.0 && p.StunTimer <= 0 {
 		p.ChronosActive = true
 		p.ChronosMeter -= 28.0 * dt
 		if p.ChronosMeter <= 0 {
 			p.ChronosMeter = 0
 			p.ChronosActive = false
+			p.ChronosToggledOn = false
 		}
 	} else {
 		p.ChronosActive = false
 		regenRate := float32(8.0)
 		if inEmoFog {
 			regenRate = 20.0
+		}
+		if p.HasRelic(RelicNoiseCancel) {
+			regenRate *= 1.20
 		}
 		p.ChronosMeter += regenRate * dt
 		if p.ChronosMeter > p.ChronosMax {
@@ -187,7 +332,7 @@ func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog 
 		p.VX = 0
 		p.VY = 0
 		p.AnimState = AnimIdle
-		return basslineTriggered
+		return basslineTriggered, false
 	}
 
 	// Normalized movement vector
@@ -198,8 +343,14 @@ func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog 
 		p.FacingX = 1
 	}
 
-	// Dash trigger (with i-frames)
-	if in.DashJustPressed && p.DashCooldown <= 0 && p.DashTimer <= 0 {
+	// Dash input buffer (120 ms) + Dash trigger (with i-frames)
+	if in.DashJustPressed {
+		p.DashBufferTimer = InputBufferDuration
+	}
+	if p.DashBufferTimer > 0 && p.DashCooldown <= 0 && p.DashTimer <= 0 {
+		p.DashBufferTimer = 0
+		p.DashParryHitStopDone = false
+		p.DashParryShaveUsed = 0
 		p.DashTimer = 0.16
 		p.DashCooldown = 0.72
 		if mLen > 0.05 {
@@ -208,6 +359,7 @@ func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog 
 			p.DashDirX, p.DashDirY = p.FacingX, 0
 		}
 		p.afterimageT = 0
+		dashed = true
 	}
 
 	if p.DashTimer > 0 {
@@ -222,16 +374,25 @@ func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog 
 		p.afterimageT -= dt
 		if p.afterimageT <= 0 {
 			p.afterimageT = 0.032
-			// Shift afterimages
 			for i := len(p.Afterimages) - 1; i > 0; i-- {
 				p.Afterimages[i] = p.Afterimages[i-1]
 			}
 			p.Afterimages[0] = PlayerAfterimage{X: p.X, Y: p.Y, Alpha: 0.75}
 		}
 	} else {
-		baseSpeed := float32(170.0) * p.SpeedMult
+		spdMult := p.SpeedMult
+		if p.HasRelic(RelicDoubleEspresso) {
+			spdMult += 0.18
+		}
+		baseSpeed := float32(170.0) * spdMult
 		if inExpressLane {
 			baseSpeed *= 1.25
+		}
+		if streakCount >= 3 {
+			baseSpeed *= 1.10
+		}
+		if p.SlipstreamTimer > 0 {
+			baseSpeed *= 1.45
 		}
 		if p.SlowTimer > 0 {
 			baseSpeed *= 0.68
@@ -253,11 +414,10 @@ func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog 
 		}
 	}
 
-	// Keep Alfredo inside sidewalk/arena bounds
 	p.X = clamp32(p.X, 18, ArenaWidth-18)
 	p.Y = clamp32(p.Y, 24, ArenaHeight-18)
 
-	return basslineTriggered
+	return basslineTriggered, dashed
 }
 
 // TakeDamage applies damage if Alfredo is not invulnerable; returns true if hit landed.

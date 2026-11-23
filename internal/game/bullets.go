@@ -10,9 +10,10 @@ type Bullet struct {
 	Age, MaxAge float32
 	Kind        BulletKind
 	BouncesLeft int
-	Homing      bool
-	Grazed      bool
-	SplitDone   bool
+	Homing       bool
+	Grazed       bool
+	GlobalGrazed bool
+	SplitDone    bool
 }
 
 // BulletPool holds up to MaxBullets (4096) pre-allocated projectiles with O(1) swap-removal.

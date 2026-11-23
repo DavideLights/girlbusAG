@@ -10,6 +10,9 @@ import struct
 import zlib
 from typing import Dict, List, Tuple
 
+TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(TOOLS_DIR)
+
 RGBA = Tuple[int, int, int, int]
 
 
@@ -200,4 +203,7 @@ def pack_horizontal_strip(frames: List[Canvas]) -> Canvas:
 def save_asset_and_preview(canvas: Canvas, out_dir: str, name: str, zoom: int = 8) -> None:
     os.makedirs(out_dir, exist_ok=True)
     canvas.save(os.path.join(out_dir, f"{name}.png"))
-    canvas.scale_nearest(zoom).save(os.path.join(out_dir, f"preview_{name}_{zoom}x.png"))
+    subdir = os.path.basename(os.path.normpath(out_dir))
+    preview_dir = os.path.join(ROOT_DIR, "tools", "previews", subdir)
+    os.makedirs(preview_dir, exist_ok=True)
+    canvas.scale_nearest(zoom).save(os.path.join(preview_dir, f"preview_{name}_{zoom}x.png"))

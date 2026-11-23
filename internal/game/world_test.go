@@ -49,13 +49,25 @@ func TestPoliceMultipliersAndBribe(t *testing.T) {
 		}
 	}
 
-	// Test VendingShop bribe
-	w.Player.Cash = 150
+	// Test VendingShop mini-menu bribe (5* costs $180, 3* costs $100)
+	w.Player.Cash = 280
 	w.Player.X = w.Shops[0].X
 	w.Player.Y = w.Shops[0].Y
 	w.Update(InputState{InteractJustPressed: true, SelectArchetype: -1, ActionDir: -1, ChooseUpgrade: -1}, 0.016)
-	if w.Police.Stars != 3 || w.Player.Cash != 50 {
-		t.Fatalf("expected bribe to reduce stars to 3 and cash to 50, got stars=%d cash=%d", w.Police.Stars, w.Player.Cash)
+	if !w.ShopMenu.Active {
+		t.Fatalf("expected ShopMenu to open when interacting near VendingShop")
+	}
+	w.Update(InputState{ShopAction: ShopActionBribe, SelectArchetype: -1, ActionDir: -1, ChooseUpgrade: -1}, 0.016)
+	if w.Police.Stars != 3 || w.Player.Cash != 100 {
+		t.Fatalf("expected 5* bribe to reduce stars to 3 and cash to 100, got stars=%d cash=%d", w.Police.Stars, w.Player.Cash)
+	}
+	w.Update(InputState{ShopAction: ShopActionBribe, SelectArchetype: -1, ActionDir: -1, ChooseUpgrade: -1}, 0.016)
+	if w.Police.Stars != 1 || w.Player.Cash != 0 {
+		t.Fatalf("expected 3* bribe to reduce stars to 1 and cash to 0, got stars=%d cash=%d", w.Police.Stars, w.Player.Cash)
+	}
+	w.Update(InputState{CancelJustPressed: true, SelectArchetype: -1, ActionDir: -1, ChooseUpgrade: -1}, 0.016)
+	if w.ShopMenu.Active {
+		t.Fatalf("expected ShopMenu to close on CancelJustPressed")
 	}
 }
 
@@ -64,20 +76,20 @@ func TestMinigamesAndBoardingBusRush(t *testing.T) {
 
 	// 1. Pragmata Grid persistence when Alfredo leaves radius
 	mg := NewMinigameState(ArchStudent, false, rng)
-	mg.Update(0.016, true, ActionRight, rng)
+	mg.Update(0.016, true, ActionRight, false, 108, rng)
 	if mg.GridX != 1 || mg.GridY != 0 {
 		t.Fatalf("expected Pragmata cursor at (1,0), got (%d,%d)", mg.GridX, mg.GridY)
 	}
-	mg.Update(0.1, false, ActionLeft, rng) // Outside radius: cursor must persist!
+	mg.Update(0.1, false, ActionLeft, false, 108, rng) // Outside radius after leaving: cursor must persist!
 	if mg.GridX != 1 || mg.GridY != 0 {
 		t.Fatalf("expected Pragmata cursor to persist at (1,0) while dashing outside, got (%d,%d)", mg.GridX, mg.GridY)
 	}
 	// Navigate to (3,3)
-	mg.Update(0.016, true, ActionRight, rng)
-	mg.Update(0.016, true, ActionRight, rng)
-	mg.Update(0.016, true, ActionDown, rng)
-	mg.Update(0.016, true, ActionDown, rng)
-	mg.Update(0.016, true, ActionDown, rng)
+	mg.Update(0.016, true, ActionRight, false, 108, rng)
+	mg.Update(0.016, true, ActionRight, false, 108, rng)
+	mg.Update(0.016, true, ActionDown, false, 108, rng)
+	mg.Update(0.016, true, ActionDown, false, 108, rng)
+	mg.Update(0.016, true, ActionDown, false, 108, rng)
 	if !mg.Completed {
 		t.Fatalf("expected Pragmata grid to complete at (3,3), pos=(%d,%d)", mg.GridX, mg.GridY)
 	}

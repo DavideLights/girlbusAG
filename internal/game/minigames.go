@@ -21,6 +21,10 @@ type MinigameState struct {
 	Completed bool
 	Synergy   bool
 
+	// Input buffer (120 ms)
+	BufferDir   int
+	BufferTimer float32
+
 	// Emo: Rhythm-Lock
 	BeatCursor    float32
 	BeatDir       float32
@@ -52,6 +56,7 @@ type MinigameState struct {
 func NewMinigameState(arch Archetype, perfectDrop bool, rng *rand.Rand) MinigameState {
 	m := MinigameState{
 		Arch:            arch,
+		BufferDir:       ActionNone,
 		BeatCursor:      0.15,
 		BeatDir:         1.0,
 		BeatWindow:      0.18,
@@ -145,9 +150,20 @@ func (m *MinigameState) AddGrazeCharge() {
 
 // Update advances the minigame in real time while Alfredo is inside the Bus Stop radius.
 // Note: Pragmata cursor persists automatically if Alfredo leaves the radius to dash!
-func (m *MinigameState) Update(dt float32, playerInside bool, actionDir int, rng *rand.Rand) {
+func (m *MinigameState) Update(dt float32, playerInside bool, actionDir int, actionHeld bool, bpm float32, rng *rand.Rand) {
 	if m.Completed {
 		return
+	}
+	if m.BufferTimer > 0 {
+		m.BufferTimer -= dt
+		if m.BufferTimer <= 0 {
+			m.BufferTimer = 0
+			m.BufferDir = ActionNone
+		}
+	}
+	if actionDir != ActionNone {
+		m.BufferDir = actionDir
+		m.BufferTimer = InputBufferDuration
 	}
 	if m.BeatCooldown > 0 {
 		m.BeatCooldown -= dt
@@ -160,10 +176,21 @@ func (m *MinigameState) Update(dt float32, playerInside bool, actionDir int, rng
 		return
 	}
 
+	consumeBuffered := func() int {
+		d := m.BufferDir
+		m.BufferDir = ActionNone
+		m.BufferTimer = 0
+		return d
+	}
+
 	switch m.Arch {
 	case ArchEmo:
-		// Rhythm-Lock: beat cursor sweeps across [0, 1]
-		m.BeatCursor += m.BeatDir * 1.45 * dt
+		// Rhythm-Lock: beat cursor sweep synced to live Synthwave BPM
+		if bpm <= 0 {
+			bpm = 108.0
+		}
+		sweepSpeed := (bpm / 60.0) * 0.75
+		m.BeatCursor += m.BeatDir * sweepSpeed * dt
 		if m.BeatCursor >= 1.0 {
 			m.BeatCursor = 1.0
 			m.BeatDir = -1.0
@@ -171,7 +198,8 @@ func (m *MinigameState) Update(dt float32, playerInside bool, actionDir int, rng
 			m.BeatCursor = 0.0
 			m.BeatDir = 1.0
 		}
-		if actionDir != ActionNone && m.BeatCooldown <= 0 {
+		if m.BufferDir != ActionNone && m.BeatCooldown <= 0 {
+			consumeBuffered()
 			m.BeatCooldown = 0.14
 			if float32(math.Abs(float64(m.BeatCursor-0.5))) <= m.BeatWindow {
 				m.Progress += 0.36
@@ -184,9 +212,10 @@ func (m *MinigameState) Update(dt float32, playerInside bool, actionDir int, rng
 
 	case ArchStudent:
 		// Pragmata Grid 4x4: directional input moves cursor 1 cell
-		if actionDir != ActionNone {
+		if m.BufferDir != ActionNone {
+			dir := consumeBuffered()
 			nx, ny := m.GridX, m.GridY
-			switch actionDir {
+			switch dir {
 			case ActionUp:
 				ny--
 			case ActionRight:
@@ -222,9 +251,10 @@ func (m *MinigameState) Update(dt float32, playerInside bool, actionDir int, rng
 		}
 
 	case ArchKawaii:
-		// Tear-Graze: auto-charges inside umbrella, plus dance boost on ActionDir
+		// Tear-Graze: auto-charges inside umbrella, plus dance boost on tap or hold
 		m.Progress += 0.24 * dt
-		if actionDir != ActionNone && m.DanceCooldown <= 0 {
+		if (m.BufferDir != ActionNone || actionHeld) && m.DanceCooldown <= 0 {
+			consumeBuffered()
 			m.DanceCooldown = 0.24
 			m.Progress += 0.16
 		}
@@ -243,11 +273,18 @@ func (m *MinigameState) Update(dt float32, playerInside bool, actionDir int, rng
 		}
 		m.SweetSpotPos = clamp32(m.SweetSpotPos, 0.14, 0.86)
 
-		// Cursor physics: gravity pulls down, tapping ActionDir kicks upward
-		m.BarVel -= 1.45 * dt
-		if actionDir == ActionUp || actionDir == ActionRight || actionDir == ActionLeft || actionDir == ActionDown {
-			m.BarVel = 0.56
+		// Cursor physics: Hold-to-Rise smoothly lifts bar; classic taps also impulse upward
+		m.BarVel -= 1.65 * dt
+		if actionHeld {
+			m.BarVel += 3.25 * dt
+			consumeBuffered()
+		} else if m.BufferDir != ActionNone {
+			consumeBuffered()
+			if m.BarVel < 0.45 {
+				m.BarVel = 0.45
+			}
 		}
+		m.BarVel = clamp32(m.BarVel, -0.85, 0.78)
 		m.BarCursor += m.BarVel * dt
 		if m.BarCursor < 0 {
 			m.BarCursor = 0
@@ -285,6 +322,8 @@ type ComboState struct {
 	Failed         bool
 	Completed      bool
 	LastErrorFlash float32
+	BufferDir      int
+	BufferTimer    float32
 }
 
 // Start initializes a fresh 4-step directional combo sequence.
@@ -300,12 +339,14 @@ func (c *ComboState) Start(synergyEmo bool, strictMode bool, rng *rand.Rand) {
 	c.Failed = false
 	c.Completed = false
 	c.LastErrorFlash = 0
+	c.BufferDir = ActionNone
+	c.BufferTimer = 0
 	for i := 0; i < 4; i++ {
 		c.Sequence[i] = rng.Intn(4)
 	}
 }
 
-// Update advances the escape timer and processes directional combo inputs.
+// Update advances the escape timer and processes buffered directional combo inputs.
 func (c *ComboState) Update(dt float32, playerInside bool, actionDir int) {
 	if !c.Active || c.Completed || c.Failed {
 		return
@@ -315,6 +356,17 @@ func (c *ComboState) Update(dt float32, playerInside bool, actionDir int) {
 		if c.LastErrorFlash < 0 {
 			c.LastErrorFlash = 0
 		}
+	}
+	if c.BufferTimer > 0 {
+		c.BufferTimer -= dt
+		if c.BufferTimer <= 0 {
+			c.BufferTimer = 0
+			c.BufferDir = ActionNone
+		}
+	}
+	if actionDir != ActionNone {
+		c.BufferDir = actionDir
+		c.BufferTimer = InputBufferDuration
 	}
 
 	// Leaving the radius accelerates escape timer (GDD rule)
@@ -329,9 +381,12 @@ func (c *ComboState) Update(dt float32, playerInside bool, actionDir int) {
 		return
 	}
 
-	if playerInside && actionDir != ActionNone {
+	if playerInside && c.BufferTimer > 0 && c.BufferDir != ActionNone {
+		dir := c.BufferDir
+		c.BufferDir = ActionNone
+		c.BufferTimer = 0
 		expected := c.Sequence[c.ComboIndex]
-		if actionDir == expected {
+		if dir == expected {
 			c.ComboIndex++
 			if c.ComboIndex >= 4 {
 				c.Completed = true

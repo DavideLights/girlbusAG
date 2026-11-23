@@ -11,6 +11,14 @@ Composites the actual generated sprites from assets/sprites/{map,world,character
 """
 
 import math
+import os
+import sys
+
+TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(TOOLS_DIR)
+if TOOLS_DIR not in sys.path:
+    sys.path.insert(0, TOOLS_DIR)
+
 from pixel_canvas import Canvas, PALETTE, hex_to_rgba
 from gen_layered_map_assets import (
     build_konbini_96x64 as make_building_konbini,
@@ -231,10 +239,11 @@ def main() -> None:
         scene.fill_rect(sx + 22, sy + 5, 8, 9, hex_to_rgba("#FFE2CC"))
         scene.fill_rect(sx + 22, sy + 3, 8, 4, sc)
 
-    out_dir = "/home/davidel/girlbusAG/assets/sprites/map"
-    scene.save(f"{out_dir}/district_showcase_1x.png")
-    scene.scale_nearest(4).save(f"{out_dir}/preview_district_showcase_4x.png")
-    print("Generated stratified district showcase:", f"{out_dir}/preview_district_showcase_4x.png")
+    out_dir = os.path.join(ROOT_DIR, "tools", "previews", "map")
+    os.makedirs(out_dir, exist_ok=True)
+    scene.save(os.path.join(out_dir, "district_showcase_1x.png"))
+    scene.scale_nearest(4).save(os.path.join(out_dir, "preview_district_showcase_4x.png"))
+    print("Generated stratified district showcase:", os.path.join(out_dir, "preview_district_showcase_4x.png"))
 
 
 if __name__ == "__main__":

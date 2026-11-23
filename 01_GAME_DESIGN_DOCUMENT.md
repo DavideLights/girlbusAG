@@ -1,4 +1,4 @@
-# 🚍 GIRLBUS: NEON STOP — Game Design Document (GDD v2.0 - Allineato)
+# 🚍 GIRLBUS: NEON STOP — Game Design Document (GDD v2.1 - Ergonomia & Loop Avanzato)
 > **Studio Pillar**: *"Se Rockstar Games facesse un 2D Pixel-Art Rogue-lite Bullet-Hell su rimorchiare ragazze alle fermate dell'autobus sotto pioggia acida, volanti della polizia e synthwave."*
 > **Core References**: *Katana ZERO* (Personaggio a piedi agile, Chronos, Hit-Stop, Neon-Noir, VHS Glitch) × *PokéBonk / Vampire Survivors* (Arena Continua Evolvibile, Orde Esponenziali, Telegraphs) × *Stardew Valley* & *Pragmata* (Tensione Micro-Minigioco in Tempo Reale) × *GTA* (Sistema Wanted a Stelle Polizia Risk/Reward).
 
@@ -9,10 +9,11 @@
 ### 1.1 Chi Controlliamo e Come si Muove
 * **Avatar a Piedi Stile *Katana ZERO***: Il giocatore controlla un protagonista a piedi agile e letale (hitbox compatta per il bullet-hell), dotato di **Movimento 360°**, **Dash con i-frames** (per attraversare muri di proiettili) e **Lancio Tattico della Fermata**.
 * **Il Ruolo dell'Autobus**: L'autobus non si guida manualmente nel traffico; è una **forza della natura neon** che sfreccia a raccogliere le ragazze ogni volta che completi la combo di una fermata (o travolge i nemici lungo i binari della *Linea Express*).
-* **Schema di Input Unificato (Linux PC + Web Browser + Android Touch)**:
-  * **Mano Sinistra (`WASD` / `Stick Sinistro` / `Virtual Stick`)**: Movimento + Dash.
-  * **Mano Destra (`Mouse` / `Stick Destro` / `Touch Drag`)**: Mira e Lancia la Fermata entro la gittata dell'archetipo scelto.
-  * **Input Minigiochi & Combo Finale (`4 Direzioni / Face Buttons / Tap Icone Olografiche`)**: Sequenze fulminee da **1.5–3.0 secondi** eseguibili senza staccare gli occhi dal bullet-hell, con adattamento automatico a pulsanti olografici touch su Android.
+* **Schema di Input Unificato ("Zero Hand-Lift" — PC Mouse/Tastiera + Solo Tastiera + Gamepad + Android Touch)**:
+  * **Mouse + Tastiera (`WASD` + Mouse)**: `WASD` movimento, `Spazio` / `Click Destro` Dash, `Shift` / `Q` Chronos (configurabile Hold o Toggle), `Rotellina Mouse` o `1–4` / `Tab` cambio Fermata senza staccare le dita dal movimento; `Click Sinistro` Mira/Lancio **e** azione 1-tasto per i minigiochi (*Emo Rhythm*, *Gyaru Stardew Hold*, *Kawaii Dance*), mentre i minigiochi direzionali (*Pragmata 4×4* e *Combo 4 Frecce*) supportano sia `Frecce / IJKL` sia selezione rapida col mouse / quadranti olografici attorno alla fermata (**zero stacco della mano destra dal mouse**).
+  * **Solo Tastiera (`WASD` + `Frecce / IJKL`)**: tasto `F` / `Invio` per il lancio con **Smart Magnetic Aim** lungo la direzione di movimento con aggancio morbido verso la ragazza compatibile in gittata.
+  * **Gamepad Twin-Stick**: Stick Sinistro movimento, Stick Destro mira, Grilletti (`L2/R2`) Chronos/Lancio, Dorsali (`L1/R1`) Dash/Cambio Fermata e **Tasti Frontali (`Y/B/A/X` o `△/○/×/□`)** mappati alle 4 direzioni di Minigiochi e Combo (evitando di costringere il pollice sinistro a lasciare lo Stick per il D-Pad).
+  * **Android Touch**: Stick virtuale sinistro + drag mira destro + pulsanti olografici touch per Dash, Chronos, Cambio Fermata e 4 direzioni.
 
 ### 1.2 Matrice di Fusione Sensoriale & UI Diegetica
 
@@ -159,3 +160,76 @@ Il loop è progettato per una modalità Co-op da 2 a 4 giocatori esaltante, dove
 4. **Linea Express ("Ghost Bus Rush") & Boss Dual-Catch**:
    * Piazzare due fermate di due giocatori entro `450px` accende il **Binario Express**: quando entrambi chiudono una combo, l'**Autobus Fantasma Neon** travolge tutto lungo la linea che unisce le due fermate!
    * Contro i **Boss (Rettrice, Mamma, Professoressa, ecc.)**, i giocatori possono concatenare le fermate per rompere insieme gli scudi del *3-Stop Break*.
+
+---
+
+## 8. Ergonomia dei Comandi, Ottimizzazione del Game Feel & Evoluzione del Gameplay Loop (v2.1)
+
+Questa sezione analizza il sistema di input reale tra tastiera, mouse e gamepad per eliminare gli attriti fisici durante il bullet-hell e introduce meccaniche ad alta profondità che arricchiscono il loop **senza aggiungere nuovi tasti complessi**.
+
+### 8.1 Diagnosi Ergonomica & Ottimizzazioni di Controllo ("Zero Hand-Lift")
+Nell'impostazione precedente emergevano 5 colli di bottiglia ergonomici evidenti quando il giocatore impugna `WASD` + Mouse o il Gamepad:
+1. **"Problema delle 3 Mani" (`WASD` + Mouse + `Frecce / IJKL`)**: mentre la mano sinistra schiva con `WASD` e la destra mira col Mouse, l'ingresso nel minigioco/combo obbliga a staccare la mano destra dal mouse per premere `Frecce` o `IJKL` proprio nei 2–3 secondi di massima densità dei proiettili.
+2. **Sovraccarico sul dito anulare/mignolo (`Q` / `C` + `1–4` + `Tab`)**: tenere premuto `Q` per il Chronos penalizza i movimenti verso sinistra/alto (`A` / `W`), mentre `C` collide con la selezione rapida carte Level-Up (`Z/X/C`) e `1–4` costringe a lasciare i tasti di movimento per cambiare archetipo.
+3. **Conflitto `Click Destro`**: usare il tasto destro del mouse sia come *Dash* sia come *Cancel* crea attriti quando si chiudono interfacce o si schiva vicino a menu/interazioni.
+4. **Mancanza di mira in Solo Tastiera**: senza puntatore mouse attivo, un giocatore che preferisce `WASD` + `Frecce/IJKL` non dispone di una mira assistita verso il bersaglio.
+5. **Conflitto Gamepad sul pollice sinistro**: mappare le 4 direzioni di minigiochi/combo sul **D-Pad** impedisce di schivare simultaneamente con lo **Stick Sinistro**, lasciando invece inutilizzati lo **Stick Destro** e i **Tasti Frontali**.
+
+#### Profili di Controllo Ottimizzati
+
+| Profilo Input | Movimento & Schivata | Mira, Cambio Fermata & Lancio | Chronos (`Slow-Mo`) | Minigiochi & Combo 4-Step |
+| :--- | :--- | :--- | :--- | :--- |
+| **Mouse + Tastiera (`Zero Hand-Lift`)** | `WASD` + `Spazio` / `Click Destro` (Dash dedicato) | **Mouse** (Mira) + **Rotellina Mouse** o `1–4` / `Tab` (Cambio Fermata) + `Click Sinistro` (Lancio) | `Shift Sinistro` (mignolo naturale) / `Q` — **Hold o Toggle** in Opzioni | **1-Tasto Mouse (`Click Sinistro`)** su Emo / Kawaii / Gyaru; per Pragmata e Combo 4-Step supporto **Quadranti Olografici Mouse / Puntatore Direzionale** (oltre a `Frecce / IJKL`) |
+| **Solo Tastiera (`Retro Arcade`)** | `WASD` + `Spazio` (Dash) | **Smart Magnetic Aim**: mira nella direzione di movimento con aggancio morbido sulla ragazza/Boss compatibile in gittata + `F` / `Invio` | `Shift Sinistro` / `Q` (Hold o Toggle) | `Frecce` o `IJKL` (stabile con entrambe le mani sui tasti principali) |
+| **Gamepad Twin-Stick** | **Stick Sinistro** + `L1` / `LB` (Dash) | **Stick Destro** (Mira analogica) + `R1` / `RB` (Ciclo Fermata) + `R2` / `RT` (Lancio) | `L2` / `LT` (Hold o Toggle) | **Tasti Frontali (`Y/B/A/X` o `△/○/×/□`)** mappati alle 4 direzioni (pollice sinistro libero sullo Stick!) |
+
+#### Parametri Tattili & Tolleranza di Game Feel
+* **Input Buffer (`120 ms`)**: gli input di *Dash*, *Lancio Fermata*, battiti *Rhythm-Lock* e *Combo 4-Step* premuti fino a `120 ms` prima della finestra valida vengono memorizzati ed eseguiti al primo frame utile.
+* **Tether Coyote Time (`0.35 s`)**: uscire dal cerchio della fermata per effettuare un *Dash* difensivo concede `0.35s` di grazia prima che il progresso si fermi, la barra Gyaru inizi a scendere o il timer di fuga acceleri a `1.65x`.
+* **Perfect-Drop Soft Lock Feedback (`<= 24 px`)**: quando il mirino entra nella finestra di *Perfect Drop* sopra una ragazza o un Boss, il reticle scatta visivamente in oro e produce un micro-tick sonoro di conferma.
+* **Stardew Bar Hold-to-Rise (*Cyber-Gyaru*)**: tieni premuto (`Click Sinistro`, `Su` o `Tasto Frontale`) per far salire il cursore e rilascia per farlo scendere con gravità morbida, eliminando lo spam ripetitivo.
+* **Rhythm-Lock BPM-Synced (*Emo*)**: velocità di scansione del cursore ritmico sincronizzata con i BPM reali del synthwave procedurale attivo (`110 → 145 BPM`), rendendo l'esecuzione leggibile anche a orecchio.
+
+---
+
+### 8.2 Nuove Meccaniche di Gameplay Loop ("Zero Tasti Extra")
+Tutte le meccaniche seguenti sfruttano **esclusivamente i tasti già esistenti** per eliminare i tempi morti (soprattutto al Tier 1 con cooldown iniziale di `9.0s`) e premiare la maestria posizionale:
+
+1. **Bullet Graze Globale & Dash-Parry *(Eliminazione Tempi Morti Cooldown)***:
+   * **Graze Universale (`<= 18 px`)**: sfiorare qualsiasi proiettile nemico o di polizia senza essere colpiti ricarica **`+4 Chronos`**, taglia **`-0.25 s`** dal cooldown della Fermata e prolunga la Streak.
+   * **Dash-Parry**: attraversare un proiettile con gli i-frames del *Dash* attiva un micro *Hit-Stop* (`25 ms`), cancella quel proiettile e taglia **`-1.0 s`** netti dal cooldown della Fermata. Più rischi sotto fuoco nemico, prima rilanci la fermata successiva.
+2. **Stop Recall / Overclock *(Richiamo Tattico)***:
+   * Premere `Lancio` sul centro di una fermata già attiva ma vuota (o premere `R` / doppio-tasto quando si è al limite degli slot) la richiama istantaneamente: **rimborsa il `50%` del cooldown residuo** ed emette un piccolo impulso locale **EMP Bullet-Clear** per liberare l'area di ripiego.
+3. **Rizz Fever / Rush Hour Streak (`x2` → `x5`)**:
+   * Chiudere catture in sequenza entro **`8.0 secondi`** l'una dall'altra incrementa il livello **Streak**:
+     * A **`x3`**: `+10%` velocità di movimento e `+15%` velocità di carica dei minigiochi.
+     * A **`x5` ("RUSH HOUR")**: la traccia synthwave sblocca un layer arpeggio dedicato, la scia dell'Autobus converte ogni proiettile spazzato in Cash (`$`) e i *Perfect Drop* dimezzano (`-50%`) il cooldown della fermata.
+   * Subire un hit o far fuggire una ragazza dimezza o azzera la Streak, creando tensione continua.
+4. **Bus Surfing / Slipstream & Cattura "Al Volo"**:
+   * Quando l'Autobus Neon sfreccia a raccogliere una fermata, lascia per **`1.5 s`** una **scia neon aerodinamica** lungo la corsia: attraversarla dà ad Alfredo **`+45%` velocità di corsa** e **reset istantaneo del Dash**.
+   * Lanciare una seconda fermata carica lungo la traiettoria dell'Autobus in arrivo prima che esca dallo schermo attiva la presa **"AL VOLO!"**: aggancia i bersagli nella linea d'arrivo con barra minigioco subito al `50%`.
+5. **Herding & Magnet-Beat *(Controllo Orda per Multi-Hook)***:
+   * Il *Bassline Pulse* periodico (potenziabile con Upgrade) respinge verso l'esterno pattuglie e disturbi minori mentre applica un **micro-pull magnetico** alle ragazze dello stesso archetipo selezionato, permettendo al giocatore di "radunarle" attivamente prima di piazzare un lancio Multi-Hook da `6–12×`.
+
+---
+
+### 8.3 Eventi Dinamici di Quartiere (Micro-Obiettivi ogni 60–90s)
+Per rompere la monotonia tra un Boss e l'altro senza introdurre popup invasivi, ogni `60–90 secondi` si attiva nell'arena un evento urbano segnalato da un banner diegetico compatto e luci dedicati:
+
+| Evento Urbano | Durata | Modifica Arena & Gameplay | Rischio vs Ricompensa |
+| :--- | :---: | :--- | :--- |
+| **🚦 Ingorgo ZTL (`4x`)** | `22 s` | Le aree *BUS* standard diventano temporaneamente **Zone ZTL Dorate**. | Fermare dentro paga **`4×` XP e Cash**, ma fa salire subito la Polizia di `+1★`. |
+| **🎰 Happy Hour Neon & Spin Gratis** | `20 s` | Tutti gli articoli del Distributore scontati del `-35%` + **1 Giro Gratis alla Slot 777**. | Ti spinge a tagliare l'arena sotto fuoco incrociato verso chiosco o cabinato prima che scada. |
+| **📣 Flashmob Campus (*Synergy Rush*)** | `25 s` | Sciame concentrato di `8–12` ragazze di **un solo archetipo dominante** nell'incrocio centrale. | Occasione d'oro per catena *Synergy* + Multi-Hook e *Rizz Fever `x5`* in mezzo a pattern omogenei ma densissimi. |
+| **⚡ Blackout Neon** | `18 s` | I lampioni si attenuano e i coni luminosi/laser dei proiettili diventano ultra-contrastati; carica **Chronos gratuita `+50%`**. | Visibilità ristretta ai coni di luce di Alfredo, fermate e pattuglie; Bonus **+50% Score & XP** a fine evento. |
+
+---
+
+### 8.4 Roadmap Prioritizzata di Implementazione (Impatto vs Sforzo)
+
+1. **Priorità P0 — Ergonomia & Game Feel Immediato *(Massimo impatto a zero nuovi asset)***:
+   * Modalità *Zero Hand-Lift* su Mouse (`LMB` nei minigiochi 1-tasto, quadranti cliccabili/puntatore per Pragmata & Combo, `Rotellina Mouse` cambio fermata), separazione `Click Destro` Dash vs `Cancel`, `Shift Sinistro` Chronos (Hold/Toggle), `Input Buffer 120ms`, `Tether Coyote Time 0.35s`, `Gyaru Hold-to-Rise`, `Emo BPM-Sync`, Gamepad Stick Destro + Face Buttons e *Smart Magnetic Aim* per Solo Tastiera.
+2. **Priorità P1 — Meccaniche di Profondità sul Loop *(Trasformano i tempi morti in azione)***:
+   * *Bullet Graze Globale* + *Dash-Parry* riduzione cooldown, *Stop Recall 50% + EMP*, *Rizz Fever Streak (`x2`→`x5`)* con layer synthwave, *Bus Slipstream + Al Volo* e *Herding Magnet-Beat*.
+3. **Priorità P2 — Eventi Dinamici & Espansione Contenuti**:
+   * I `4 Eventi Dinamici di Quartiere`, seconda arena sbloccabile (*Cyber-Shibuya Crossing*), nuove fermate (*Goth-Industrial* / *VIP Limousine*), **Multiplayer Cooperativo 2–4 Giocatori** (*Caos Condiviso*) e **HUD Touch + Build Android** (`scripts/build_android.sh`).

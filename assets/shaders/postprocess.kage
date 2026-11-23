@@ -1,0 +1,209 @@
+//kage:unit pixels
+package main
+
+var Time float
+var Mode float
+var Chronos float
+var Rewind float
+var ScreenSize vec2
+
+func hash21(p vec2) float {
+	q := fract(p * vec2(123.34, 456.21))
+	d := dot(q, q+vec2(45.32, 45.32))
+	q = q + vec2(d, d)
+	return fract(q.x * q.y)
+}
+
+func sampleClamped(uv vec2, origin vec2, srcSize vec2, minPos vec2, maxPos vec2) vec4 {
+	pos := clamp(origin+uv*srcSize, minPos, maxPos)
+	return imageSrc0UnsafeAt(pos)
+}
+
+func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+	origin := imageSrc0Origin()
+	srcSize := max(imageSrc0Size(), vec2(1.0, 1.0))
+	screenDim := max(ScreenSize, vec2(1.0, 1.0))
+	minPos := origin + vec2(0.5, 0.5)
+	maxPos := max(minPos, origin+srcSize-vec2(0.5, 0.5))
+
+	uv := clamp((srcPos-origin)/srcSize, vec2(0.0, 0.0), vec2(1.0, 1.0))
+	t := mod(Time, 1024.0)
+	chronosAmt := clamp(Chronos, 0.0, 1.0)
+	rewindAmt := clamp(Rewind, 0.0, 1.0)
+
+	outRGB := vec3(0.0, 0.0, 0.0)
+	outAlpha := 1.0
+
+	if Mode < 0.5 {
+		// Mode 0: Pixel Crisp / Off - exact pixel-center sample with minimal Chronos/Rewind cues.
+		base := imageSrc0UnsafeAt(clamp(srcPos, minPos, maxPos))
+		rgb := base.rgb
+		effectAlpha := 0.0
+
+		if chronosAmt > 0.001 {
+			centered := uv - vec2(0.5, 0.5)
+			edge := max(abs(centered.x), abs(centered.y)) * 2.0
+			rim := smoothstep(0.72, 1.0, edge)
+			pulse := 0.85 + 0.15*sin(t*7.5)
+			rimGlow := mix(vec3(0.32, 0.14, 0.68), vec3(0.0, 0.96, 0.83), smoothstep(0.78, 1.0, edge))
+			rgb = mix(rgb, rgb*vec3(0.90, 0.97, 1.06), chronosAmt*0.16)
+			addGlow := rim * pulse * chronosAmt * 0.24
+			rgb = rgb + rimGlow*addGlow
+			effectAlpha = max(effectAlpha, addGlow)
+		}
+
+		if rewindAmt > 0.001 {
+			barPos := fract(-t * 2.1)
+			bar := smoothstep(0.045, 0.0, abs(uv.y-barPos))
+			scanPulse := step(0.55, fract(uv.y*screenDim.y*0.25+t*14.0)) * 0.08
+			addBar := (bar*0.24 + scanPulse) * rewindAmt
+			rgb = rgb + vec3(0.96, 0.26, 0.64)*addBar
+			effectAlpha = max(effectAlpha, addBar)
+		}
+
+		outAlpha = clamp(max(base.a, effectAlpha), 0.0, 1.0)
+		outRGB = clamp(rgb, vec3(0.0, 0.0, 0.0), vec3(outAlpha, outAlpha, outAlpha))
+	} else if Mode < 1.5 {
+		// Mode 1: Warm CRT (Default) - ultra-subtle barrel curve (keeps UI borders smooth), Trinitron glow & scanlines.
+		cUV := uv*2.0 - vec2(1.0, 1.0)
+		r2 := dot(cUV, cUV)
+		curved := cUV * (0.980 + 0.011*r2)
+		crtUV := curved*0.5 + vec2(0.5, 0.5)
+
+		bezelX := smoothstep(0.0, 0.006, crtUV.x) * smoothstep(1.0, 0.994, crtUV.x)
+		bezelY := smoothstep(0.0, 0.008, crtUV.y) * smoothstep(1.0, 0.992, crtUV.y)
+		cornerDist := length(max(abs(curved)-vec2(0.968, 0.968), vec2(0.0, 0.0)))
+		cornerMask := 1.0 - smoothstep(0.018, 0.052, cornerDist)
+		bezelMask := bezelX * bezelY * cornerMask
+
+		if rewindAmt > 0.001 {
+			tearWave := sin(crtUV.y*48.0-t*26.0) * 0.0022 * rewindAmt
+			crtUV = vec2(crtUV.x+tearWave, crtUV.y)
+		}
+
+		// Soft bilinear-ish vertical blend for crisp curved UI borders without stair-stepping
+		subHalfY := 0.25 / srcSize.y
+		cTop := sampleClamped(crtUV-vec2(0.0, subHalfY), origin, srcSize, minPos, maxPos)
+		cBot := sampleClamped(crtUV+vec2(0.0, subHalfY), origin, srcSize, minPos, maxPos)
+		centerSample := mix(cTop, cBot, 0.5)
+		rgb := centerSample.rgb
+
+		// 4-tap mild warm halation/bloom for streetlamps, neon signs, and bullets.
+		pxStep := vec2(1.25, 1.25) / srcSize
+		s0 := sampleClamped(crtUV+vec2(-pxStep.x, -pxStep.y), origin, srcSize, minPos, maxPos).rgb
+		s1 := sampleClamped(crtUV+vec2(pxStep.x, -pxStep.y), origin, srcSize, minPos, maxPos).rgb
+		s2 := sampleClamped(crtUV+vec2(-pxStep.x, pxStep.y), origin, srcSize, minPos, maxPos).rgb
+		s3 := sampleClamped(crtUV+vec2(pxStep.x, pxStep.y), origin, srcSize, minPos, maxPos).rgb
+		blur := (s0 + s1 + s2 + s3) * 0.25
+
+		peak := max(blur.r, max(blur.g, blur.b))
+		bloomMask := smoothstep(0.74, 1.0, peak)
+		rgb = rgb + blur*(vec3(1.08, 0.96, 0.86)*(0.025+bloomMask*0.20))
+
+		// Warm Trinitron horizontal scanlines (~7% gentle modulation) + phosphor triad warmth.
+		scanPhase := 0.5 + 0.5*sin(crtUV.y*screenDim.y*3.14159265)
+		scanMod := 1.0 - 0.07*scanPhase
+		triadPhase := sin(crtUV.x * screenDim.x * 3.14159265)
+		triadTint := vec3(1.045+0.012*triadPhase, 1.01, 0.935-0.012*triadPhase)
+		rgb = rgb * triadTint * scanMod
+
+		// Soft warm amber-vignette at outer edges.
+		vigDist := length(cUV * vec2(0.86, 0.94))
+		vig := 1.0 - smoothstep(0.65, 1.38, vigDist)*0.20
+		rgb = mix(vec3(0.08, 0.03, 0.05), rgb, vig)
+
+		if chronosAmt > 0.001 {
+			rim := smoothstep(0.55, 1.18, length(cUV))
+			pulse := 0.85 + 0.15*sin(t*8.0)
+			coolGrade := rgb * vec3(0.84, 0.98, 1.14)
+			rgb = mix(rgb, coolGrade, chronosAmt*(0.24+0.44*rim))
+			rimColor := mix(vec3(0.36, 0.12, 0.72), vec3(0.0, 0.96, 0.83), rim)
+			rgb = rgb + rimColor*(rim*pulse*chronosAmt*0.34)
+		}
+
+		if rewindAmt > 0.001 {
+			sweep1 := smoothstep(0.055, 0.0, abs(fract(crtUV.y-t*1.85)-0.5))
+			sweep2 := smoothstep(0.025, 0.0, abs(fract(crtUV.y-t*3.10+0.37)-0.5))
+			lineNoise := hash21(vec2(floor(crtUV.y*screenDim.y), floor(t*48.0)))
+			rgb = rgb + vec3(1.0, 0.24, 0.68)*((sweep1*0.30+sweep2*0.22)*rewindAmt)
+			rgb = rgb + vec3(0.95, 0.65, 0.90)*(step(0.86, lineNoise)*0.16*rewindAmt)
+		}
+
+		bezelCol := vec3(0.032, 0.018, 0.048)
+		rgb = mix(bezelCol, rgb, bezelMask)
+		outAlpha = 1.0
+		outRGB = clamp(rgb, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0))
+	} else {
+		// Mode 2: VHS Noir - RGB chromatic aberration, tape grain, tracking bands, neon-noir grade.
+		cUV := uv*2.0 - vec2(1.0, 1.0)
+		tSnap := floor(t * 16.0)
+		bandY := floor(uv.y * 72.0)
+		bandHash := hash21(vec2(bandY, tSnap))
+		glitchBand := step(0.955, bandHash)
+
+		trackPos := fract(t * 0.22)
+		trackDist := min(abs(uv.y-trackPos), 1.0-abs(uv.y-trackPos))
+		trackZone := smoothstep(0.065, 0.0, trackDist)
+
+		tapeWave := sin(uv.y*22.0+t*5.0)*0.0007 + sin(uv.y*5.0-t*1.8)*0.0004
+		rowNoise := (hash21(vec2(floor(uv.y*screenDim.y), floor(t*36.0))) - 0.5) * 2.0
+		glitchAmp := clamp(trackZone*0.85+glitchBand*0.70+rewindAmt*1.15, 0.0, 1.5)
+		xShiftPx := tapeWave*screenDim.x + glitchAmp*rowNoise*(1.4+4.8*rewindAmt)
+		vhsUV := vec2(uv.x+xShiftPx/screenDim.x, uv.y)
+
+		// Horizontal RGB aberration: ~1.2px normally, up to ~4px on glitch bands or rewind.
+		chromaPx := 1.2 + clamp(trackZone*1.7+glitchBand*1.4+rewindAmt*2.8, 0.0, 2.8)
+		chromaUV := chromaPx / screenDim.x
+
+		rCol := sampleClamped(vhsUV+vec2(chromaUV, 0.0), origin, srcSize, minPos, maxPos).r
+		gSample := sampleClamped(vhsUV, origin, srcSize, minPos, maxPos)
+		bCol := sampleClamped(vhsUV-vec2(chromaUV, 0.0), origin, srcSize, minPos, maxPos).b
+		rgb := vec3(rCol, gSample.g, bCol)
+
+		// Cooler neon-noir magenta/cyan color grade.
+		luma := dot(rgb, vec3(0.299, 0.587, 0.114))
+		shadowTone := smoothstep(0.15, 0.85, 1.0-luma)
+		noirCool := rgb * vec3(0.95, 0.93, 1.09)
+		rgb = mix(noirCool, noirCool*vec3(1.06, 0.89, 1.13), shadowTone*0.48)
+		rgb = rgb + vec3(0.025, 0.008, 0.042)*shadowTone
+
+		// Deterministic analog tape grain (gentle so UI text stays legible).
+		pixCoord := floor(uv * screenDim)
+		grainSeed := vec2(fract(t*23.7)*97.0, fract(t*17.3)*53.0)
+		grain := (hash21(pixCoord+grainSeed) - 0.5) * (0.042 + 0.07*rewindAmt)
+		rgb = rgb + vec3(grain*0.95, grain*0.85, grain*1.10)
+
+		// VHS scanlines (~12% modulation).
+		scanPhase := 0.5 + 0.5*sin(uv.y*screenDim.y*3.14159265)
+		rgb = rgb * (1.0 - 0.12*scanPhase)
+
+		if trackZone > 0.01 {
+			tearNoise := hash21(vec2(floor(uv.x*screenDim.x*0.5), floor(uv.y*screenDim.y)+floor(t*40.0)))
+			rgb = rgb + vec3(0.75, 0.88, 1.0)*(trackZone*step(0.74, tearNoise)*0.11)
+		}
+
+		if rewindAmt > 0.001 {
+			bar1 := smoothstep(0.045, 0.0, abs(fract(uv.y-t*2.4)-0.22))
+			bar2 := smoothstep(0.032, 0.0, abs(fract(uv.y-t*3.3)-0.72))
+			snow := hash21(vec2(floor(uv.x*screenDim.x*0.5), floor(uv.y*screenDim.y)+fract(t*60.0)*131.0))
+			staticMask := clamp(step(0.38, snow)*(bar1+bar2*0.85)*rewindAmt*0.82, 0.0, 0.85)
+			snowCol := vec3(0.86, 0.92, 1.0) * (0.45 + 0.55*snow)
+			rgb = mix(rgb, snowCol, staticMask)
+			rgb = rgb + vec3(1.0, 0.22, 0.66)*((bar1*0.30+bar2*0.20)*rewindAmt)
+		}
+
+		if chronosAmt > 0.001 {
+			rim := smoothstep(0.55, 1.15, length(cUV))
+			pulse := 0.85 + 0.15*sin(t*8.0)
+			rgb = mix(rgb, rgb*vec3(0.84, 0.98, 1.12), chronosAmt*0.22)
+			rgb = rgb + vec3(0.0, 0.96, 0.83)*(rim*pulse*chronosAmt*0.30)
+		}
+
+		vig := 1.0 - smoothstep(0.64, 1.38, length(cUV))*0.26
+		rgb = mix(vec3(0.04, 0.015, 0.07), rgb, vig)
+		outAlpha = 1.0
+		outRGB = clamp(rgb, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0))
+	}
+
+	return vec4(outRGB, outAlpha) * color
+}

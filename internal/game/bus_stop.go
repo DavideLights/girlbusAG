@@ -24,6 +24,8 @@ type BusStop struct {
 	HookedBoss    bool
 
 	PlayerInside       bool
+	CoyoteTimer        float32
+	AlVoloBoosted      bool
 	SynergyActive      bool
 	EmoAbsorbAvailable bool
 	BellTimer          float32

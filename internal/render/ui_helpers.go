@@ -10,12 +10,66 @@ import (
 	"girlbusAG/internal/game"
 )
 
+// Exported Pop-Urban UI theme colors shared with internal/ui.
+var (
+	ColOutline   = colOutline
+	ColEmo       = colEmo
+	ColStudent   = colStudent
+	ColKawaii    = colKawaii
+	ColGyaru     = colGyaru
+	ColGold      = colGold
+	ColRedAlert  = colRedAlert
+	ColGreenNeon = colGreenNeon
+	ColHudBg     = colHudBg
+	ColHoloBg    = colHoloBg
+)
+
+// Premul returns a premultiplied color.RGBA from non-premultiplied 8-bit channels.
+func Premul(r, g, b, a uint8) color.RGBA {
+	return color.RGBA{
+		R: uint8(uint16(r) * uint16(a) / 255),
+		G: uint8(uint16(g) * uint16(a) / 255),
+		B: uint8(uint16(b) * uint16(a) / 255),
+		A: a,
+	}
+}
+
+// PremulColor scales an opaque color.RGBA by alpha a (0..255) in premultiplied form.
+func PremulColor(c color.RGBA, a uint8) color.RGBA {
+	return Premul(c.R, c.G, c.B, a)
+}
+
+// DrawScaledText renders cached crisp text with 1px dark outline and drop-shadow.
+func (r *Renderer) DrawScaledText(dst *ebiten.Image, txt string, x, y int, scale float64, fgColor, shadowColor color.Color) {
+	r.drawScaledText(dst, txt, x, y, scale, fgColor, shadowColor)
+}
+
+// DrawTextColored renders cached 1x text with subtle dark drop-shadow.
+func (r *Renderer) DrawTextColored(dst *ebiten.Image, txt string, x, y int, clr color.Color) {
+	r.drawTextColored(dst, txt, x, y, clr)
+}
+
+// DrawKeycap renders a tactile 3D pixel-art keyboard button or arrow icon.
+func (r *Renderer) DrawKeycap(dst *ebiten.Image, label string, x, y, w, h float32, bgCol, borderCol color.Color, pressed bool) {
+	r.drawKeycap(dst, label, x, y, w, h, bgCol, borderCol, pressed)
+}
+
+// DrawPillBadge renders a compact dark neon-bordered badge.
+func DrawPillBadge(dst *ebiten.Image, x, y, w, h float32, bgCol, borderCol color.Color) {
+	drawPillBadge(dst, x, y, w, h, bgCol, borderCol)
+}
+
+// TextPixelWidth estimates pixel width of txt at scale.
+func TextPixelWidth(txt string, scale float64) int {
+	return textPixelWidth(txt, scale)
+}
+
 func (r *Renderer) getTextImage(txt string) *ebiten.Image {
 	img, ok := r.textCache[txt]
 	if ok {
 		return img
 	}
-	if len(r.textCache) >= 480 {
+	if len(r.textCache) >= 640 {
 		for k := range r.textCache {
 			delete(r.textCache, k)
 			break
@@ -31,7 +85,7 @@ func (r *Renderer) getTextImage(txt string) *ebiten.Image {
 	return img
 }
 
-// drawScaledText renders cached text with a crisp 1px dark outline/drop-shadow and clean scaling (1.0, 1.5, 2.0).
+// drawScaledText renders cached text with a crisp 1px dark outline/drop-shadow and clean scaling.
 func (r *Renderer) drawScaledText(dst *ebiten.Image, txt string, x, y int, scale float64, fgColor, shadowColor color.Color) {
 	if txt == "" {
 		return
@@ -42,7 +96,6 @@ func (r *Renderer) drawScaledText(dst *ebiten.Image, txt string, x, y int, scale
 	img := r.getTextImage(txt)
 	op := &ebiten.DrawImageOptions{}
 
-	// 1px dark outline + drop shadow around the scaled glyphs for maximum legibility
 	_, _, _, sa := shadowColor.RGBA()
 	if sa > 0 {
 		offsets := [5][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {1, 1}}
@@ -89,7 +142,6 @@ func textPixelWidth(txt string, scale float64) int {
 }
 
 // drawKeycap renders a tactile 3D pixel-art keyboard button with top highlight, bottom bevel, and press offset.
-// Special directional labels ("UP", "RIGHT", "DOWN", "LEFT", "^", ">", "v", "<") draw crisp vector arrows.
 func (r *Renderer) drawKeycap(dst *ebiten.Image, label string, x, y, w, h float32, bgCol, borderCol color.Color, pressed bool) {
 	if w < 10 {
 		w = 10
@@ -114,10 +166,8 @@ func (r *Renderer) drawKeycap(dst *ebiten.Image, label string, x, y, w, h float3
 		faceH = h - 1
 	}
 
-	// Outer dark drop base
 	vector.DrawFilledRect(dst, x-1, y+1, w+2, h+1, color.RGBA{14, 8, 22, 220}, false)
 
-	// Bottom 3D bevel
 	bevelCol := color.RGBA{
 		R: uint8(float32(br) * 0.48),
 		G: uint8(float32(bg) * 0.48),
@@ -126,7 +176,6 @@ func (r *Renderer) drawKeycap(dst *ebiten.Image, label string, x, y, w, h float3
 	}
 	vector.DrawFilledRect(dst, x, faceY+faceH, w, bevelH, bevelCol, false)
 
-	// Keycap face
 	faceCol := color.RGBA{R: br, G: bg, B: bb, A: ba}
 	if pressed {
 		faceCol = color.RGBA{
@@ -137,14 +186,9 @@ func (r *Renderer) drawKeycap(dst *ebiten.Image, label string, x, y, w, h float3
 		}
 	}
 	vector.DrawFilledRect(dst, x, faceY, w, faceH, faceCol, false)
-
-	// Top 1px bright specular highlight
 	vector.DrawFilledRect(dst, x+1, faceY+1, w-2, 1.5, color.RGBA{255, 255, 255, 85}, false)
-
-	// Crisp border
 	vector.StrokeRect(dst, x, faceY, w, faceH, 1.0, color.RGBA{R: rr, G: rg, B: rb, A: ra}, false)
 
-	// Inner icon or label
 	cx := x + w*0.5
 	cy := faceY + faceH*0.5
 	fg := color.RGBA{248, 250, 255, 255}
@@ -165,7 +209,6 @@ func (r *Renderer) drawKeycap(dst *ebiten.Image, label string, x, y, w, h float3
 	}
 }
 
-// drawPillBadge draws a compact dark pill/tag with neon border and returns its pixel width.
 func drawPillBadge(dst *ebiten.Image, x, y, w, h float32, bgCol, borderCol color.Color) {
 	vector.DrawFilledRect(dst, x+1, y+1, w, h, color.RGBA{10, 5, 16, 175}, false)
 	vector.DrawFilledRect(dst, x, y, w, h, bgCol, false)

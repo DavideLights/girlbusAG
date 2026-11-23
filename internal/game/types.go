@@ -15,9 +15,14 @@ const (
 	BaseGrazeRadius     = float32(28.0)
 	ExpressLinkMaxDist  = float32(450.0)
 	BusRushSpeed        = float32(900.0)
-	BasslinePulsePeriod = float32(2.5)
-	BasslinePulseRadius = float32(72.0)
-	BoardwalkRailY      = float32(676.0)
+	BasslinePulsePeriod   = float32(2.5)
+	BasslinePulseRadius   = float32(72.0)
+	BoardwalkRailY        = float32(676.0)
+	GlobalGrazeRadius     = float32(18.0)
+	InputBufferDuration   = float32(0.120)
+	TetherCoyoteDuration  = float32(0.35)
+	StreakWindowDuration  = float32(8.0)
+	BusSlipstreamDuration = float32(1.5)
 )
 
 // Archetype identifies both Bus Stop shelter types and Girl horde archetypes.
@@ -46,7 +51,7 @@ var archetypeSpecs = [ArchCount]ArchetypeSpec{
 	ArchEmo: {
 		Arch:          ArchEmo,
 		Name:          "Emo",
-		StopName:      "Grunge Shelter",
+		StopName:      "Pensilina Grunge",
 		SynergyName:   "SOULMATE",
 		ThrowRange:    220,
 		CaptureRadius: 140,
@@ -54,8 +59,8 @@ var archetypeSpecs = [ArchCount]ArchetypeSpec{
 	},
 	ArchStudent: {
 		Arch:          ArchStudent,
-		Name:          "Student",
-		StopName:      "Campus LED",
+		Name:          "Studentessa",
+		StopName:      "Pensilina Campus LED",
 		SynergyName:   "HONOR ROLL",
 		ThrowRange:    300,
 		CaptureRadius: 105,
@@ -64,7 +69,7 @@ var archetypeSpecs = [ArchCount]ArchetypeSpec{
 	ArchKawaii: {
 		Arch:          ArchKawaii,
 		Name:          "Kawaii",
-		StopName:      "Purikura Umbrella",
+		StopName:      "Ombrellino Purikura",
 		SynergyName:   "MOE CRITICAL",
 		ThrowRange:    150,
 		CaptureRadius: 85,
@@ -73,7 +78,7 @@ var archetypeSpecs = [ArchCount]ArchetypeSpec{
 	ArchGyaru: {
 		Arch:          ArchGyaru,
 		Name:          "Cyber-Gyaru",
-		StopName:      "5G Hologram",
+		StopName:      "Ologramma 5G",
 		SynergyName:   "VIRAL #1",
 		ThrowRange:    360,
 		CaptureRadius: 165,
@@ -99,16 +104,60 @@ const (
 	BulletFlash
 	BulletPolice
 	BulletCiabatta
+	BulletLipstick
+	BulletContract
+	BulletSeal
 )
 
-// BossKind identifies the implemented Gatekeeper Bosses.
+// BossKind identifies all 6 Gatekeeper Bosses.
 type BossKind int
 
 const (
 	BossBestFriend BossKind = iota
+	BossLover
 	BossProfessor
+	BossExecutive
+	BossRector
 	BossMom
+	BossCount
 )
+
+// RelicKind identifies passive in-run Relics bought at Vending Shops.
+type RelicKind int
+
+const (
+	RelicNoiseCancel RelicKind = iota
+	RelicMonthlyPass
+	RelicArmoredGlass
+	RelicLuckySocks
+	RelicDoubleEspresso
+	RelicFakeVIPPass
+	RelicCount
+)
+
+// RelicSpec holds the Italian name and effect description for a passive Relic.
+type RelicSpec struct {
+	Kind RelicKind
+	Name string
+	Desc string
+}
+
+var relicSpecs = [RelicCount]RelicSpec{
+	RelicNoiseCancel:    {Kind: RelicNoiseCancel, Name: "Cuffie Noise-Cancel", Desc: "-15% Cooldown Fermate, +20% Ricarica Chronos"},
+	RelicMonthlyPass:    {Kind: RelicMonthlyPass, Name: "Abbonamento Mensile", Desc: "+1 Scudo Vetro, +15% Raggio Fermata"},
+	RelicArmoredGlass:   {Kind: RelicArmoredGlass, Name: "Vetro Blindato", Desc: "+3 Scudi Vetro, Perfect Drop pulisce +35px"},
+	RelicLuckySocks:     {Kind: RelicLuckySocks, Name: "Calzini Portafortuna", Desc: "+Fortuna Rizz-Slots 777 & +15% Soldi"},
+	RelicDoubleEspresso: {Kind: RelicDoubleEspresso, Name: "Doppio Espresso", Desc: "+18% Velocita Movimento & +25% Minigiochi"},
+	RelicFakeVIPPass:    {Kind: RelicFakeVIPPass, Name: "Pass VIP Falso", Desc: "+25% XP/Soldi & +1 Ragazza Multi-Hook"},
+}
+
+// GetRelicSpec returns the specification for a RelicKind.
+func GetRelicSpec(r RelicKind) RelicSpec {
+	if r < 0 || r >= RelicCount {
+		return relicSpecs[0]
+	}
+	return relicSpecs[r]
+}
 
 // ActionDir constants for Minigames and the 4-Step Boarding Combo.
 const (
@@ -119,6 +168,15 @@ const (
 	ActionLeft  = 3
 )
 
+// ShopAction constants for the Vending Shop mini-menu (0 = none so zero-value InputState is safe).
+const (
+	ShopActionNone    = 0
+	ShopActionHeal    = 1
+	ShopActionBribe   = 2
+	ShopActionRelic   = 3
+	ShopActionUpgrade = 4
+)
+
 // Player animation states.
 const (
 	AnimIdle  = 0
@@ -127,17 +185,68 @@ const (
 	AnimThrow = 3
 )
 
+// WorldEventKind identifies discrete simulation events consumed by Audio and Challenge trackers.
+type WorldEventKind int
+
+const (
+	EventThrow WorldEventKind = iota
+	EventPerfectDrop
+	EventHook
+	EventMinigameHit
+	EventMinigameMiss
+	EventComboStep
+	EventBusRush
+	EventDash
+	EventPlayerHit
+	EventPoliceStarUp
+	EventBossSpawn
+	EventBossBreak
+	EventBossDefeated
+	EventLevelUp
+	EventShopBuy
+	EventSlotTick
+	EventSlotWin
+	EventSlotJackpot
+	EventSlotBust
+	EventSynergy
+	EventGirlBoarded
+	EventGraze
+	EventDashParry
+	EventStopRecall
+	EventSlipstream
+	EventFeverUp
+)
+
+// WorldEvent records a single simulation event emitted during World.Update.
+type WorldEvent struct {
+	Kind  WorldEventKind
+	Value int  // Optional context: BossKind, Archetype, Combo step, HookCount, etc.
+	Flag  bool // Optional context: e.g. hit by Ciabatta, PerfectDrop, etc.
+}
+
 // InputState is the platform-agnostic control snapshot passed into World.Update each frame.
 type InputState struct {
-	MoveX, MoveY        float32
-	DashJustPressed     bool
-	ChronosHeld         bool
-	ThrowJustPressed    bool
+	MoveX, MoveY         float32
+	DashJustPressed      bool
+	ChronosHeld          bool
+	ChronosJustPressed   bool
+	ChronosToggleMode    bool
+	ThrowJustPressed     bool
+	RecallJustPressed    bool
 	AimWorldX, AimWorldY float32
-	SelectArchetype     int // -1 if none, 0..3 to switch active Bus Stop archetype
-	ActionDir           int // -1 none, 0=Up, 1=Right, 2=Down, 3=Left
-	InteractJustPressed bool
-	ChooseUpgrade       int // -1 none, 0..2 when Level-Up 3-Card choice is active
+	AimIsDirectional     bool
+	AimDirX, AimDirY     float32
+	SelectArchetype      int // -1 if none, 0..3 to switch active Bus Stop archetype
+	ActionDir            int // -1 none, 0=Up, 1=Right, 2=Down, 3=Left
+	ActionHeld           bool
+	InteractJustPressed  bool
+	ChooseUpgrade        int // -1 none, 0..2 when Level-Up 3-Card choice is active
+	ShopAction           int // 0 none, 1..4 when Vending Shop modal is active
+	SlotSpinJustPressed  bool
+	CancelJustPressed    bool
+	MouseScreenX         float32
+	MouseScreenY         float32
+	MouseLeftJustPressed bool
 }
 
 // Rect defines an axis-aligned rectangle in world coordinates (e.g. ZTL forbidden zones).
@@ -161,15 +270,15 @@ func (r Rect) IntersectsCircle(cx, cy, radius float32) bool {
 
 // FloatingText represents a diegetic world-space popup ("PERFECT DROP!", "+$150", etc.).
 type FloatingText struct {
-	X, Y     float32
-	VY       float32
-	Life     float32
-	MaxLife  float32
-	Text     string
-	Kind     int // 0=info, 1=perfect/synergy, 2=police/alert, 3=cash/xp, 4=boss
+	X, Y    float32
+	VY      float32
+	Life    float32
+	MaxLife float32
+	Text    string
+	Kind    int // 0=info, 1=perfect/synergy, 2=police/alert, 3=cash/xp, 4=boss
 }
 
-// VendingShop is a Konbini Neon Vending Machine on the sidewalk for in-run healing and Police bribes.
+// VendingShop is a Konbini Neon Vending Machine on the sidewalk for in-run items, bribes, and relics.
 type VendingShop struct {
 	X, Y      float32
 	Radius    float32
@@ -178,13 +287,21 @@ type VendingShop struct {
 	BribeCost int
 }
 
+// SlotMachine is an interactive Rizz-Slots 777 cabinet placed in the district.
+type SlotMachine struct {
+	X, Y      float32
+	Radius    float32
+	SpinCost  int
+	SpinsUsed int
+}
+
 // TelegraphLine represents an upcoming lane rush or laser warning line (0.7s-0.8s).
 type TelegraphLine struct {
 	X1, Y1   float32
 	X2, Y2   float32
 	Timer    float32
 	MaxTimer float32
-	Kind     int // 0=PoliceCruiser, 1=ProfessorLaser
+	Kind     int // 0=PoliceCruiser, 1=Professor/Rector Laser
 }
 
 // ExpressLine links two simultaneous Bus Stops within ExpressLinkMaxDist.
@@ -201,6 +318,12 @@ type WaveRing struct {
 	Life      float32
 	MaxLife   float32
 	Kind      int // 0=Bassline, 1=PerfectCancel, 2=BusPurify, 3=CampusBell, 4=ViralFlash
+}
+
+// BusSlipstream represents the temporary aerodynamic speed ribbon left behind by a streaking NeonBus.
+type BusSlipstream struct {
+	X1, X2, Y     float32
+	Life, MaxLife float32
 }
 
 // UpgradeKind identifies an in-run Level-Up upgrade card.

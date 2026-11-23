@@ -1,0 +1,6 @@
+dist/
+tools/__pycache__/
+tools/previews/
+*.exe
+*.wasm
+*.br

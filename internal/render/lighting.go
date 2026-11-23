@@ -13,7 +13,7 @@ import (
 
 const numAmbientParticles = 60
 
-var colGoldenHourShadow = color.RGBA{24, 16, 36, 95}
+var colGoldenHourShadow = Premul(24, 16, 36, 95)
 
 type particleKind uint8
 
@@ -181,19 +181,19 @@ func (r *Renderer) drawAmbientParticles(dst *ebiten.Image, camX, camY float32) {
 		switch p.kind {
 		case partSakuraPetal:
 			a := uint8(195 * fade)
-			vector.DrawFilledRect(dst, sx, sy, 2.5, 1.8, color.RGBA{255, 172, 206, a}, false)
-			vector.DrawFilledRect(dst, sx+1, sy+1, 1.5, 1.2, color.RGBA{255, 226, 238, a}, false)
+			vector.DrawFilledRect(dst, sx, sy, 2.5, 1.8, Premul(255, 172, 206, a), false)
+			vector.DrawFilledRect(dst, sx+1, sy+1, 1.5, 1.2, Premul(255, 226, 238, a), false)
 		case partDustMote:
 			a := uint8(165 * fade)
-			vector.DrawFilledRect(dst, sx, sy, 1.8, 1.8, color.RGBA{255, 220, 145, a}, false)
+			vector.DrawFilledRect(dst, sx, sy, 1.8, 1.8, Premul(255, 220, 145, a), false)
 		case partStoreSteam:
 			a := uint8(110 * fade)
-			vector.DrawFilledRect(dst, sx, sy, 2.2, 2.2, color.RGBA{255, 244, 224, a}, false)
+			vector.DrawFilledRect(dst, sx, sy, 2.2, 2.2, Premul(255, 244, 224, a), false)
 		case partCanalSparkle:
 			twinkle := float32(0.5 + 0.5*math.Sin(float64(p.phase*3.5)))
 			a := uint8(210 * fade * twinkle)
-			vector.DrawFilledRect(dst, sx-1, sy, 3.5, 1.2, color.RGBA{190, 248, 255, a}, false)
-			vector.DrawFilledRect(dst, sx, sy-1, 1.2, 3.2, color.RGBA{255, 255, 255, a}, false)
+			vector.DrawFilledRect(dst, sx-1, sy, 3.5, 1.2, Premul(190, 248, 255, a), false)
+			vector.DrawFilledRect(dst, sx, sy-1, 1.2, 3.2, Premul(255, 255, 255, a), false)
 		}
 	}
 }
@@ -215,10 +215,13 @@ func (r *Renderer) drawGroundShadows(dst *ebiten.Image, w *game.World, camX, cam
 		}
 
 		switch pr.Kind {
-		case game.PropBuildingKonbini, game.PropBuildingCoffee, game.PropBuildingArcade:
+		case game.PropBuildingKonbini, game.PropBuildingCoffee, game.PropBuildingArcade,
+			game.PropBuildingRamen, game.PropBuildingBookstore, game.PropBuildingMetro:
 			// Crisp architectural down-right drop shadow spilled across the north promenade
 			vector.DrawFilledRect(dst, px+8, py+pr.H-6, pr.W+4, 16, sh, false)
 			vector.DrawFilledRect(dst, px+pr.W-2, py+12, 10, pr.H-8, sh, false)
+		case game.PropBuildingNewsstand, game.PropNeonBillboard:
+			vector.DrawFilledRect(dst, px+5, py+pr.H-5, pr.W+2, 11, sh, false)
 		case game.PropTreeLush:
 			cx := px + pr.W*0.5 + 7
 			cy := pr.SortY - camY - 2
@@ -227,6 +230,14 @@ func (r *Renderer) drawGroundShadows(dst *ebiten.Image, w *game.World, camX, cam
 		case game.PropCarRed, game.PropCarYellow, game.PropCarMint:
 			cx := px + (pr.W-48)*0.5
 			vector.DrawFilledRect(dst, cx+5, py+8, 48, 26, sh, false)
+		case game.PropScooter:
+			vector.DrawFilledRect(dst, px+4, py+10, 28, 14, sh, false)
+		case game.PropBikeRack, game.PropFlowerBox:
+			vector.DrawFilledRect(dst, px+3, py+8, pr.W-2, pr.H-6, sh, false)
+		case game.PropHydrantBin, game.PropZTLSign:
+			cx := px + pr.W*0.5
+			by := pr.SortY - camY
+			vector.DrawFilledRect(dst, cx-6, by-6, 15, 7, sh, false)
 		case game.PropStreetlamp:
 			cx := px + pr.W*0.5
 			by := pr.SortY - camY
@@ -243,10 +254,14 @@ func (r *Renderer) drawGroundShadows(dst *ebiten.Image, w *game.World, camX, cam
 		}
 	}
 
-	// Vending machine drop shadows
+	// Vending machine & Slot machine drop shadows
 	for _, shop := range w.Shops {
 		sx, sy := shop.X-camX, shop.Y-camY
 		vector.DrawFilledRect(dst, sx-11, sy-8, 28, 24, sh, false)
+	}
+	for _, sm := range w.SlotMachines {
+		sx, sy := sm.X-camX, sm.Y-camY
+		vector.DrawFilledRect(dst, sx-12, sy-8, 30, 26, sh, false)
 	}
 
 	// Active Bus Stop shelter architectural drop shadows
@@ -329,6 +344,10 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 		case game.LightVending:
 			c := color.RGBA{R: l.R, G: l.G, B: l.B, A: 255}
 			r.drawAdditiveGlow(dst, lx, ly, l.Radius*0.78, c, 0.28*l.Intensity)
+		case game.LightSlotMachine:
+			c := color.RGBA{R: l.R, G: l.G, B: l.B, A: 255}
+			pulse := float32(0.82 + 0.18*math.Sin(float64(r.tick*6.0+l.X*0.03)))
+			r.drawAdditiveGlow(dst, lx, ly, l.Radius*0.80, c, 0.30*l.Intensity*pulse)
 		}
 	}
 
@@ -435,6 +454,12 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 		case game.BulletCiabatta:
 			gc = color.RGBA{255, 145, 75, 255}
 			rad = 22
+		case game.BulletLipstick:
+			gc = color.RGBA{255, 52, 148, 255}
+		case game.BulletContract:
+			gc = color.RGBA{255, 235, 200, 255}
+		case game.BulletSeal:
+			gc = color.RGBA{255, 215, 70, 255}
 		default:
 			gc = color.RGBA{255, 90, 120, 255}
 		}

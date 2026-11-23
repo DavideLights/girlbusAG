@@ -54,7 +54,10 @@ const (
 
 	// Bosses
 	SpriteBossBestFriend = "sprites/world/boss_best_friend.png"
+	SpriteBossLover      = "sprites/world/boss_lover.png"
 	SpriteBossProfessor  = "sprites/world/boss_professor.png"
+	SpriteBossExecutive  = "sprites/world/boss_executive.png"
+	SpriteBossRector     = "sprites/world/boss_rector.png"
 	SpriteBossMom        = "sprites/world/boss_mom.png"
 
 	// Bullets
@@ -64,6 +67,9 @@ const (
 	SpriteBulletFlash      = "sprites/world/bullet_flash.png"
 	SpriteBulletPolice     = "sprites/world/bullet_police.png"
 	SpriteBulletCiabatta   = "sprites/world/bullet_ciabatta.png"
+	SpriteBulletLipstick   = "sprites/world/bullet_lipstick.png"
+	SpriteBulletContract   = "sprites/world/bullet_contract.png"
+	SpriteBulletSeal       = "sprites/world/bullet_seal.png"
 
 	// Arena tiles
 	SpriteTileAsphalt   = "sprites/world/tile_asphalt.png"
@@ -72,20 +78,34 @@ const (
 	SpriteTileCrosswalk = "sprites/world/tile_crosswalk.png"
 
 	// Layered Map Assets (buildings, props, cars, zone tiles)
-	SpriteBuildingKonbini = "sprites/map/building_konbini.png"
-	SpriteBuildingCoffee  = "sprites/map/building_coffee.png"
-	SpriteBuildingArcade  = "sprites/map/building_arcade.png"
-	SpritePropTreeLush    = "sprites/map/prop_tree_lush.png"
-	SpritePropStreetlamp  = "sprites/map/prop_streetlamp.png"
-	SpritePropBenchPlants = "sprites/map/prop_bench_plants.png"
-	SpritePropCatsClutter = "sprites/map/prop_cats_clutter.png"
-	SpriteCarRed          = "sprites/map/car_red.png"
-	SpriteCarYellow       = "sprites/map/car_yellow.png"
-	SpriteCarMint         = "sprites/map/car_mint.png"
-	SpriteTileGrassPark   = "sprites/map/tile_grass_park.png"
-	SpriteTileCobblePlaza = "sprites/map/tile_cobble_plaza.png"
-	SpriteTileBoardwalk   = "sprites/map/tile_boardwalk.png"
-	SpriteTileCanalWater  = "sprites/map/tile_canal_water.png"
+	SpriteBuildingKonbini   = "sprites/map/building_konbini.png"
+	SpriteBuildingCoffee    = "sprites/map/building_coffee.png"
+	SpriteBuildingArcade    = "sprites/map/building_arcade.png"
+	SpriteBuildingRamen     = "sprites/map/building_ramen.png"
+	SpriteBuildingBookstore = "sprites/map/building_bookstore.png"
+	SpriteBuildingMetro     = "sprites/map/building_metro.png"
+	SpriteBuildingNewsstand = "sprites/map/building_newsstand.png"
+	SpritePropTreeLush      = "sprites/map/prop_tree_lush.png"
+	SpritePropStreetlamp    = "sprites/map/prop_streetlamp.png"
+	SpritePropBenchPlants   = "sprites/map/prop_bench_plants.png"
+	SpritePropCatsClutter   = "sprites/map/prop_cats_clutter.png"
+	SpritePropScooter       = "sprites/map/prop_scooter.png"
+	SpritePropBikeRack      = "sprites/map/prop_bike_rack.png"
+	SpritePropHydrantBin    = "sprites/map/prop_hydrant_bin.png"
+	SpritePropZTLSign       = "sprites/map/prop_ztl_sign.png"
+	SpritePropCanalBoat     = "sprites/map/prop_canal_boat.png"
+	SpritePropSlotMachine   = "sprites/map/prop_slot_machine.png"
+	SpritePropManhole       = "sprites/map/prop_manhole.png"
+	SpritePropAsphaltCrack  = "sprites/map/prop_asphalt_crack.png"
+	SpritePropFlowerBox     = "sprites/map/prop_flower_box.png"
+	SpritePropNeonBillboard = "sprites/map/prop_neon_billboard.png"
+	SpriteCarRed            = "sprites/map/car_red.png"
+	SpriteCarYellow         = "sprites/map/car_yellow.png"
+	SpriteCarMint           = "sprites/map/car_mint.png"
+	SpriteTileGrassPark     = "sprites/map/tile_grass_park.png"
+	SpriteTileCobblePlaza   = "sprites/map/tile_cobble_plaza.png"
+	SpriteTileBoardwalk     = "sprites/map/tile_boardwalk.png"
+	SpriteTileCanalWater    = "sprites/map/tile_canal_water.png"
 )
 
 type spriteSpec struct {
@@ -132,7 +152,10 @@ var expectedSpecs = []spriteSpec{
 
 	// Bosses
 	{SpriteBossBestFriend, 36, 36, color.RGBA{255, 42, 133, 255}, color.RGBA{255, 230, 0, 255}, "char"},
+	{SpriteBossLover, 36, 36, color.RGBA{200, 30, 80, 255}, color.RGBA{255, 110, 175, 255}, "char"},
 	{SpriteBossProfessor, 36, 36, color.RGBA{75, 105, 165, 255}, color.RGBA{255, 230, 0, 255}, "char"},
+	{SpriteBossExecutive, 36, 36, color.RGBA{38, 56, 98, 255}, color.RGBA{255, 210, 90, 255}, "char"},
+	{SpriteBossRector, 36, 36, color.RGBA{112, 48, 160, 255}, color.RGBA{255, 224, 100, 255}, "char"},
 	{SpriteBossMom, 36, 36, color.RGBA{180, 60, 90, 255}, color.RGBA{255, 210, 120, 255}, "char"},
 
 	// Bullets
@@ -142,6 +165,9 @@ var expectedSpecs = []spriteSpec{
 	{SpriteBulletFlash, 16, 16, color.RGBA{255, 255, 100, 255}, color.RGBA{0, 240, 255, 255}, "bullet"},
 	{SpriteBulletPolice, 16, 16, color.RGBA{255, 50, 70, 255}, color.RGBA{60, 140, 255, 255}, "bullet"},
 	{SpriteBulletCiabatta, 16, 16, color.RGBA{235, 120, 60, 255}, color.RGBA{255, 240, 200, 255}, "bullet"},
+	{SpriteBulletLipstick, 16, 16, color.RGBA{255, 42, 133, 255}, color.RGBA{255, 210, 230, 255}, "bullet"},
+	{SpriteBulletContract, 16, 16, color.RGBA{240, 235, 225, 255}, color.RGBA{230, 55, 75, 255}, "bullet"},
+	{SpriteBulletSeal, 16, 16, color.RGBA{255, 210, 60, 255}, color.RGBA{190, 40, 80, 255}, "bullet"},
 
 	// Tiles
 	{SpriteTileAsphalt, 32, 32, color.RGBA{88, 85, 104, 255}, color.RGBA{63, 59, 77, 255}, "tile"},
@@ -153,10 +179,24 @@ var expectedSpecs = []spriteSpec{
 	{SpriteBuildingKonbini, 96, 64, color.RGBA{235, 224, 208, 255}, color.RGBA{255, 107, 138, 255}, "building"},
 	{SpriteBuildingCoffee, 96, 64, color.RGBA{196, 146, 102, 255}, color.RGBA{255, 216, 138, 255}, "building"},
 	{SpriteBuildingArcade, 96, 64, color.RGBA{62, 54, 108, 255}, color.RGBA{0, 245, 212, 255}, "building"},
+	{SpriteBuildingRamen, 96, 64, color.RGBA{152, 68, 52, 255}, color.RGBA{255, 90, 80, 255}, "building"},
+	{SpriteBuildingBookstore, 96, 64, color.RGBA{68, 122, 134, 255}, color.RGBA{255, 206, 98, 255}, "building"},
+	{SpriteBuildingMetro, 96, 64, color.RGBA{58, 72, 102, 255}, color.RGBA{0, 225, 255, 255}, "building"},
+	{SpriteBuildingNewsstand, 48, 40, color.RGBA{228, 214, 196, 255}, color.RGBA{255, 92, 118, 255}, "building"},
 	{SpritePropTreeLush, 48, 48, color.RGBA{88, 178, 92, 255}, color.RGBA{148, 218, 118, 255}, "tree"},
 	{SpritePropStreetlamp, 24, 48, color.RGBA{56, 52, 76, 255}, color.RGBA{255, 216, 138, 255}, "lamp"},
 	{SpritePropBenchPlants, 48, 32, color.RGBA{178, 118, 72, 255}, color.RGBA{92, 176, 98, 255}, "bench"},
 	{SpritePropCatsClutter, 32, 32, color.RGBA{192, 148, 98, 255}, color.RGBA{255, 142, 172, 255}, "cats"},
+	{SpritePropScooter, 32, 24, color.RGBA{105, 222, 188, 255}, color.RGBA{255, 244, 224, 255}, "car"},
+	{SpritePropBikeRack, 32, 20, color.RGBA{130, 145, 165, 255}, color.RGBA{255, 110, 145, 255}, "bench"},
+	{SpritePropHydrantBin, 24, 24, color.RGBA{68, 128, 178, 255}, color.RGBA{230, 62, 74, 255}, "stop"},
+	{SpritePropZTLSign, 24, 32, color.RGBA{64, 68, 90, 255}, color.RGBA{255, 50, 85, 255}, "lamp"},
+	{SpritePropCanalBoat, 48, 24, color.RGBA{168, 106, 62, 255}, color.RGBA{255, 216, 138, 255}, "bus"},
+	{SpritePropSlotMachine, 32, 32, color.RGBA{112, 38, 148, 255}, color.RGBA{255, 225, 48, 255}, "stop"},
+	{SpritePropManhole, 24, 24, color.RGBA{70, 66, 84, 255}, color.RGBA{96, 92, 112, 255}, "tile"},
+	{SpritePropAsphaltCrack, 32, 16, color.RGBA{70, 66, 84, 255}, color.RGBA{96, 92, 112, 255}, "tile"},
+	{SpritePropFlowerBox, 32, 20, color.RGBA{164, 108, 66, 255}, color.RGBA{255, 120, 170, 255}, "bench"},
+	{SpritePropNeonBillboard, 48, 32, color.RGBA{34, 28, 64, 255}, color.RGBA{0, 245, 212, 255}, "building"},
 	{SpriteCarRed, 48, 32, color.RGBA{222, 68, 86, 255}, color.RGBA{185, 230, 255, 255}, "car"},
 	{SpriteCarYellow, 48, 32, color.RGBA{242, 198, 62, 255}, color.RGBA{185, 230, 255, 255}, "car"},
 	{SpriteCarMint, 48, 32, color.RGBA{84, 212, 178, 255}, color.RGBA{215, 248, 255, 255}, "car"},

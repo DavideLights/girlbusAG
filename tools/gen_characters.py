@@ -9,7 +9,13 @@ Usage:
 """
 
 import os
+import sys
 from typing import Dict, List
+
+TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(TOOLS_DIR)
+if TOOLS_DIR not in sys.path:
+    sys.path.insert(0, TOOLS_DIR)
 
 from pixel_canvas import (
     PALETTE,
@@ -20,7 +26,8 @@ from pixel_canvas import (
     save_asset_and_preview,
 )
 
-OUT_DIR = "/home/davidel/girlbusAG/assets/sprites/characters"
+OUT_DIR = os.path.join(ROOT_DIR, "assets", "sprites", "characters")
+PREVIEW_DIR = os.path.join(ROOT_DIR, "tools", "previews", "characters")
 
 
 def build_frame(grid: List[str], name: str) -> Canvas:
@@ -834,7 +841,7 @@ def main() -> None:
     alfredo_sheet = pack_horizontal_strip(alfredo_canvases)
     save_asset_and_preview(alfredo_sheet, OUT_DIR, "alfredo_sheet", zoom=8)
     generated.append(os.path.join(OUT_DIR, "alfredo_sheet.png"))
-    generated.append(os.path.join(OUT_DIR, "preview_alfredo_sheet_8x.png"))
+    generated.append(os.path.join(PREVIEW_DIR, "preview_alfredo_sheet_8x.png"))
 
     # 2. All 4 Girl Archetypes (idle_0 individual + 96x32 3-frame sheet + 8x preview)
     for archetype, grids in GIRL_ARCHETYPES.items():
@@ -846,13 +853,13 @@ def main() -> None:
         sheet = pack_horizontal_strip(frames)
         save_asset_and_preview(sheet, OUT_DIR, f"{archetype}_sheet", zoom=8)
         generated.append(os.path.join(OUT_DIR, f"{archetype}_sheet.png"))
-        generated.append(os.path.join(OUT_DIR, f"preview_{archetype}_sheet_8x.png"))
+        generated.append(os.path.join(PREVIEW_DIR, f"preview_{archetype}_sheet_8x.png"))
 
     # 3. VIP Aura overlay (32x32 + 8x preview)
     vip_canvas = build_frame(VIP_AURA_32, "vip_aura")
     save_asset_and_preview(vip_canvas, OUT_DIR, "vip_aura", zoom=8)
     generated.append(os.path.join(OUT_DIR, "vip_aura.png"))
-    generated.append(os.path.join(OUT_DIR, "preview_vip_aura_8x.png"))
+    generated.append(os.path.join(PREVIEW_DIR, "preview_vip_aura_8x.png"))
 
     print(f"Generated {len(generated)} files in {OUT_DIR}:")
     for p in generated:
