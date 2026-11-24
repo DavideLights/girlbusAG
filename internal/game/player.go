@@ -13,8 +13,9 @@ type Player struct {
 	AnimTimer    float32
 	AnimState    int // 0=Idle, 1=Run, 2=Dash, 3=Throw
 
-	HP, MaxHP   int
-	InvulnTimer float32
+	HP, MaxHP      int
+	InvulnTimer    float32
+	HealFlashTimer float64
 
 	DashTimer    float32
 	DashCooldown float32
@@ -35,7 +36,7 @@ type Player struct {
 	Relics           [RelicCount]bool
 
 	// Balanced Lv1 baseline stats that scale dramatically via In-Run Level-Up Upgrades
-	StopCooldownBase     float32 // Starts at 9.0s, upgrades down to 1.5s
+	StopCooldownBase     float32 // Starts at 6.5s, upgrades down to 1.5s
 	StopCooldownTimer    float32
 	MaxSimultaneousStops int     // Starts at 1, upgrades up to 4
 	MaxMultiHook         int     // Starts at 1 girl per stop, upgrades up to 12
@@ -64,15 +65,15 @@ func NewPlayer() Player {
 		X:                    ArenaWidth * 0.5,
 		Y:                    ArenaHeight * 0.5,
 		FacingX:              1,
-		HP:                   5,
-		MaxHP:                5,
+		HP:                   6,
+		MaxHP:                6,
 		ChronosMeter:         100.0,
 		ChronosMax:           100.0,
 		Level:                1,
 		NextLevelXP:          50,
 		SelectedStopArch:     ArchEmo,
 		UnlockedArchs:        [ArchCount]bool{true, true, true, true},
-		StopCooldownBase:     9.0,
+		StopCooldownBase:     6.5,
 		MaxSimultaneousStops: 1,
 		MaxMultiHook:         1,
 		RangeMult:            0.85,
@@ -203,6 +204,12 @@ func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog 
 		p.InvulnTimer -= dt
 		if p.InvulnTimer < 0 {
 			p.InvulnTimer = 0
+		}
+	}
+	if p.HealFlashTimer > 0 {
+		p.HealFlashTimer -= float64(dt)
+		if p.HealFlashTimer < 0 {
+			p.HealFlashTimer = 0
 		}
 	}
 	if p.DashCooldown > 0 {
@@ -429,11 +436,11 @@ func (p *Player) TakeDamage(amount int) bool {
 	if p.HP < 0 {
 		p.HP = 0
 	}
-	p.InvulnTimer = 0.90
+	p.InvulnTimer = 1.15
 	return true
 }
 
-// Heal restores HP up to MaxHP.
+// Heal restores HP up to MaxHP and triggers the near-player green HP bar flash.
 func (p *Player) Heal(amount int) {
 	if amount <= 0 {
 		return
@@ -442,6 +449,7 @@ func (p *Player) Heal(amount int) {
 	if p.HP > p.MaxHP {
 		p.HP = p.MaxHP
 	}
+	p.HealFlashTimer = 0.45
 }
 
 // AddXP adds experience and returns true if a Level-Up threshold was crossed.

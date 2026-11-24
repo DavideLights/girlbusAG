@@ -55,6 +55,17 @@ type SlotMachineState struct {
 	ResultKind   int // 0=neutral, 1=win, 2=jackpot, 3=hazard
 }
 
+// EspressoHealCost is the standard Vending Shop Caffe Espresso healing price.
+const EspressoHealCost = 35
+
+// CurrentHealCost returns the Espresso healing price for the active Vending Shop.
+func (w *World) CurrentHealCost() int {
+	if w.ShopMenu.ShopIndex >= 0 && w.ShopMenu.ShopIndex < len(w.Shops) && w.Shops[w.ShopMenu.ShopIndex].HealCost > 0 {
+		return w.Shops[w.ShopMenu.ShopIndex].HealCost
+	}
+	return EspressoHealCost
+}
+
 // CurrentBribeCost returns the current police bribe price based on Wanted Stars.
 func (w *World) CurrentBribeCost() int {
 	if w.Police.Stars >= 4 {
@@ -97,10 +108,7 @@ func (w *World) HandleShopInput(in InputState) {
 
 	switch in.ShopAction {
 	case ShopActionHeal:
-		cost := 50
-		if w.ShopMenu.ShopIndex >= 0 && w.ShopMenu.ShopIndex < len(w.Shops) && w.Shops[w.ShopMenu.ShopIndex].HealCost > 0 {
-			cost = w.Shops[w.ShopMenu.ShopIndex].HealCost
-		}
+		cost := w.CurrentHealCost()
 		if w.Player.Cash < cost {
 			w.ShopMenu.Message = fmt.Sprintf("SERVONO $%d!", cost)
 			return
@@ -108,8 +116,9 @@ func (w *World) HandleShopInput(in InputState) {
 		w.Player.Cash -= cost
 		w.Player.Heal(2)
 		w.Player.ChronosMeter = w.Player.ChronosMax
+		w.TutUsedSlotOrShop = true
 		w.ShopMenu.Message = "CAFFE ESPRESSO! +2 HP & CHRONOS FULL!"
-		w.addPopup(w.Player.X, w.Player.Y-28, "ESPRESSO +2 HP & CHRONOS!", 1)
+		w.addPopup(w.Player.X, w.Player.Y-28, "ESPRESSO +2 HP & CHRONOS!", 3)
 		w.emitEvent(EventShopBuy, ShopActionHeal, false)
 
 	case ShopActionBribe:
@@ -124,6 +133,7 @@ func (w *World) HandleShopInput(in InputState) {
 		}
 		w.Player.Cash -= cost
 		w.Police.ReduceStar(2)
+		w.TutUsedSlotOrShop = true
 		w.ShopMenu.Message = fmt.Sprintf("TANGENTE PAGATA! -2* WANTED (-$%d)", cost)
 		w.addPopup(w.Player.X, w.Player.Y-28, fmt.Sprintf("TANGENTE -$%d (-2*)", cost), 3)
 		w.emitEvent(EventShopBuy, ShopActionBribe, false)
@@ -143,6 +153,7 @@ func (w *World) HandleShopInput(in InputState) {
 			}
 		}
 		w.Player.Cash -= cost
+		w.TutUsedSlotOrShop = true
 		if count > 0 {
 			picked := unowned[w.rng.Intn(count)]
 			w.Player.Relics[picked] = true
@@ -168,6 +179,7 @@ func (w *World) HandleShopInput(in InputState) {
 			return
 		}
 		w.Player.Cash -= cost
+		w.TutUsedSlotOrShop = true
 		w.ShopMenu.Active = false
 		w.emitEvent(EventShopBuy, ShopActionUpgrade, false)
 		w.triggerLevelUp()
@@ -209,6 +221,7 @@ func (w *World) StartSlotSpin() bool {
 
 	w.Player.Cash -= sm.SpinCost
 	sm.SpinsUsed++
+	w.TutUsedSlotOrShop = true
 	if sm.SpinCost < 95 {
 		sm.SpinCost += 10
 		if sm.SpinCost > 95 {

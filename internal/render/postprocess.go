@@ -19,12 +19,13 @@ const (
 // PostProcessor renders the 640x360 virtual scene into an offscreen buffer and
 // composites it onto the destination screen through the embedded Kage shader.
 type PostProcessor struct {
-	sceneBuf   *ebiten.Image
-	shader     *ebiten.Shader
-	shaderErr  error
-	shaderOpts ebiten.DrawRectShaderOptions
-	drawOpts   ebiten.DrawImageOptions
-	screenSize []float32
+	sceneBuf     *ebiten.Image
+	shader       *ebiten.Shader
+	shaderErr    error
+	shaderOpts   ebiten.DrawRectShaderOptions
+	drawOpts     ebiten.DrawImageOptions
+	screenSize   []float32
+	chronosBlend float32
 }
 
 // NewPostProcessor allocates the 640x360 scene buffer and compiles the embedded
@@ -77,10 +78,19 @@ func (p *PostProcessor) Present(dst *ebiten.Image, mode int, tick, chronosAmt, r
 	if mode < FilterOff || mode > FilterVHS {
 		mode = FilterWarmCRT
 	}
-	chronosAmt = clampF(chronosAmt, 0, 1)
+	chronosTarget := clampF(chronosAmt, 0, 1)
 	rewindAmt = clampF(rewindAmt, 0, 1)
 
-	if p.shader == nil || (mode == FilterOff && chronosAmt <= 0.001 && rewindAmt <= 0.001) {
+	// Smoothly ease Chronos transitions over ~0.12s instead of a hard 0->1 snap.
+	const chronosLerp float32 = 0.18
+	diff := chronosTarget - p.chronosBlend
+	if diff > -0.002 && diff < 0.002 {
+		p.chronosBlend = chronosTarget
+	} else {
+		p.chronosBlend = clampF(p.chronosBlend+diff*chronosLerp, 0, 1)
+	}
+
+	if p.shader == nil {
 		p.drawOpts.GeoM.Reset()
 		p.drawOpts.ColorScale.Reset()
 		dst.DrawImage(p.sceneBuf, &p.drawOpts)
@@ -96,7 +106,7 @@ func (p *PostProcessor) Present(dst *ebiten.Image, mode int, tick, chronosAmt, r
 	p.shaderOpts.Images[0] = p.sceneBuf
 	p.shaderOpts.Uniforms["Time"] = tick
 	p.shaderOpts.Uniforms["Mode"] = float32(mode)
-	p.shaderOpts.Uniforms["Chronos"] = chronosAmt
+	p.shaderOpts.Uniforms["Chronos"] = p.chronosBlend
 	p.shaderOpts.Uniforms["Rewind"] = rewindAmt
 	p.shaderOpts.Uniforms["ScreenSize"] = p.screenSize
 

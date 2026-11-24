@@ -15,22 +15,24 @@ import (
 )
 
 var (
-	colOutline   = color.RGBA{28, 17, 36, 255}
-	colEmo       = color.RGBA{157, 101, 194, 255}
-	colStudent   = color.RGBA{75, 156, 226, 255}
-	colKawaii    = color.RGBA{255, 42, 133, 255}
-	colGyaru     = color.RGBA{0, 245, 212, 255}
-	colGold      = color.RGBA{255, 230, 0, 255}
-	colRedAlert  = color.RGBA{255, 45, 75, 255}
-	colGreenNeon = color.RGBA{46, 235, 130, 255}
-	colHudBg     = color.RGBA{16, 10, 28, 224}
-	colHoloBg    = color.RGBA{16, 10, 28, 200}
+	colOutline         = color.RGBA{28, 17, 36, 255}
+	colEmo             = color.RGBA{157, 101, 194, 255}
+	colStudent         = color.RGBA{75, 156, 226, 255}
+	colKawaii          = color.RGBA{255, 42, 133, 255}
+	colGyaru           = color.RGBA{0, 245, 212, 255}
+	colGold            = color.RGBA{255, 230, 0, 255}
+	colRedAlert        = color.RGBA{255, 45, 75, 255}
+	colGreenNeon       = color.RGBA{46, 235, 130, 255}
+	colHudBg           = color.RGBA{16, 10, 28, 224}
+	colHoloBg          = color.RGBA{16, 10, 28, 200}
+	colHoloTranslucent = Premul(16, 10, 32, 165)
 )
 
 type drawKind uint8
 
 const (
 	drawProp drawKind = iota
+	drawHealPickup
 	drawShop
 	drawSlot
 	drawStop
@@ -55,6 +57,7 @@ type Renderer struct {
 	aimY                 float32
 	mouseScreenX         float32
 	mouseScreenY         float32
+	mouseHoverDir        int
 	tick                 float32
 	textCache            map[string]*ebiten.Image
 	lightTex             *ebiten.Image
@@ -73,6 +76,7 @@ type Renderer struct {
 func NewRenderer(sprites *assets.SpriteBank) *Renderer {
 	r := &Renderer{
 		sprites:            sprites,
+		mouseHoverDir:      game.ActionNone,
 		textCache:          make(map[string]*ebiten.Image, 160),
 		lightTex:           buildRadialLightTexture(),
 		drawables:          make([]renderItem, 0, 160),
@@ -103,6 +107,11 @@ func (r *Renderer) SetAim(worldX, worldY float32) {
 func (r *Renderer) SetMouseScreen(sx, sy float32) {
 	r.mouseScreenX = sx
 	r.mouseScreenY = sy
+}
+
+// SetMouseHoverDir updates the live 4-way quadrant hover direction (-1 none, 0..3) for Mouse-Only minigames & combos.
+func (r *Renderer) SetMouseHoverDir(dir int) {
+	r.mouseHoverDir = dir
 }
 
 // SetVisualPrefs updates cosmetic skins and visual preference flags from saved settings/profile.
@@ -140,8 +149,8 @@ func (r *Renderer) Draw(screen *ebiten.Image, w *game.World) {
 	r.DrawWorldScene(screen, w, true)
 }
 
-// DrawWorldScene renders the Pop-Urban world and optionally the gameplay HUD/reticle/modals.
-func (r *Renderer) DrawWorldScene(screen *ebiten.Image, w *game.World, drawUI bool) {
+// DrawWorldScene renders the full Pop-Urban world scene and optionally calls DrawHUDAndOverlays when showHUD is true.
+func (r *Renderer) DrawWorldScene(screen *ebiten.Image, w *game.World, showHUD bool) {
 	const dt = 1.0 / 60.0
 	r.tick += dt
 	r.updateAmbientParticles(dt)
@@ -178,23 +187,22 @@ func (r *Renderer) DrawWorldScene(screen *ebiten.Image, w *game.World, drawUI bo
 	// Layer 2: Lane / Laser Telegraphs
 	r.drawTelegraphs(screen, w, camX, camY)
 
-	// Layer 3: Y-Sorted 2.5D Props & World Entities
+	// Layer 3: Y-Sorted 2.5D Props, Heal Pickups & World Entities
 	r.drawYSortedWorld(screen, w, camX, camY)
 
 	// Layer 4: Neon Buses, Bullets
 	r.drawBuses(screen, w, camX, camY)
 	r.drawBullets(screen, w, camX, camY)
 
-	// Layer 4.5: Dynamic Multi-Layer Additive Lighting Pass & Floating Atmospheric Particles
+	// Layer 4.5: Evening Twilight Veil, Multi-Layer Additive Lighting, Canal Reflections & Ambient Particles
 	r.drawLightingPass(screen, w, camX, camY)
 	r.drawAmbientParticles(screen, camX, camY)
 	r.drawHeliSpotlight(screen, w, camX, camY)
 
-	if !drawUI {
-		return
-	}
+	// Layer 4.8: Diegetic Near-Player HP & Micro-Chronos Bar (hidden when Alfredo is offscreen in Title backdrop)
+	r.drawPlayerHealthBar(screen, w, camX, camY)
 
-	// Layer 5: Contextual Aim Reticle & Diegetic World-Space Minigames / 4-Step Combos
+	// Layer 5: Contextual Aim Reticle & Mouse-Only Diegetic Minigames / 4-Step Combos
 	if r.playingActive && !w.PendingLevelUp && !w.ShopMenu.Active && !w.SlotModal.Active {
 		r.drawAimAndRange(screen, w, camX, camY)
 		r.drawDiegeticStopUI(screen, w, camX, camY)
@@ -209,25 +217,25 @@ func (r *Renderer) DrawWorldScene(screen *ebiten.Image, w *game.World, drawUI bo
 	// Layer 7: Chronos Vignette / Atmosphere
 	r.drawAtmosphereOverlays(screen, w)
 
-	// Layer 8: Arcade HUD & Modals
-	r.drawHUD(screen, w)
-	if w.PendingLevelUp {
-		r.drawLevelUpModal(screen, w)
-	} else if w.ShopMenu.Active {
-		r.drawShopModal(screen, w)
-	} else if w.SlotModal.Active {
-		r.drawSlotModal(screen, w)
+	// Layer 8: Crisp Arcade HUD & Modals (only when showHUD is true)
+	if showHUD {
+		r.DrawHUDAndOverlays(screen, w)
 	}
 }
 
 func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, camY float32) {
 	tileAsphalt := r.sprites.Get(assets.SpriteTileAsphalt)
+	tileWetAsphalt := r.sprites.Get(assets.SpriteTileWetAsphalt)
 	tileSidewalk := r.sprites.Get(assets.SpriteTileSidewalk)
 	tileCross := r.sprites.Get(assets.SpriteTileCrosswalk)
 	tileZTL := r.sprites.Get(assets.SpriteTileZTL)
 	tileGrass := r.sprites.Get(assets.SpriteTileGrassPark)
+	tileParkPath := r.sprites.Get(assets.SpriteTileParkPath)
 	tileCobble := r.sprites.Get(assets.SpriteTileCobblePlaza)
+	tilePlazaMosaic := r.sprites.Get(assets.SpriteTilePlazaMosaic)
+	tileBikeLane := r.sprites.Get(assets.SpriteTileBikeLane)
 	tileBoardwalk := r.sprites.Get(assets.SpriteTileBoardwalk)
+	tileCanalEdge := r.sprites.Get(assets.SpriteTileCanalEdge)
 	tileWater := r.sprites.Get(assets.SpriteTileCanalWater)
 
 	const tileSize = 32
@@ -253,7 +261,7 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 
 	op := &ebiten.DrawImageOptions{}
 
-	// 1. Base Grid Tiles (Sidewalks, Central Cross-Street Cobble Plaza, Asphalt, Crosswalks, Boardwalk, Canal)
+	// 1. Base Grid Tiles (Sidewalks, Central Mosaic & Cobble Plaza, Dry/Wet Asphalt, Bike Lane, Crosswalks, Boardwalk, Canal)
 	for row := startRow; row < endRow; row++ {
 		for col := startCol; col < endCol; col++ {
 			wx := float32(col * tileSize)
@@ -263,6 +271,8 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 
 			img := tileAsphalt
 			isCentralPlazaCol := col >= 17 && col <= 22 // X = 544..736
+			isPlazaMosaicInner := col >= 18 && col <= 21 &&
+				((row >= 1 && row <= 4) || (row >= 9 && row <= 12) || (row >= 17 && row <= 18))
 			isAlleyCol := (col == 8 || col == 9 || col == 30 || col == 31) && wy < 144
 
 			switch {
@@ -272,6 +282,9 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 				img = tileBoardwalk
 			case isCentralPlazaCol:
 				img = tileCobble
+				if isPlazaMosaicInner {
+					img = tilePlazaMosaic
+				}
 				for _, cr := range w.CrosswalkRows {
 					if row == cr {
 						img = tileCross
@@ -284,10 +297,26 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 					img = tileCobble
 				}
 			default:
+				isCrossCol := false
 				for _, cc := range w.CrosswalkCols {
 					if col == cc {
-						img = tileCross
+						isCrossCol = true
 						break
+					}
+				}
+				switch {
+				case isCrossCol:
+					img = tileCross
+				case row == 16:
+					// Dedicated Bike Lane transition strip (Y = 512..544) along south avenue curb
+					img = tileBikeLane
+				default:
+					// Blend glossy wet evening asphalt near central neon intersections, gutters, and subtle puddles
+					isWetBand := col >= 12 && col <= 27 && ((col+row)%2 == 0 || row == 5 || row == 15)
+					isGutterWet := (row == 5 || row == 15) && (col%3 != 1)
+					isPuddle := (col*7+row*13)%9 == 0
+					if isWetBand || isGutterWet || isPuddle {
+						img = tileWetAsphalt
 					}
 				}
 			}
@@ -300,6 +329,26 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 				op.GeoM.Translate(sx, sy)
 			}
 			screen.DrawImage(img, op)
+		}
+	}
+
+	// 1.5 Seamless South Boardwalk (Y=624..656) & Stone Canal Embankment (Y=656..688) above Canal Water
+	bwY := w.BoardwalkY - camY
+	if bwY < game.ScreenHeight && bwY+tileSize > 0 {
+		for col := startCol; col < endCol; col++ {
+			sx := float64(float32(col*tileSize) - camX)
+			op.GeoM.Reset()
+			op.GeoM.Translate(sx, float64(bwY))
+			screen.DrawImage(tileBoardwalk, op)
+		}
+	}
+	canalEdgeY := w.CanalY - 24 - camY
+	if canalEdgeY < game.ScreenHeight && canalEdgeY+tileSize > 0 {
+		for col := startCol; col < endCol; col++ {
+			sx := float64(float32(col*tileSize) - camX)
+			op.GeoM.Reset()
+			op.GeoM.Translate(sx, float64(canalEdgeY))
+			screen.DrawImage(tileCanalEdge, op)
 		}
 	}
 
@@ -330,7 +379,7 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 	vector.StrokeCircle(screen, plazaCX, plazaCY, 42, 2.0, color.RGBA{228, 214, 194, 145}, true)
 	vector.StrokeCircle(screen, plazaCX, plazaCY, 24, 1.5, color.RGBA{0, 245, 212, 95}, true)
 
-	// 4. West & East Urban Pocket-Park Islands (Cobble Border + Grass Interior)
+	// 4. West & East Urban Pocket-Park Islands (Cobble Border + Lush Grass + Stepping-Stone Park Path)
 	for _, pk := range w.ParkIslands {
 		px, py := pk.X-camX, pk.Y-camY
 		if px+pk.W < -32 || px > game.ScreenWidth+32 || py+pk.H < -32 || py > game.ScreenHeight+32 {
@@ -348,7 +397,7 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 				screen.DrawImage(tileCobble, op)
 			}
 		}
-		// Lush grass interior inset by 16px
+		// Lush grass interior inset by 16px with clean stepping-stone ParkPath walkway through the center
 		gx0, gy0 := pk.X+16, pk.Y+16
 		gw, gh := pk.W-32, pk.H-32
 		gCols := int(math.Ceil(float64(gw) / tileSize))
@@ -359,8 +408,20 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 				ty := gy0 + float32(rIdx*tileSize) - camY
 				op.GeoM.Reset()
 				op.GeoM.Translate(float64(tx), float64(ty))
-				screen.DrawImage(tileGrass, op)
+				tileImg := tileGrass
+				// Central stepping-stone walkway across the park heart
+				if rIdx == 1 && (cIdx == 1 || cIdx == 2) {
+					tileImg = tileParkPath
+				}
+				screen.DrawImage(tileImg, op)
 			}
+		}
+		// Centered horizontal stepping-stone path connecting west/east park entries cleanly
+		pathY := py + pk.H*0.5 - 16
+		for pCol := 0; pCol < 4; pCol++ {
+			op.GeoM.Reset()
+			op.GeoM.Translate(float64(gx0-camX+float32(pCol*tileSize)), float64(pathY))
+			screen.DrawImage(tileParkPath, op)
 		}
 		// Crisp stone border rims
 		vector.StrokeRect(screen, px, py, pk.W, pk.H, 2.0, color.RGBA{230, 220, 200, 220}, false)
@@ -555,6 +616,13 @@ func (r *Renderer) drawYSortedWorld(screen *ebiten.Image, w *game.World, camX, c
 		}
 		r.drawables = append(r.drawables, renderItem{sortY: pr.SortY, kind: drawProp, idx: i})
 	}
+	for i := range w.HealPickups {
+		hp := &w.HealPickups[i]
+		hx, hy := float32(hp.X)-camX, float32(hp.Y)-camY
+		if hx >= -32 && hx <= game.ScreenWidth+32 && hy >= -32 && hy <= game.ScreenHeight+32 {
+			r.drawables = append(r.drawables, renderItem{sortY: float32(hp.Y) + 8, kind: drawHealPickup, idx: i})
+		}
+	}
 	for i := range w.Shops {
 		r.drawables = append(r.drawables, renderItem{sortY: w.Shops[i].Y + 14, kind: drawShop, idx: i})
 	}
@@ -595,6 +663,8 @@ func (r *Renderer) drawYSortedWorld(screen *ebiten.Image, w *game.World, camX, c
 		switch item.kind {
 		case drawProp:
 			r.drawSingleProp(screen, &w.Props[item.idx], camX, camY)
+		case drawHealPickup:
+			r.drawSingleHealPickup(screen, &w.HealPickups[item.idx], camX, camY)
 		case drawShop:
 			r.drawSingleShop(screen, w, &w.Shops[item.idx], camX, camY)
 		case drawSlot:
@@ -615,58 +685,92 @@ func (r *Renderer) drawYSortedWorld(screen *ebiten.Image, w *game.World, camX, c
 	}
 }
 
-func (r *Renderer) drawSingleProp(screen *ebiten.Image, pr *game.MapProp, camX, camY float32) {
-	var key string
-	switch pr.Kind {
+func propSpriteKey(kind game.PropKind) string {
+	switch kind {
 	case game.PropBuildingKonbini:
-		key = assets.SpriteBuildingKonbini
+		return assets.SpriteBuildingKonbini
 	case game.PropBuildingCoffee:
-		key = assets.SpriteBuildingCoffee
+		return assets.SpriteBuildingCoffee
 	case game.PropBuildingArcade:
-		key = assets.SpriteBuildingArcade
+		return assets.SpriteBuildingArcade
 	case game.PropBuildingRamen:
-		key = assets.SpriteBuildingRamen
+		return assets.SpriteBuildingRamen
 	case game.PropBuildingBookstore:
-		key = assets.SpriteBuildingBookstore
+		return assets.SpriteBuildingBookstore
 	case game.PropBuildingMetro:
-		key = assets.SpriteBuildingMetro
+		return assets.SpriteBuildingMetro
 	case game.PropBuildingNewsstand:
-		key = assets.SpriteBuildingNewsstand
+		return assets.SpriteBuildingNewsstand
+	case game.PropBuildingPizzeria:
+		return assets.SpriteBuildingPizzeria
+	case game.PropBuildingVinylBar:
+		return assets.SpriteBuildingVinylBar
+	case game.PropBuildingGelateria:
+		return assets.SpriteBuildingGelateria
+	case game.PropFountain:
+		return assets.SpritePropFountain
+	case game.PropArchGate:
+		return assets.SpritePropArchGate
 	case game.PropTreeLush:
-		key = assets.SpritePropTreeLush
+		return assets.SpritePropTreeLush
 	case game.PropStreetlamp:
-		key = assets.SpritePropStreetlamp
+		return assets.SpritePropStreetlamp
 	case game.PropBenchPlants:
-		key = assets.SpritePropBenchPlants
+		return assets.SpritePropBenchPlants
 	case game.PropCatsClutter:
-		key = assets.SpritePropCatsClutter
+		return assets.SpritePropCatsClutter
 	case game.PropScooter:
-		key = assets.SpritePropScooter
+		return assets.SpritePropScooter
 	case game.PropBikeRack:
-		key = assets.SpritePropBikeRack
+		return assets.SpritePropBikeRack
 	case game.PropHydrantBin:
-		key = assets.SpritePropHydrantBin
+		return assets.SpritePropHydrantBin
 	case game.PropZTLSign:
-		key = assets.SpritePropZTLSign
+		return assets.SpritePropZTLSign
 	case game.PropCanalBoat:
-		key = assets.SpritePropCanalBoat
+		return assets.SpritePropCanalBoat
 	case game.PropSlotMachine:
-		key = assets.SpritePropSlotMachine
+		return assets.SpritePropSlotMachine
 	case game.PropManhole:
-		key = assets.SpritePropManhole
+		return assets.SpritePropManhole
 	case game.PropAsphaltCrack:
-		key = assets.SpritePropAsphaltCrack
+		return assets.SpritePropAsphaltCrack
 	case game.PropFlowerBox:
-		key = assets.SpritePropFlowerBox
+		return assets.SpritePropFlowerBox
 	case game.PropNeonBillboard:
-		key = assets.SpritePropNeonBillboard
+		return assets.SpritePropNeonBillboard
+	case game.PropPhoneBooth:
+		return assets.SpritePropPhoneBooth
+	case game.PropFoodCart:
+		return assets.SpritePropFoodCart
+	case game.PropKioskUmbrella:
+		return assets.SpritePropKioskUmbrella
+	case game.PropTrafficLight:
+		return assets.SpritePropTrafficLight
+	case game.PropBollardGlow:
+		return assets.SpritePropBollardGlow
+	case game.PropPlanterNeon:
+		return assets.SpritePropPlanterNeon
+	case game.PropVendingDrink:
+		return assets.SpritePropVendingDrink
+	case game.PropBusShelterDeco:
+		return assets.SpritePropBusShelterDeco
 	case game.PropCarRed:
-		key = assets.SpriteCarRed
+		return assets.SpriteCarRed
 	case game.PropCarYellow:
-		key = assets.SpriteCarYellow
+		return assets.SpriteCarYellow
 	case game.PropCarMint:
-		key = assets.SpriteCarMint
+		return assets.SpriteCarMint
+	case game.PropCarVanCyber:
+		return assets.SpriteCarVanCyber
 	default:
+		return ""
+	}
+}
+
+func (r *Renderer) drawSingleProp(screen *ebiten.Image, pr *game.MapProp, camX, camY float32) {
+	key := propSpriteKey(pr.Kind)
+	if key == "" {
 		return
 	}
 
@@ -681,6 +785,7 @@ func (r *Renderer) drawSingleProp(screen *ebiten.Image, pr *game.MapProp, camX, 
 	switch pr.Kind {
 	case game.PropBuildingKonbini, game.PropBuildingCoffee, game.PropBuildingArcade,
 		game.PropBuildingRamen, game.PropBuildingBookstore, game.PropBuildingMetro,
+		game.PropBuildingPizzeria, game.PropBuildingVinylBar, game.PropBuildingGelateria,
 		game.PropManhole, game.PropAsphaltCrack, game.PropCanalBoat:
 		dx = pr.X - camX
 		dy = pr.Y - camY
@@ -688,11 +793,85 @@ func (r *Renderer) drawSingleProp(screen *ebiten.Image, pr *game.MapProp, camX, 
 
 	op := &ebiten.DrawImageOptions{}
 	if pr.Kind == game.PropCanalBoat {
-		bob := math.Sin(float64(r.tick*2.1 + pr.X*0.03)) * 1.5
+		bob := math.Sin(float64(r.tick*2.1+pr.X*0.03)) * 1.5
 		dy += float32(bob)
 	}
 	op.GeoM.Translate(float64(dx), float64(dy))
 	screen.DrawImage(img, op)
+
+	// Subtle animated water-jet sparkle pixels above the Central Plaza Fountain
+	if pr.Kind == game.PropFountain {
+		jetX := dx + iw*0.5
+		jetY := dy + 14
+		for d := 0; d < 6; d++ {
+			phase := frac32(r.tick*1.8 + float32(d)*0.17)
+			side := float32(-1)
+			if d%2 == 1 {
+				side = 1
+			}
+			spread := float32(4+d%3*3) * side * phase
+			arcY := -11.0*phase*(1.0-phase)*4.0 + phase*9.0
+			alpha := uint8(230 * math.Sin(float64(phase)*math.Pi))
+			vector.DrawFilledRect(screen, jetX+spread-0.75, jetY+arcY-0.75, 1.8, 1.8, Premul(215, 252, 255, alpha), false)
+		}
+		// Shimmering basin ripple glints
+		rip := float32(math.Sin(float64(r.tick * 4.6)))
+		vector.DrawFilledRect(screen, jetX-12+rip*3, dy+28, 5, 1.2, Premul(185, 248, 255, 185), false)
+		vector.DrawFilledRect(screen, jetX+7-rip*3, dy+31, 6, 1.2, Premul(220, 255, 255, 165), false)
+	}
+}
+
+func (r *Renderer) drawSingleHealPickup(screen *ebiten.Image, hp *game.HealPickup, camX, camY float32) {
+	hx, hy := float32(hp.X)-camX, float32(hp.Y)-camY
+	if hp.LifeTimer > 0 && hp.LifeTimer < 3.0 && int(r.tick*14)%2 == 0 {
+		// Gentle rapid blink warning when about to despawn
+		return
+	}
+
+	pulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*5.5)+hp.BobPhase))
+	bob := float32(math.Sin(float64(r.tick*4.4)+hp.BobPhase)) * 2.5
+
+	scale := 1.0
+	shadowR := float32(7.0)
+	ringR := float32(10.0 + 2.2*pulse)
+	if hp.Big {
+		scale = 1.2
+		shadowR = 9.0
+		ringR = 13.0 + 2.8*pulse
+	}
+
+	// Ground contact shadow + soft pulsing mint-gold ground ring
+	vector.DrawFilledCircle(screen, hx, hy+7, shadowR, Premul(20, 12, 32, 115), true)
+	vector.StrokeCircle(screen, hx, hy+6, ringR, 1.6, Premul(92, 255, 196, uint8(135+85*pulse)), true)
+	vector.StrokeCircle(screen, hx, hy+6, ringR*0.68, 1.2, Premul(255, 232, 108, uint8(150+90*pulse)), true)
+
+	// Gently bobbing pickup sprite
+	img := r.sprites.Get(assets.SpriteIconPickupHeal)
+	bw := float64(img.Bounds().Dx())
+	bh := float64(img.Bounds().Dy())
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(-bw*0.5, -bh*0.5)
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate(float64(hx), float64(hy-2+bob))
+	screen.DrawImage(img, op)
+
+	// Crisp white sparkle orbiting the cure pickup
+	ang := float64(r.tick*3.4) + hp.BobPhase
+	spX := hx + float32(math.Cos(ang))*(ringR*0.75)
+	spY := hy - 3 + bob + float32(math.Sin(ang))*4.0
+	spA := uint8(165 + 90*pulse)
+	vector.DrawFilledRect(screen, spX-2.0, spY-0.5, 4.0, 1.1, Premul(255, 255, 255, spA), false)
+	vector.DrawFilledRect(screen, spX-0.5, spY-2.0, 1.1, 4.0, Premul(255, 252, 210, spA), false)
+}
+
+func (r *Renderer) drawMouseLMBIcon(dst *ebiten.Image, x, y float32, scale float64) {
+	img := r.sprites.Get(assets.SpriteIconMouseLMB)
+	op := &ebiten.DrawImageOptions{}
+	if scale > 0 && scale != 1.0 {
+		op.GeoM.Scale(scale, scale)
+	}
+	op.GeoM.Translate(float64(x), float64(y))
+	dst.DrawImage(img, op)
 }
 
 func (r *Renderer) drawSingleShop(screen *ebiten.Image, w *game.World, sh *game.VendingShop, camX, camY float32) {
@@ -710,11 +889,13 @@ func (r *Renderer) drawSingleShop(screen *ebiten.Image, w *game.World, sh *game.
 	dx := w.Player.X - sh.X
 	dy := w.Player.Y - sh.Y
 	if dx*dx+dy*dy <= sh.Radius*sh.Radius {
-		px := clampF(sx-88, 4, game.ScreenWidth-180)
-		py := clampF(sy-42, 30, game.ScreenHeight-24)
-		drawPillBadge(screen, px, py, 176, 22, colHudBg, colGyaru)
-		r.drawKeycap(screen, "E", px+4, py+3, 16, 16, color.RGBA{24, 90, 105, 255}, colGyaru, false)
-		r.drawTextColored(screen, "NEGOZIO NEON: APRI MENU", int(px+24), int(py+3), colGyaru)
+		lbl := "CLICK / [E] SHOP"
+		pw := float32(len(lbl)*6 + 24)
+		px := clampF(sx-pw*0.5, 4, game.ScreenWidth-pw-4)
+		py := clampF(sy-40, 30, game.ScreenHeight-24)
+		drawPillBadge(screen, px, py, pw, 20, colHudBg, colGyaru)
+		r.drawMouseLMBIcon(screen, px+3, py+3, 0.88)
+		r.drawTextColored(screen, lbl, int(px+20), int(py+2), colGyaru)
 	}
 }
 
@@ -737,13 +918,13 @@ func (r *Renderer) drawSingleSlotMachine(screen *ebiten.Image, w *game.World, sm
 	dx := w.Player.X - sm.X
 	dy := w.Player.Y - sm.Y
 	if dx*dx+dy*dy <= sm.Radius*sm.Radius {
-		lbl := fmt.Sprintf("RIZZ-SLOTS ($%d)", sm.SpinCost)
-		pw := float32(len(lbl)*6 + 28)
+		lbl := fmt.Sprintf("CLICK / [E] SLOT 777 ($%d)", sm.SpinCost)
+		pw := float32(len(lbl)*6 + 24)
 		px := clampF(sx-pw*0.5, 4, game.ScreenWidth-pw-4)
-		py := clampF(sy-44, 30, game.ScreenHeight-24)
-		drawPillBadge(screen, px, py, pw, 22, colHudBg, colGold)
-		r.drawKeycap(screen, "E", px+4, py+3, 16, 16, color.RGBA{95, 70, 18, 255}, colGold, false)
-		r.drawTextColored(screen, lbl, int(px+24), int(py+3), colGold)
+		py := clampF(sy-42, 30, game.ScreenHeight-24)
+		drawPillBadge(screen, px, py, pw, 20, colHudBg, colGold)
+		r.drawMouseLMBIcon(screen, px+3, py+3, 0.88)
+		r.drawTextColored(screen, lbl, int(px+20), int(py+2), colGold)
 	}
 }
 
@@ -1168,6 +1349,125 @@ func (r *Renderer) drawHeliSpotlight(screen *ebiten.Image, w *game.World, camX, 
 	r.drawScaledText(screen, "ELICOTTERO 5*", int(hx)-38, int(hy)-int(w.Police.Heli.Radius)-14, 1.0, colRedAlert, colOutline)
 }
 
+// drawPlayerHealthBar renders a sleek diegetic HP capsule (heart badge + segmented pips)
+// and contextual cyan Chronos micro-bar right beneath Alfredo's feet.
+func (r *Renderer) drawPlayerHealthBar(screen *ebiten.Image, w *game.World, camX, camY float32) {
+	p := &w.Player
+	// Skip when Alfredo is offscreen (e.g., Title screen backdrop where Player.X < 0)
+	if p.X < 0 || p.Y < 0 || p.MaxHP <= 0 {
+		return
+	}
+	px, py := p.X-camX, p.Y-camY
+	if px < -40 || px > game.ScreenWidth+40 || py < -40 || py > game.ScreenHeight+40 {
+		return
+	}
+
+	maxHP := p.MaxHP
+	if maxHP > 12 {
+		maxHP = 12
+	}
+	pipsAreaW := float32(34)
+	if maxHP > 6 {
+		pipsAreaW = float32(34 + (maxHP-6)*4)
+		if pipsAreaW > 46 {
+			pipsAreaW = 46
+		}
+	}
+	const (
+		leftPad  = float32(11)
+		rightPad = float32(3)
+		capH     = float32(7)
+		pipGap   = float32(1.2)
+	)
+	capW := leftPad + pipsAreaW + rightPad
+	barX := clampF(px-capW*0.5, 4, game.ScreenWidth-capW-4)
+	barY := clampF(py+14, 4, game.ScreenHeight-14)
+
+	hitFlash := p.InvulnTimer > 0.85
+	healFlash := p.HealFlashTimer > 0
+	lowHP := p.HP <= 2
+	urgentPulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*12.0)))
+	healPulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*16.0)))
+
+	// Sleek dark-glass capsule backdrop & status-reactive border
+	borderCol := Premul(145, 130, 185, 200)
+	if hitFlash {
+		borderCol = color.RGBA{255, 255, 255, 255}
+	} else if healFlash {
+		borderCol = color.RGBA{78, 255, 186, 255}
+	} else if lowHP {
+		borderCol = Premul(255, 45, 75, uint8(180+75*urgentPulse))
+	}
+
+	vector.DrawFilledRect(screen, barX+1, barY+1, capW, capH, Premul(8, 4, 16, 175), false)
+	vector.DrawFilledRect(screen, barX, barY, capW, capH, Premul(14, 10, 26, 220), false)
+	vector.StrokeRect(screen, barX, barY, capW, capH, 1.0, borderCol, false)
+
+	// Tiny heart badge on left edge (icon_heart_full.png scaled 0.75x -> 9x9)
+	heartImg := r.sprites.Get(assets.SpriteIconHeartFull)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(0.75, 0.75)
+	op.GeoM.Translate(float64(barX+1), float64(barY-1))
+	if healFlash {
+		op.ColorScale.Scale(0.75, 1.35, 1.0, 1.0)
+	} else if hitFlash {
+		op.ColorScale.Scale(1.4, 1.4, 1.4, 1.0)
+	}
+	screen.DrawImage(heartImg, op)
+
+	// Segmented health pips
+	totalGap := pipGap * float32(maxHP-1)
+	pipW := (pipsAreaW - totalGap) / float32(maxHP)
+	if pipW < 2.2 {
+		pipW = 2.2
+	}
+	pipH := float32(4.2)
+	pipY := barY + 1.4
+	for i := 0; i < maxHP; i++ {
+		x0 := barX + leftPad + float32(i)*(pipW+pipGap)
+		if i < p.HP {
+			pipCol := color.RGBA{255, 64, 108, 255} // Glowing ruby/coral
+			if hitFlash {
+				pipCol = color.RGBA{255, 255, 255, 255}
+			} else if healFlash {
+				pipCol = color.RGBA{
+					R: uint8(72 + 55*healPulse),
+					G: 255,
+					B: uint8(176 + 45*healPulse),
+					A: 255,
+				}
+			} else if lowHP {
+				pipCol = color.RGBA{
+					R: 255,
+					G: uint8(28 + 56*urgentPulse),
+					B: uint8(52 + 34*urgentPulse),
+					A: 255,
+				}
+			}
+			vector.DrawFilledRect(screen, x0, pipY, pipW, pipH, pipCol, false)
+			// Crisp glossy top highlight on active pip
+			vector.DrawFilledRect(screen, x0, pipY, pipW, 1.1, Premul(255, 224, 236, 145), false)
+		} else {
+			// Dim plum for lost HP
+			vector.DrawFilledRect(screen, x0, pipY, pipW, pipH, Premul(52, 32, 66, 205), false)
+		}
+	}
+
+	// Sleek 2px cyan Chronos micro-bar right beneath HP capsule ONLY when active or recharging
+	if p.ChronosActive || p.ChronosMeter < p.ChronosMax-1.0 {
+		chrFrac := clampF(p.ChronosMeter/p.ChronosMax, 0, 1)
+		cX := barX + 2
+		cY := barY + capH + 1.5
+		cW := capW - 4
+		vector.DrawFilledRect(screen, cX, cY, cW, 2.2, Premul(14, 20, 38, 205), false)
+		chrCol := colGyaru
+		if p.ChronosActive {
+			chrCol = color.RGBA{135, 255, 240, 255}
+		}
+		vector.DrawFilledRect(screen, cX, cY, cW*chrFrac, 2.2, chrCol, false)
+	}
+}
+
 func (r *Renderer) drawAimAndRange(screen *ebiten.Image, w *game.World, camX, camY float32) {
 	fb := w.EvaluateAim(r.aimX, r.aimY)
 	spec := game.GetArchetypeSpec(w.Player.SelectedStopArch)
@@ -1177,7 +1477,7 @@ func (r *Renderer) drawAimAndRange(screen *ebiten.Image, w *game.World, camX, ca
 	ac := archetypeColor(w.Player.SelectedStopArch)
 
 	// When on cooldown or at max active stops, draw only a subtle minimal crosshair
-	// (plus a recall hint pill if hovering over an empty/active stop for Stop Recall).
+	// (plus a concise Mouse-LMB recall pill if hovering over an active stop for Stop Recall).
 	if w.Player.StopCooldownTimer > 0 || w.ActiveStopCount() >= w.Player.EffectiveMaxStops() {
 		muted := PremulColor(ac, 145)
 		vector.StrokeCircle(screen, sx, sy, 7, 1.2, muted, true)
@@ -1192,10 +1492,13 @@ func (r *Renderer) drawAimAndRange(screen *ebiten.Image, w *game.World, camX, ca
 			dx := fb.ClampedX - st.X
 			dy := fb.ClampedY - st.Y
 			if dx*dx+dy*dy <= 44.0*44.0 {
-				badgeX := clampF(sx+14, 4, game.ScreenWidth-168)
+				lbl := "CLICK SX RICHIAMA"
+				bw := float32(len(lbl)*6 + 22)
+				badgeX := clampF(sx+14, 4, game.ScreenWidth-bw-4)
 				badgeY := clampF(sy-14, 28, game.ScreenHeight-70)
-				drawPillBadge(screen, badgeX, badgeY, 156, 16, Premul(18, 42, 54, 235), colGyaru)
-				r.drawScaledText(screen, "LMB/[R] RICHIAMA -50%CD", int(badgeX+5), int(badgeY+1), 1.0, colGyaru, colOutline)
+				drawPillBadge(screen, badgeX, badgeY, bw, 17, Premul(18, 42, 54, 225), colGyaru)
+				r.drawMouseLMBIcon(screen, badgeX+3, badgeY+2, 0.80)
+				r.drawScaledText(screen, lbl, int(badgeX+18), int(badgeY+1), 1.0, colGyaru, colOutline)
 				break
 			}
 		}
@@ -1278,47 +1581,114 @@ func (r *Renderer) drawAimAndRange(screen *ebiten.Image, w *game.World, camX, ca
 		vector.StrokeLine(screen, sx+cb, sy+cb, sx+cb, sy+cb-ct, 1.8, colGold, false)
 	}
 
-	badgeX := clampF(sx+16, 4, game.ScreenWidth-160)
-	badgeY := clampF(sy-14, 28, game.ScreenHeight-96)
+	// Show AT MOST 1 concise contextual badge near cursor:
+	// Priority: PERFECT! > SYNERGY! > ZTL 3x > BUS +25% (> HOOK xN)
+	badgeX := clampF(sx+16, 4, game.ScreenWidth-116)
+	badgeY := clampF(sy-14, 28, game.ScreenHeight-70)
 
-	if fb.IsPerfectDrop {
-		bw := float32(98)
-		drawPillBadge(screen, badgeX, badgeY, bw, 15, Premul(48, 32, 6, 230), colGold)
-		drawBoltIcon(screen, badgeX+8, badgeY+7.5, colGold)
-		r.drawScaledText(screen, "PERFECT DROP!", int(badgeX+15), int(badgeY+1), 1.0, colGold, colOutline)
-		badgeY += 17
-	}
-	if fb.SynergyCount > 0 {
-		lbl := fmt.Sprintf("MATCH x%d! (SYNERGY)", fb.SynergyCount)
+	switch {
+	case fb.IsPerfectDrop:
+		const lbl = "PERFECT!"
 		bw := float32(len(lbl)*6 + 20)
-		drawPillBadge(screen, badgeX, badgeY, bw, 15, Premul(34, 14, 52, 230), ac)
+		drawPillBadge(screen, badgeX, badgeY, bw, 15, Premul(48, 32, 6, 220), colGold)
+		drawBoltIcon(screen, badgeX+8, badgeY+7.5, colGold)
+		r.drawScaledText(screen, lbl, int(badgeX+15), int(badgeY+1), 1.0, colGold, colOutline)
+	case fb.SynergyCount > 0:
+		lbl := fmt.Sprintf("SYNERGY x%d!", fb.SynergyCount)
+		bw := float32(len(lbl)*6 + 20)
+		drawPillBadge(screen, badgeX, badgeY, bw, 15, Premul(34, 14, 52, 220), ac)
 		drawHeartIcon(screen, badgeX+8, badgeY+7.5, ac, true)
 		r.drawScaledText(screen, lbl, int(badgeX+15), int(badgeY+1), 1.0, ac, colOutline)
-		badgeY += 17
-	} else if fb.HookCandidateCount > 0 {
-		lbl := fmt.Sprintf("AGGANCI: %d", fb.HookCandidateCount)
-		bw := float32(len(lbl)*6 + 10)
-		drawPillBadge(screen, badgeX, badgeY, bw, 15, colHudBg, ac)
-		r.drawScaledText(screen, lbl, int(badgeX+5), int(badgeY+1), 1.0, color.White, colOutline)
-		badgeY += 17
-	}
-	if fb.InBusBay {
-		lbl := "AREA BUS (+25% VEL.)"
-		bw := float32(len(lbl)*6 + 10)
-		drawPillBadge(screen, badgeX, badgeY, bw, 15, Premul(10, 42, 26, 230), colGreenNeon)
-		r.drawScaledText(screen, lbl, int(badgeX+5), int(badgeY+1), 1.0, colGreenNeon, colOutline)
-		badgeY += 17
-	}
-	if fb.InZTL {
-		lbl := "ZTL (+1* / 3x $$$)"
+	case fb.InZTL:
+		const lbl = "ZTL 3x +1*"
 		bw := float32(len(lbl)*6 + 20)
 		zCol := colRedAlert
 		if pulse > 0.5 {
 			zCol = colGold
 		}
-		drawPillBadge(screen, badgeX, badgeY, bw, 15, Premul(48, 8, 22, 235), zCol)
+		drawPillBadge(screen, badgeX, badgeY, bw, 15, Premul(48, 8, 22, 225), zCol)
 		drawWarningIcon(screen, badgeX+8, badgeY+7.5, zCol)
 		r.drawScaledText(screen, lbl, int(badgeX+15), int(badgeY+1), 1.0, zCol, colOutline)
+	case fb.InBusBay:
+		const lbl = "BUS +25%"
+		bw := float32(len(lbl)*6 + 12)
+		drawPillBadge(screen, badgeX, badgeY, bw, 15, Premul(10, 42, 26, 220), colGreenNeon)
+		r.drawScaledText(screen, lbl, int(badgeX+6), int(badgeY+1), 1.0, colGreenNeon, colOutline)
+	case fb.HookCandidateCount > 0:
+		lbl := fmt.Sprintf("HOOK x%d", fb.HookCandidateCount)
+		bw := float32(len(lbl)*6 + 12)
+		drawPillBadge(screen, badgeX, badgeY, bw, 15, colHoloTranslucent, ac)
+		r.drawScaledText(screen, lbl, int(badgeX+6), int(badgeY+1), 1.0, color.White, colOutline)
+	}
+}
+
+// resolveMouseHoverDir returns r.mouseHoverDir if set, otherwise infers the 4-way quadrant
+// from the cursor position relative to (originX, originY).
+func (r *Renderer) resolveMouseHoverDir(originX, originY float32) int {
+	if r.mouseHoverDir >= game.ActionUp && r.mouseHoverDir <= game.ActionLeft {
+		return r.mouseHoverDir
+	}
+	qdx := r.mouseScreenX - originX
+	qdy := r.mouseScreenY - originY
+	if qdx*qdx+qdy*qdy <= 165.0*165.0 && (qdx != 0 || qdy != 0) {
+		if math.Abs(float64(qdx)) >= math.Abs(float64(qdy)) {
+			if qdx >= 0 {
+				return game.ActionRight
+			}
+			return game.ActionLeft
+		}
+		if qdy >= 0 {
+			return game.ActionDown
+		}
+		return game.ActionUp
+	}
+	return game.ActionNone
+}
+
+// drawMouseCompass renders a crisp 4-way directional mouse compass (^ > v <)
+// highlighting the hovered quadrant in bright electric gold-cyan.
+func (r *Renderer) drawMouseCompass(screen *ebiten.Image, cx, cy, dist float32, activeDir, targetDir int) {
+	dirs := [4]struct {
+		id     int
+		dx, dy float32
+	}{
+		{game.ActionUp, 0, -1},
+		{game.ActionRight, 1, 0},
+		{game.ActionDown, 0, 1},
+		{game.ActionLeft, -1, 0},
+	}
+
+	// Subtle center compass hub
+	vector.StrokeCircle(screen, cx, cy, 3.0, 1.0, Premul(0, 245, 212, 130), true)
+
+	for _, d := range dirs {
+		ax := cx + d.dx*dist
+		ay := cy + d.dy*dist
+		isHover := d.id == activeDir
+		isTarget := d.id == targetDir
+
+		bg := Premul(22, 18, 42, 155)
+		bdr := Premul(110, 125, 165, 160)
+		fg := Premul(180, 195, 225, 185)
+		boxR := float32(7.0)
+
+		if isTarget {
+			bg = Premul(90, 68, 16, 190)
+			bdr = colGold
+			fg = colGold
+		}
+		if isHover {
+			// Electric gold-cyan live hover highlight!
+			bg = Premul(0, 132, 136, 220)
+			bdr = colGold
+			fg = color.RGBA{255, 246, 185, 255}
+			boxR = 8.2
+			vector.StrokeLine(screen, cx+d.dx*4, cy+d.dy*4, ax-d.dx*(boxR+1), ay-d.dy*(boxR+1), 2.0, colGyaru, true)
+		}
+
+		vector.DrawFilledRect(screen, ax-boxR, ay-boxR, boxR*2, boxR*2, bg, false)
+		vector.StrokeRect(screen, ax-boxR, ay-boxR, boxR*2, boxR*2, 1.3, bdr, false)
+		drawArrowIcon(screen, ax, ay, d.id, fg)
 	}
 }
 
@@ -1349,79 +1719,73 @@ func (r *Renderer) drawDiegeticStopUI(screen *ebiten.Image, w *game.World, camX,
 				vector.StrokeLine(screen, ax1, ay1, ax2, ay2, 3.0, blinkCol, true)
 				vector.DrawFilledCircle(screen, ax2, ay2, 3.5, blinkCol, true)
 
-				msg := "TORNA NEL CERCHIO DELLA FERMATA!"
+				msg := "TORNA NEL CERCHIO!"
 				mw := float32(len(msg)*6 + 24)
 				mx := clampF(pxScreen-mw*0.5, 8, game.ScreenWidth-mw-8)
 				my := clampF(pyScreen-46, 30, game.ScreenHeight-70)
-				drawPillBadge(screen, mx, my, mw, 18, color.RGBA{56, 10, 20, 235}, blinkCol)
+				drawPillBadge(screen, mx, my, mw, 18, Premul(56, 10, 20, 220), blinkCol)
 				drawWarningIcon(screen, mx+10, my+9, blinkCol)
 				r.drawScaledText(screen, msg, int(mx+19), int(my+2), 1.0, blinkCol, colOutline)
 			}
 		}
 
-		// Subtle 4-quadrant LMB directional indicator for directional phases (Pragmata 4x4 & Phase 2 Combo)
-		isDirPhase := (st.Minigame.Completed && st.Combo.Active && !st.Combo.Completed) ||
-			(!st.Minigame.Completed && st.Arch == game.ArchStudent)
-		if isDirPhase && st.PlayerInside {
-			qdx := r.mouseScreenX - sx
-			qdy := r.mouseScreenY - sy
-			if qdx*qdx+qdy*qdy <= 145.0*145.0 {
-				var qx, qy float32
-				if math.Abs(float64(qdx)) >= math.Abs(float64(qdy)) {
-					if qdx >= 0 {
-						qx = 1
-					} else {
-						qx = -1
-					}
-				} else {
-					if qdy >= 0 {
-						qy = 1
-					} else {
-						qy = -1
-					}
-				}
-				qCol := PremulColor(colGold, 195)
-				vector.StrokeLine(screen, sx+qx*16, sy+qy*16, sx+qx*28, sy+qy*28, 2.2, qCol, true)
-				vector.DrawFilledCircle(screen, sx+qx*28, sy+qy*28, 3.0, qCol, true)
-			}
-		}
-
-		// FASE 2: 4-Step Boarding Combo with animated 3D Keycaps!
+		// FASE 2: Mouse-Only 4-Step Boarding Combo with live 4-Way Mouse Compass!
 		if st.Minigame.Completed && st.Combo.Active && !st.Combo.Completed {
-			panelW := float32(130)
+			hoverDir := r.resolveMouseHoverDir(sx, sy)
+			targetDir := game.ActionNone
+			if st.Combo.ComboIndex >= 0 && st.Combo.ComboIndex < len(st.Combo.Sequence) {
+				targetDir = st.Combo.Sequence[st.Combo.ComboIndex]
+			}
+			if st.PlayerInside {
+				r.drawMouseCompass(screen, sx, sy, 26, hoverDir, targetDir)
+			}
+
+			panelW := float32(138)
 			panelH := float32(54)
 			px := clampF(sx-panelW*0.5, 4, game.ScreenWidth-panelW-4)
-			py := clampF(sy-82, 28, game.ScreenHeight-panelH-48)
+			py := clampF(sy-86, 28, game.ScreenHeight-panelH-48)
 
 			border := colGyaru
 			if st.Combo.LastErrorFlash > 0 || st.Combo.StrictMode {
 				border = colRedAlert
 			}
-			vector.DrawFilledRect(screen, px, py, panelW, panelH, colHoloBg, false)
-			vector.StrokeRect(screen, px, py, panelW, panelH, 1.8, border, false)
+			vector.DrawFilledRect(screen, px, py, panelW, panelH, colHoloTranslucent, false)
+			vector.StrokeRect(screen, px, py, panelW, panelH, 1.6, border, false)
 
-			r.drawScaledText(screen, "COMBO [FRECCE/LMB]!", int(px+4), int(py+2), 0.9, colGold, colOutline)
+			r.drawMouseLMBIcon(screen, px+4, py+2, 0.80)
+			r.drawScaledText(screen, "CLICK SX DIREZIONE", int(px+19), int(py+2), 0.9, colGold, colOutline)
 
 			bounce := int(r.tick*10)%2 == 0
 			for step := 0; step < 4; step++ {
-				kx := px + 13 + float32(step)*27
+				kx := px + 14 + float32(step)*29
 				ky := py + 19
-				boxCol := color.RGBA{45, 45, 70, 235}
-				bdrCol := color.RGBA{130, 140, 175, 220}
-				pressed := false
+				stepDir := st.Combo.Sequence[step]
+				boxCol := Premul(36, 36, 62, 185)
+				bdrCol := Premul(125, 138, 175, 200)
+				arrowCol := color.RGBA{215, 222, 240, 235}
 
 				if step < st.Combo.ComboIndex {
-					boxCol = color.RGBA{18, 125, 85, 245}
+					boxCol = Premul(18, 125, 85, 215)
 					bdrCol = colGreenNeon
-					pressed = true
+					arrowCol = color.RGBA{210, 255, 230, 255}
 				} else if step == st.Combo.ComboIndex {
-					boxCol = color.RGBA{155, 110, 16, 245}
-					bdrCol = colGold
+					if hoverDir == stepDir {
+						// Live match glow: player's mouse is hovering the exact needed direction!
+						boxCol = Premul(0, 145, 148, 230)
+						bdrCol = colGold
+						arrowCol = color.RGBA{255, 248, 195, 255}
+					} else {
+						boxCol = Premul(140, 98, 16, 215)
+						bdrCol = colGold
+						arrowCol = color.RGBA{255, 255, 255, 255}
+					}
 					if bounce {
 						ky -= 2
 					}
 				}
-				r.drawKeycap(screen, dirToKeyLabel(st.Combo.Sequence[step]), kx, ky, 22, 22, boxCol, bdrCol, pressed)
+				vector.DrawFilledRect(screen, kx, ky, 22, 21, boxCol, false)
+				vector.StrokeRect(screen, kx, ky, 22, 21, 1.4, bdrCol, false)
+				drawArrowIcon(screen, kx+11, ky+10.5, stepDir, arrowCol)
 			}
 
 			frac := clampF(st.Combo.Timer/st.Combo.MaxTimer, 0, 1)
@@ -1433,51 +1797,67 @@ func (r *Renderer) drawDiegeticStopUI(screen *ebiten.Image, w *game.World, camX,
 			continue
 		}
 
-		// FASE 1: Diegetic Minigame Hologram
+		// FASE 1: Sleek Translucent Mouse-Only Diegetic Minigame Hologram
 		if !st.Minigame.Completed {
-			panelW := float32(108)
-			panelH := float32(82)
+			panelW := float32(126)
+			panelH := float32(78)
 			px := clampF(sx+30, 4, game.ScreenWidth-panelW-4)
-			py := clampF(sy-44, 28, game.ScreenHeight-panelH-48)
+			py := clampF(sy-42, 28, game.ScreenHeight-panelH-48)
 
-			vector.DrawFilledRect(screen, px, py, panelW, panelH, colHoloBg, false)
-			vector.StrokeRect(screen, px, py, panelW, panelH, 1.6, ac, false)
+			vector.DrawFilledRect(screen, px, py, panelW, panelH, colHoloTranslucent, false)
+			vector.StrokeRect(screen, px, py, panelW, panelH, 1.5, ac, false)
 
-			r.drawScaledText(screen, "FASE 1: MINIGIOCO", int(px+5), int(py+2), 0.9, colGold, colOutline)
-			pulse := int(r.tick*6)%2 == 0
+			pulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*8.0)))
 
 			switch st.Arch {
 			case game.ArchEmo:
-				r.drawTextColored(screen, "RITMO [LMB/SU]", int(px+8), int(py+14), ac)
-				barX, barY, barW, barH := px+8, py+30, panelW-16, float32(14)
-				vector.DrawFilledRect(screen, barX, barY, barW, barH, color.RGBA{30, 18, 46, 225}, false)
+				r.drawMouseLMBIcon(screen, px+5, py+4, 0.85)
+				r.drawScaledText(screen, "CLICK SX A TEMPO", int(px+20), int(py+5), 0.9, colGold, colOutline)
+
+				barX, barY, barW, barH := px+8, py+26, panelW-16, float32(15)
+				vector.DrawFilledRect(screen, barX, barY, barW, barH, Premul(24, 14, 42, 190), false)
 				swW := barW * st.Minigame.BeatWindow * 2
-				vector.DrawFilledRect(screen, barX+barW*0.5-swW*0.5, barY, swW, barH, color.RGBA{46, 235, 130, 150}, false)
+				vector.DrawFilledRect(screen, barX+barW*0.5-swW*0.5, barY, swW, barH, Premul(46, 235, 130, 165), false)
 				nx := barX + st.Minigame.BeatCursor*barW
 				vector.DrawFilledRect(screen, nx-1.5, barY-2, 3, barH+4, colGold, false)
+				vector.StrokeRect(screen, barX, barY, barW, barH, 1.0, PremulColor(ac, 180), false)
 
-				r.drawKeycap(screen, "UP", px+8, py+50, 20, 20, color.RGBA{80, 44, 112, 235}, ac, pulse && math.Abs(float64(st.Minigame.BeatCursor-0.5)) <= float64(st.Minigame.BeatWindow))
-				vector.DrawFilledRect(screen, px+34, py+56, (panelW-42)*st.Minigame.Progress, 8, colGreenNeon, false)
-				vector.StrokeRect(screen, px+34, py+56, panelW-42, 8, 1, ac, false)
+				// Progress bar
+				inSweet := math.Abs(float64(st.Minigame.BeatCursor-0.5)) <= float64(st.Minigame.BeatWindow)
+				progY := py + 52
+				vector.DrawFilledRect(screen, px+8, progY, panelW-16, 10, Premul(20, 14, 34, 180), false)
+				vector.DrawFilledRect(screen, px+8, progY, (panelW-16)*st.Minigame.Progress, 10, colGreenNeon, false)
+				bdr := ac
+				if inSweet {
+					bdr = colGold
+				}
+				vector.StrokeRect(screen, px+8, progY, panelW-16, 10, 1.2, bdr, false)
 
 			case game.ArchStudent:
-				r.drawTextColored(screen, "VAI AL VERDE!", int(px+8), int(py+14), ac)
-				gx0, gy0 := px+10, py+28
+				hoverDir := r.resolveMouseHoverDir(sx, sy)
+				if st.PlayerInside {
+					r.drawMouseCompass(screen, sx, sy, 26, hoverDir, game.ActionNone)
+				}
+				r.drawMouseLMBIcon(screen, px+4, py+3, 0.80)
+				r.drawScaledText(screen, "CLICK SX DIREZIONE", int(px+18), int(py+4), 0.85, colGold, colOutline)
+
+				// 4x4 Pragmata Grid on left
+				gx0, gy0 := px+8, py+22
 				const cell = float32(11)
 				for gy := 0; gy < 4; gy++ {
 					for gx := 0; gx < 4; gx++ {
 						cx := gx0 + float32(gx)*(cell+1)
 						cy := gy0 + float32(gy)*(cell+1)
-						c := color.RGBA{38, 46, 72, 220}
+						c := Premul(38, 46, 72, 200)
 						switch st.Minigame.GridNodes[gy][gx] {
 						case game.NodeBlue:
-							c = color.RGBA{40, 165, 255, 240}
+							c = color.RGBA{40, 165, 255, 235}
 						case game.NodeYellow:
 							c = colGold
 						case game.NodeBoard:
 							c = colGreenNeon
 						case game.NodeVisited:
-							c = color.RGBA{0, 175, 155, 210}
+							c = color.RGBA{0, 175, 155, 205}
 						}
 						vector.DrawFilledRect(screen, cx, cy, cell, cell, c, false)
 						if gx == st.Minigame.GridX && gy == st.Minigame.GridY {
@@ -1485,58 +1865,53 @@ func (r *Renderer) drawDiegeticStopUI(screen *ebiten.Image, w *game.World, camX,
 						}
 					}
 				}
-				r.drawKeycap(screen, "RIGHT", px+66, py+36, 16, 16, color.RGBA{40, 74, 120, 235}, ac, pulse)
-				r.drawKeycap(screen, "DOWN", px+84, py+36, 16, 16, color.RGBA{40, 74, 120, 235}, ac, !pulse)
+				// Compact Mouse Compass inside right side of hologram
+				r.drawMouseCompass(screen, px+92, py+46, 15, hoverDir, game.ActionNone)
 
 			case game.ArchKawaii:
-				r.drawTextColored(screen, "STAI DENTRO!", int(px+16), int(py+14), ac)
+				r.drawMouseLMBIcon(screen, px+4, py+4, 0.82)
+				r.drawScaledText(screen, "CLICK SX & SFIORA", int(px+19), int(py+5), 0.88, colGold, colOutline)
+
 				cx, cy := px+panelW*0.5, py+48
-				vector.StrokeCircle(screen, cx, cy, 16, 3.5, color.RGBA{60, 28, 52, 225}, true)
+				vector.StrokeCircle(screen, cx, cy, 17, 3.5, Premul(60, 28, 52, 195), true)
 				steps := int(st.Minigame.Progress * 20)
 				for s := 0; s < steps; s++ {
 					a1 := -math.Pi/2 + float64(s)*(2*math.Pi/20)
 					a2 := -math.Pi/2 + float64(s+1)*(2*math.Pi/20)
 					vector.StrokeLine(
 						screen,
-						cx+float32(math.Cos(a1)*16), cy+float32(math.Sin(a1)*16),
-						cx+float32(math.Cos(a2)*16), cy+float32(math.Sin(a2)*16),
+						cx+float32(math.Cos(a1)*17), cy+float32(math.Sin(a1)*17),
+						cx+float32(math.Cos(a2)*17), cy+float32(math.Sin(a2)*17),
 						3.5, colKawaii, true,
 					)
 				}
 				r.drawScaledText(screen, fmt.Sprintf("%d%%", int(st.Minigame.Progress*100)), int(cx)-10, int(cy)-7, 1.0, color.White, colOutline)
 
 			case game.ArchGyaru:
-				r.drawTextColored(screen, "TIENI [LMB/SU]", int(px+8), int(py+14), ac)
-				barX, barY, barW, barH := px+12, py+28, float32(15), float32(46)
-				vector.DrawFilledRect(screen, barX, barY, barW, barH, color.RGBA{22, 28, 44, 230}, false)
+				r.drawMouseLMBIcon(screen, px+6, py+4, 0.85)
+				r.drawScaledText(screen, "TIENI CLICK SX", int(px+22), int(py+5), 0.92, colGold, colOutline)
+
+				barX, barY, barW, barH := px+14, py+24, float32(16), float32(46)
+				vector.DrawFilledRect(screen, barX, barY, barW, barH, Premul(22, 28, 44, 195), false)
 				swH := barH * st.Minigame.SweetSpotSize
 				swCenterY := barY + (1.0-st.Minigame.SweetSpotPos)*barH
 				swTop := clampF(swCenterY-swH*0.5, barY, barY+barH-swH)
-				vector.DrawFilledRect(screen, barX+1, swTop, barW-2, swH, color.RGBA{46, 235, 130, 205}, false)
+				vector.DrawFilledRect(screen, barX+1, swTop, barW-2, swH, Premul(46, 235, 130, 195), false)
 				curY := barY + (1.0-st.Minigame.BarCursor)*barH
 				vector.DrawFilledRect(screen, barX-2, curY-2, barW+4, 4, colGold, false)
+				vector.StrokeRect(screen, barX, barY, barW, barH, 1.0, PremulColor(ac, 180), false)
 
 				pH := barH * st.Minigame.Progress
-				vector.DrawFilledRect(screen, px+36, barY+barH-pH, 10, pH, colGyaru, false)
-				vector.StrokeRect(screen, px+36, barY, 10, barH, 1, ac, false)
-				r.drawKeycap(screen, "UP", px+62, py+42, 22, 22, color.RGBA{18, 86, 86, 235}, ac, pulse)
+				vector.DrawFilledRect(screen, px+40, barY, 10, barH, Premul(18, 24, 38, 185), false)
+				vector.DrawFilledRect(screen, px+40, barY+barH-pH, 10, pH, colGyaru, false)
+				vector.StrokeRect(screen, px+40, barY, 10, barH, 1, ac, false)
+
+				// Pulsing Mouse-LMB hold emblem on right
+				holdCX, holdCY := px+84, py+47
+				vector.StrokeCircle(screen, holdCX, holdCY, 12+2*pulse, 1.4, PremulColor(colGyaru, uint8(140+100*pulse)), true)
+				r.drawMouseLMBIcon(screen, holdCX-8, holdCY-8, 1.0)
 			}
 		}
-	}
-}
-
-func dirToKeyLabel(dir int) string {
-	switch dir {
-	case game.ActionUp:
-		return "UP"
-	case game.ActionRight:
-		return "RIGHT"
-	case game.ActionDown:
-		return "DOWN"
-	case game.ActionLeft:
-		return "LEFT"
-	default:
-		return "UP"
 	}
 }
 

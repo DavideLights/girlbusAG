@@ -2,6 +2,7 @@ package render
 
 import (
 	"image/color"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -37,6 +38,46 @@ func Premul(r, g, b, a uint8) color.RGBA {
 // PremulColor scales an opaque color.RGBA by alpha a (0..255) in premultiplied form.
 func PremulColor(c color.RGBA, a uint8) color.RGBA {
 	return Premul(c.R, c.G, c.B, a)
+}
+
+// DrawSpriteIcon renders a crisp nearest-neighbor pixel-art sprite from the SpriteBank
+// at integer-snapped (x, y) with the requested scale.
+func (r *Renderer) DrawSpriteIcon(screen *ebiten.Image, spriteKey string, x, y, scale float32) {
+	if screen == nil || r == nil || r.sprites == nil || spriteKey == "" {
+		return
+	}
+	if scale <= 0 {
+		scale = 1
+	}
+	img := r.sprites.Get(spriteKey)
+	if img == nil {
+		return
+	}
+	op := &ebiten.DrawImageOptions{Filter: ebiten.FilterNearest}
+	op.GeoM.Scale(float64(scale), float64(scale))
+	op.GeoM.Translate(math.Round(float64(x)), math.Round(float64(y)))
+	screen.DrawImage(img, op)
+}
+
+// drawSpriteIconTinted renders a crisp nearest-neighbor pixel-art sprite tinted with clr.
+func (r *Renderer) drawSpriteIconTinted(screen *ebiten.Image, spriteKey string, x, y, scale float32, clr color.Color) {
+	if screen == nil || r == nil || r.sprites == nil || spriteKey == "" {
+		return
+	}
+	if scale <= 0 {
+		scale = 1
+	}
+	img := r.sprites.Get(spriteKey)
+	if img == nil {
+		return
+	}
+	op := &ebiten.DrawImageOptions{Filter: ebiten.FilterNearest}
+	op.GeoM.Scale(float64(scale), float64(scale))
+	op.GeoM.Translate(math.Round(float64(x)), math.Round(float64(y)))
+	if clr != nil {
+		op.ColorScale.ScaleWithColor(clr)
+	}
+	screen.DrawImage(img, op)
 }
 
 // DrawScaledText renders cached crisp text with 1px dark outline and drop-shadow.

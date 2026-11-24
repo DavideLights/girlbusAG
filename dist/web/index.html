@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>GIRLBUS: NEON STOP (v2.0)</title>
+  <title>GIRLBUS: NEON STOP (girlbusAG v2.0)</title>
   <style>
     html, body {
       margin: 0;
@@ -12,9 +12,11 @@
       height: 100%;
       background: #0d0814;
       overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     canvas {
-      display: block;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
     }
@@ -22,7 +24,7 @@
   <script src="wasm_exec.js"></script>
   <script>
     const go = new Go();
-    WebAssembly.instantiateStreaming(fetch("girlbus.wasm", { cache: "no-cache" }), go.importObject).then((result) => {
+    WebAssembly.instantiateStreaming(fetch("girlbus.wasm"), go.importObject).then((result) => {
       go.run(result.instance);
     });
   </script>

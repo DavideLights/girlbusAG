@@ -15,6 +15,7 @@ import (
 //go:embed sprites/characters/alfredo_*.png sprites/characters/girl_*.png sprites/characters/vip_aura.png
 //go:embed sprites/world/boss_*.png sprites/world/bullet_*.png sprites/world/bus_*.png sprites/world/police_*.png sprites/world/shop_*.png sprites/world/stop_*.png sprites/world/tile_*.png
 //go:embed sprites/map/building_*.png sprites/map/prop_*.png sprites/map/car_*.png sprites/map/tile_*.png
+//go:embed sprites/ui/icon_*.png
 var spriteFS embed.FS
 
 // Expected sprite path constants matching the Sprite Bible and art subagent outputs.
@@ -30,15 +31,15 @@ const (
 	SpriteAlfredoThrow = "sprites/characters/alfredo_throw.png"
 
 	// Girls & VIP aura
-	SpriteGirlKawaii0     = "sprites/characters/girl_kawaii_0.png"
-	SpriteGirlKawaiiSheet = "sprites/characters/girl_kawaii_sheet.png"
-	SpriteGirlEmo0        = "sprites/characters/girl_emo_0.png"
-	SpriteGirlEmoSheet    = "sprites/characters/girl_emo_sheet.png"
-	SpriteGirlStudent0    = "sprites/characters/girl_student_0.png"
+	SpriteGirlKawaii0      = "sprites/characters/girl_kawaii_0.png"
+	SpriteGirlKawaiiSheet  = "sprites/characters/girl_kawaii_sheet.png"
+	SpriteGirlEmo0         = "sprites/characters/girl_emo_0.png"
+	SpriteGirlEmoSheet     = "sprites/characters/girl_emo_sheet.png"
+	SpriteGirlStudent0     = "sprites/characters/girl_student_0.png"
 	SpriteGirlStudentSheet = "sprites/characters/girl_student_sheet.png"
-	SpriteGirlGyaru0      = "sprites/characters/girl_gyaru_0.png"
-	SpriteGirlGyaruSheet  = "sprites/characters/girl_gyaru_sheet.png"
-	SpriteVIPAura         = "sprites/characters/vip_aura.png"
+	SpriteGirlGyaru0       = "sprites/characters/girl_gyaru_0.png"
+	SpriteGirlGyaruSheet   = "sprites/characters/girl_gyaru_sheet.png"
+	SpriteVIPAura          = "sprites/characters/vip_aura.png"
 
 	// Bus stops & shop
 	SpriteStopKawaii  = "sprites/world/stop_kawaii.png"
@@ -77,35 +78,87 @@ const (
 	SpriteTileZTL       = "sprites/world/tile_ztl.png"
 	SpriteTileCrosswalk = "sprites/world/tile_crosswalk.png"
 
-	// Layered Map Assets (buildings, props, cars, zone tiles)
-	SpriteBuildingKonbini   = "sprites/map/building_konbini.png"
-	SpriteBuildingCoffee    = "sprites/map/building_coffee.png"
-	SpriteBuildingArcade    = "sprites/map/building_arcade.png"
-	SpriteBuildingRamen     = "sprites/map/building_ramen.png"
-	SpriteBuildingBookstore = "sprites/map/building_bookstore.png"
-	SpriteBuildingMetro     = "sprites/map/building_metro.png"
-	SpriteBuildingNewsstand = "sprites/map/building_newsstand.png"
-	SpritePropTreeLush      = "sprites/map/prop_tree_lush.png"
-	SpritePropStreetlamp    = "sprites/map/prop_streetlamp.png"
-	SpritePropBenchPlants   = "sprites/map/prop_bench_plants.png"
-	SpritePropCatsClutter   = "sprites/map/prop_cats_clutter.png"
-	SpritePropScooter       = "sprites/map/prop_scooter.png"
-	SpritePropBikeRack      = "sprites/map/prop_bike_rack.png"
-	SpritePropHydrantBin    = "sprites/map/prop_hydrant_bin.png"
-	SpritePropZTLSign       = "sprites/map/prop_ztl_sign.png"
-	SpritePropCanalBoat     = "sprites/map/prop_canal_boat.png"
-	SpritePropSlotMachine   = "sprites/map/prop_slot_machine.png"
-	SpritePropManhole       = "sprites/map/prop_manhole.png"
-	SpritePropAsphaltCrack  = "sprites/map/prop_asphalt_crack.png"
-	SpritePropFlowerBox     = "sprites/map/prop_flower_box.png"
-	SpritePropNeonBillboard = "sprites/map/prop_neon_billboard.png"
-	SpriteCarRed            = "sprites/map/car_red.png"
-	SpriteCarYellow         = "sprites/map/car_yellow.png"
-	SpriteCarMint           = "sprites/map/car_mint.png"
-	SpriteTileGrassPark     = "sprites/map/tile_grass_park.png"
-	SpriteTileCobblePlaza   = "sprites/map/tile_cobble_plaza.png"
-	SpriteTileBoardwalk     = "sprites/map/tile_boardwalk.png"
-	SpriteTileCanalWater    = "sprites/map/tile_canal_water.png"
+	// Layered Map Assets (buildings, landmarks, strategic props, cars, zone tiles)
+	SpriteBuildingKonbini    = "sprites/map/building_konbini.png"
+	SpriteBuildingCoffee     = "sprites/map/building_coffee.png"
+	SpriteBuildingArcade     = "sprites/map/building_arcade.png"
+	SpriteBuildingRamen      = "sprites/map/building_ramen.png"
+	SpriteBuildingBookstore  = "sprites/map/building_bookstore.png"
+	SpriteBuildingMetro      = "sprites/map/building_metro.png"
+	SpriteBuildingNewsstand  = "sprites/map/building_newsstand.png"
+	SpriteBuildingPizzeria   = "sprites/map/building_pizzeria.png"
+	SpriteBuildingVinylBar   = "sprites/map/building_vinyl_bar.png"
+	SpriteBuildingGelateria  = "sprites/map/building_gelateria.png"
+	SpritePropFountain       = "sprites/map/prop_fountain.png"
+	SpritePropArchGate       = "sprites/map/prop_arch_gate.png"
+	SpritePropTreeLush       = "sprites/map/prop_tree_lush.png"
+	SpritePropStreetlamp     = "sprites/map/prop_streetlamp.png"
+	SpritePropBenchPlants    = "sprites/map/prop_bench_plants.png"
+	SpritePropCatsClutter    = "sprites/map/prop_cats_clutter.png"
+	SpritePropScooter        = "sprites/map/prop_scooter.png"
+	SpritePropBikeRack       = "sprites/map/prop_bike_rack.png"
+	SpritePropHydrantBin     = "sprites/map/prop_hydrant_bin.png"
+	SpritePropZTLSign        = "sprites/map/prop_ztl_sign.png"
+	SpritePropCanalBoat      = "sprites/map/prop_canal_boat.png"
+	SpritePropSlotMachine    = "sprites/map/prop_slot_machine.png"
+	SpritePropManhole        = "sprites/map/prop_manhole.png"
+	SpritePropAsphaltCrack   = "sprites/map/prop_asphalt_crack.png"
+	SpritePropFlowerBox      = "sprites/map/prop_flower_box.png"
+	SpritePropNeonBillboard  = "sprites/map/prop_neon_billboard.png"
+	SpritePropPhoneBooth     = "sprites/map/prop_phone_booth.png"
+	SpritePropFoodCart       = "sprites/map/prop_food_cart.png"
+	SpritePropKioskUmbrella  = "sprites/map/prop_kiosk_umbrella.png"
+	SpritePropTrafficLight   = "sprites/map/prop_traffic_light.png"
+	SpritePropBollardGlow    = "sprites/map/prop_bollard_glow.png"
+	SpritePropPlanterNeon    = "sprites/map/prop_planter_neon.png"
+	SpritePropVendingDrink   = "sprites/map/prop_vending_drink.png"
+	SpritePropBusShelterDeco = "sprites/map/prop_bus_shelter_deco.png"
+	SpriteCarRed             = "sprites/map/car_red.png"
+	SpriteCarYellow          = "sprites/map/car_yellow.png"
+	SpriteCarMint            = "sprites/map/car_mint.png"
+	SpriteCarVanCyber        = "sprites/map/car_van_cyber.png"
+	SpriteTileGrassPark      = "sprites/map/tile_grass_park.png"
+	SpriteTileCobblePlaza    = "sprites/map/tile_cobble_plaza.png"
+	SpriteTileBoardwalk      = "sprites/map/tile_boardwalk.png"
+	SpriteTileCanalWater     = "sprites/map/tile_canal_water.png"
+	SpriteTilePlazaMosaic    = "sprites/map/tile_plaza_mosaic.png"
+	SpriteTileWetAsphalt     = "sprites/map/tile_wet_asphalt.png"
+	SpriteTileParkPath       = "sprites/map/tile_park_path.png"
+	SpriteTileBikeLane       = "sprites/map/tile_bike_lane.png"
+	SpriteTileCanalEdge      = "sprites/map/tile_canal_edge.png"
+
+	// UI & Pickup Icons
+	SpriteIconUpgCooldown     = "sprites/ui/icon_upg_cooldown.png"
+	SpriteIconUpgMultiHook    = "sprites/ui/icon_upg_multihook.png"
+	SpriteIconUpgMaxStops     = "sprites/ui/icon_upg_maxstops.png"
+	SpriteIconUpgRange        = "sprites/ui/icon_upg_range.png"
+	SpriteIconUpgChronos      = "sprites/ui/icon_upg_chronos.png"
+	SpriteIconUpgVitality     = "sprites/ui/icon_upg_vitality.png"
+	SpriteIconRelicHeadphones = "sprites/ui/icon_relic_headphones.png"
+	SpriteIconRelicPass       = "sprites/ui/icon_relic_pass.png"
+	SpriteIconRelicShield     = "sprites/ui/icon_relic_shield.png"
+	SpriteIconRelicClover     = "sprites/ui/icon_relic_clover.png"
+	SpriteIconRelicEspresso   = "sprites/ui/icon_relic_espresso.png"
+	SpriteIconRelicVIP        = "sprites/ui/icon_relic_vip.png"
+	SpriteIconShopEspresso    = "sprites/ui/icon_shop_espresso.png"
+	SpriteIconShopBribe       = "sprites/ui/icon_shop_bribe.png"
+	SpriteIconShopRelic       = "sprites/ui/icon_shop_relic.png"
+	SpriteIconShopCrate       = "sprites/ui/icon_shop_crate.png"
+	SpriteIconSlotCherry      = "sprites/ui/icon_slot_cherry.png"
+	SpriteIconSlotCash        = "sprites/ui/icon_slot_cash.png"
+	SpriteIconSlotXP          = "sprites/ui/icon_slot_xp.png"
+	SpriteIconSlotHeart       = "sprites/ui/icon_slot_heart.png"
+	SpriteIconSlot777         = "sprites/ui/icon_slot_777.png"
+	SpriteIconSlotSiren       = "sprites/ui/icon_slot_siren.png"
+	SpriteIconMouseLMB        = "sprites/ui/icon_mouse_lmb.png"
+	SpriteIconMouseRMB        = "sprites/ui/icon_mouse_rmb.png"
+	SpriteIconMouseWheel      = "sprites/ui/icon_mouse_wheel.png"
+	SpriteIconHeartFull       = "sprites/ui/icon_heart_full.png"
+	SpriteIconHeartEmpty      = "sprites/ui/icon_heart_empty.png"
+	SpriteIconStarWanted      = "sprites/ui/icon_star_wanted.png"
+	SpriteIconCoin            = "sprites/ui/icon_coin.png"
+	SpriteIconBolt            = "sprites/ui/icon_bolt.png"
+	SpriteIconPickupHeal      = "sprites/ui/icon_pickup_heal.png"
 )
 
 type spriteSpec struct {
@@ -183,6 +236,11 @@ var expectedSpecs = []spriteSpec{
 	{SpriteBuildingBookstore, 96, 64, color.RGBA{68, 122, 134, 255}, color.RGBA{255, 206, 98, 255}, "building"},
 	{SpriteBuildingMetro, 96, 64, color.RGBA{58, 72, 102, 255}, color.RGBA{0, 225, 255, 255}, "building"},
 	{SpriteBuildingNewsstand, 48, 40, color.RGBA{228, 214, 196, 255}, color.RGBA{255, 92, 118, 255}, "building"},
+	{SpriteBuildingPizzeria, 96, 64, color.RGBA{214, 92, 68, 255}, color.RGBA{255, 226, 122, 255}, "building"},
+	{SpriteBuildingVinylBar, 96, 64, color.RGBA{72, 46, 114, 255}, color.RGBA{255, 152, 224, 255}, "building"},
+	{SpriteBuildingGelateria, 96, 64, color.RGBA{244, 198, 218, 255}, color.RGBA{112, 240, 214, 255}, "building"},
+	{SpritePropFountain, 64, 48, color.RGBA{182, 188, 204, 255}, color.RGBA{60, 235, 255, 255}, "stop"},
+	{SpritePropArchGate, 96, 40, color.RGBA{210, 68, 92, 255}, color.RGBA{255, 214, 112, 255}, "building"},
 	{SpritePropTreeLush, 48, 48, color.RGBA{88, 178, 92, 255}, color.RGBA{148, 218, 118, 255}, "tree"},
 	{SpritePropStreetlamp, 24, 48, color.RGBA{56, 52, 76, 255}, color.RGBA{255, 216, 138, 255}, "lamp"},
 	{SpritePropBenchPlants, 48, 32, color.RGBA{178, 118, 72, 255}, color.RGBA{92, 176, 98, 255}, "bench"},
@@ -197,13 +255,60 @@ var expectedSpecs = []spriteSpec{
 	{SpritePropAsphaltCrack, 32, 16, color.RGBA{70, 66, 84, 255}, color.RGBA{96, 92, 112, 255}, "tile"},
 	{SpritePropFlowerBox, 32, 20, color.RGBA{164, 108, 66, 255}, color.RGBA{255, 120, 170, 255}, "bench"},
 	{SpritePropNeonBillboard, 48, 32, color.RGBA{34, 28, 64, 255}, color.RGBA{0, 245, 212, 255}, "building"},
+	{SpritePropPhoneBooth, 24, 40, color.RGBA{222, 54, 96, 255}, color.RGBA{0, 245, 212, 255}, "stop"},
+	{SpritePropFoodCart, 48, 36, color.RGBA{220, 128, 66, 255}, color.RGBA{255, 218, 118, 255}, "building"},
+	{SpritePropKioskUmbrella, 40, 36, color.RGBA{242, 102, 142, 255}, color.RGBA{255, 244, 224, 255}, "stop"},
+	{SpritePropTrafficLight, 24, 48, color.RGBA{56, 58, 76, 255}, color.RGBA{70, 245, 140, 255}, "lamp"},
+	{SpritePropBollardGlow, 16, 24, color.RGBA{64, 68, 92, 255}, color.RGBA{0, 245, 212, 255}, "lamp"},
+	{SpritePropPlanterNeon, 48, 24, color.RGBA{92, 176, 104, 255}, color.RGBA{255, 198, 112, 255}, "bench"},
+	{SpritePropVendingDrink, 28, 36, color.RGBA{64, 176, 232, 255}, color.RGBA{215, 248, 255, 255}, "stop"},
+	{SpritePropBusShelterDeco, 48, 36, color.RGBA{72, 92, 134, 255}, color.RGBA{255, 222, 148, 255}, "building"},
 	{SpriteCarRed, 48, 32, color.RGBA{222, 68, 86, 255}, color.RGBA{185, 230, 255, 255}, "car"},
 	{SpriteCarYellow, 48, 32, color.RGBA{242, 198, 62, 255}, color.RGBA{185, 230, 255, 255}, "car"},
 	{SpriteCarMint, 48, 32, color.RGBA{84, 212, 178, 255}, color.RGBA{215, 248, 255, 255}, "car"},
+	{SpriteCarVanCyber, 64, 36, color.RGBA{68, 78, 128, 255}, color.RGBA{0, 245, 212, 255}, "car"},
 	{SpriteTileGrassPark, 32, 32, color.RGBA{98, 172, 92, 255}, color.RGBA{128, 198, 108, 255}, "grass"},
 	{SpriteTileCobblePlaza, 32, 32, color.RGBA{182, 168, 152, 255}, color.RGBA{142, 128, 116, 255}, "cobble"},
 	{SpriteTileBoardwalk, 32, 32, color.RGBA{168, 118, 76, 255}, color.RGBA{124, 82, 48, 255}, "boardwalk"},
 	{SpriteTileCanalWater, 32, 32, color.RGBA{42, 128, 168, 255}, color.RGBA{112, 210, 235, 255}, "water"},
+	{SpriteTilePlazaMosaic, 32, 32, color.RGBA{196, 182, 166, 255}, color.RGBA{146, 132, 152, 255}, "cobble"},
+	{SpriteTileWetAsphalt, 32, 32, color.RGBA{72, 72, 96, 255}, color.RGBA{108, 126, 164, 255}, "tile"},
+	{SpriteTileParkPath, 32, 32, color.RGBA{192, 176, 148, 255}, color.RGBA{154, 138, 112, 255}, "cobble"},
+	{SpriteTileBikeLane, 32, 32, color.RGBA{74, 124, 118, 255}, color.RGBA{235, 242, 245, 255}, "tile"},
+	{SpriteTileCanalEdge, 32, 32, color.RGBA{152, 142, 134, 255}, color.RGBA{72, 148, 182, 255}, "boardwalk"},
+
+	// UI & Pickup Icons
+	{SpriteIconUpgCooldown, 20, 20, color.RGBA{0, 245, 212, 255}, color.RGBA{255, 255, 255, 255}, "bullet"},
+	{SpriteIconUpgMultiHook, 20, 20, color.RGBA{255, 107, 157, 255}, color.RGBA{255, 230, 0, 255}, "bullet"},
+	{SpriteIconUpgMaxStops, 20, 20, color.RGBA{255, 184, 77, 255}, color.RGBA{0, 245, 212, 255}, "bullet"},
+	{SpriteIconUpgRange, 20, 20, color.RGBA{92, 186, 255, 255}, color.RGBA{255, 255, 255, 255}, "bullet"},
+	{SpriteIconUpgChronos, 20, 20, color.RGBA{176, 98, 255, 255}, color.RGBA{255, 230, 120, 255}, "bullet"},
+	{SpriteIconUpgVitality, 20, 20, color.RGBA{255, 68, 108, 255}, color.RGBA{255, 224, 236, 255}, "bullet"},
+	{SpriteIconRelicHeadphones, 16, 16, color.RGBA{255, 42, 133, 255}, color.RGBA{0, 245, 212, 255}, "bullet"},
+	{SpriteIconRelicPass, 16, 16, color.RGBA{255, 210, 68, 255}, color.RGBA{64, 176, 255, 255}, "bullet"},
+	{SpriteIconRelicShield, 16, 16, color.RGBA{64, 210, 255, 255}, color.RGBA{255, 255, 255, 255}, "bullet"},
+	{SpriteIconRelicClover, 16, 16, color.RGBA{88, 222, 118, 255}, color.RGBA{210, 255, 180, 255}, "bullet"},
+	{SpriteIconRelicEspresso, 16, 16, color.RGBA{168, 96, 58, 255}, color.RGBA{255, 222, 150, 255}, "bullet"},
+	{SpriteIconRelicVIP, 16, 16, color.RGBA{255, 215, 48, 255}, color.RGBA{255, 92, 168, 255}, "bullet"},
+	{SpriteIconShopEspresso, 16, 16, color.RGBA{182, 102, 64, 255}, color.RGBA{255, 232, 184, 255}, "bullet"},
+	{SpriteIconShopBribe, 16, 16, color.RGBA{86, 214, 122, 255}, color.RGBA{255, 230, 96, 255}, "bullet"},
+	{SpriteIconShopRelic, 16, 16, color.RGBA{182, 92, 255, 255}, color.RGBA{255, 224, 112, 255}, "bullet"},
+	{SpriteIconShopCrate, 16, 16, color.RGBA{214, 146, 78, 255}, color.RGBA{0, 245, 212, 255}, "bullet"},
+	{SpriteIconSlotCherry, 20, 20, color.RGBA{235, 52, 86, 255}, color.RGBA{108, 224, 112, 255}, "bullet"},
+	{SpriteIconSlotCash, 20, 20, color.RGBA{82, 212, 118, 255}, color.RGBA{255, 230, 96, 255}, "bullet"},
+	{SpriteIconSlotXP, 20, 20, color.RGBA{72, 198, 255, 255}, color.RGBA{255, 255, 255, 255}, "bullet"},
+	{SpriteIconSlotHeart, 20, 20, color.RGBA{255, 68, 126, 255}, color.RGBA{255, 218, 234, 255}, "bullet"},
+	{SpriteIconSlot777, 20, 20, color.RGBA{255, 210, 48, 255}, color.RGBA{255, 64, 132, 255}, "bullet"},
+	{SpriteIconSlotSiren, 20, 20, color.RGBA{255, 48, 72, 255}, color.RGBA{72, 152, 255, 255}, "bullet"},
+	{SpriteIconMouseLMB, 16, 16, color.RGBA{210, 214, 228, 255}, color.RGBA{0, 245, 212, 255}, "stop"},
+	{SpriteIconMouseRMB, 16, 16, color.RGBA{210, 214, 228, 255}, color.RGBA{255, 42, 133, 255}, "stop"},
+	{SpriteIconMouseWheel, 16, 16, color.RGBA{210, 214, 228, 255}, color.RGBA{255, 216, 72, 255}, "stop"},
+	{SpriteIconHeartFull, 12, 12, color.RGBA{255, 58, 102, 255}, color.RGBA{255, 214, 228, 255}, "bullet"},
+	{SpriteIconHeartEmpty, 12, 12, color.RGBA{74, 62, 92, 255}, color.RGBA{128, 114, 148, 255}, "bullet"},
+	{SpriteIconStarWanted, 12, 12, color.RGBA{255, 216, 48, 255}, color.RGBA{255, 86, 72, 255}, "bullet"},
+	{SpriteIconCoin, 12, 12, color.RGBA{255, 212, 56, 255}, color.RGBA{255, 246, 178, 255}, "bullet"},
+	{SpriteIconBolt, 12, 12, color.RGBA{0, 245, 212, 255}, color.RGBA{255, 240, 120, 255}, "bullet"},
+	{SpriteIconPickupHeal, 16, 16, color.RGBA{176, 98, 62, 255}, color.RGBA{255, 88, 128, 255}, "bullet"},
 }
 
 // SpriteBank caches all embedded sprites and guarantees crisp fallback images for any missing asset.

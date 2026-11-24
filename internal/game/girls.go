@@ -28,7 +28,7 @@ func NewGirl(id int, x, y float32, arch Archetype, isVIP bool, rng *rand.Rand) G
 		Arch:         arch,
 		IsVIP:        isVIP,
 		HookedByStop: -1,
-		ShootTimer:   0.8 + rng.Float32()*1.4,
+		ShootTimer:   2.0 + rng.Float32()*1.6,
 		SpiralAngle:  rng.Float32() * 6.283,
 	}
 }
@@ -54,7 +54,10 @@ func (g *Girl) Enrage(playerX, playerY float32, bullets *BulletPool) {
 }
 
 // Update advances movement, tether constraint, and archetype bullet-hell patterns.
-func (g *Girl) Update(dt, timeScale float32, tier int, playerX, playerY float32, stops []BusStop, expressSlow bool, bullets *BulletPool) {
+func (g *Girl) Update(dt, timeScale float32, tier int, difficultyScale float32, playerX, playerY float32, stops []BusStop, expressSlow bool, bullets *BulletPool) {
+	if difficultyScale <= 0 {
+		difficultyScale = 1.0
+	}
 	effDT := dt * timeScale
 	g.AnimTimer += effDT
 
@@ -159,29 +162,40 @@ func (g *Girl) Update(dt, timeScale float32, tier int, playerX, playerY float32,
 	}
 	g.ShootTimer -= effDT * shootRate
 	if g.ShootTimer <= 0 && d < 520 {
-		g.firePattern(tier, playerX, playerY, bullets)
+		g.firePattern(tier, difficultyScale, playerX, playerY, bullets)
 	}
 }
 
-func (g *Girl) firePattern(tier int, playerX, playerY float32, bullets *BulletPool) {
+func (g *Girl) firePattern(tier int, difficultyScale float32, playerX, playerY float32, bullets *BulletPool) {
+	if difficultyScale <= 0 {
+		difficultyScale = 1.0
+	}
+	bulletSpeedMult := float32(1.0)
+	if tier <= 1 {
+		bulletSpeedMult = 0.78 + 0.22*difficultyScale
+	}
+
 	dx, dy, _ := normalize2D(playerX-g.X, playerY-g.Y)
 	aimAng := float32(math.Atan2(float64(dy), float64(dx)))
 
 	switch g.Arch {
 	case ArchEmo:
-		g.ShootTimer = 2.4
+		g.ShootTimer = 2.4 / difficultyScale
 		g.SpiralAngle += 0.75
-		count := 2
+		count := 1
 		if g.IsVIP || tier >= 3 {
 			count = 3
+		} else if tier >= 2 {
+			count = 2
 		}
+		spd := float32(95.0) * bulletSpeedMult
 		for i := 0; i < count; i++ {
 			ang := g.SpiralAngle + float32(i)*(6.283/float32(count))
 			bullets.Spawn(Bullet{
 				X:      g.X,
 				Y:      g.Y,
-				VX:     float32(math.Cos(float64(ang))) * 95,
-				VY:     float32(math.Sin(float64(ang))) * 95,
+				VX:     float32(math.Cos(float64(ang))) * spd,
+				VY:     float32(math.Sin(float64(ang))) * spd,
 				Radius: 4.5,
 				MaxAge: 3.4,
 				Kind:   BulletRazor,
@@ -189,18 +203,19 @@ func (g *Girl) firePattern(tier int, playerX, playerY float32, bullets *BulletPo
 		}
 
 	case ArchStudent:
-		g.ShootTimer = 2.1
+		g.ShootTimer = 2.1 / difficultyScale
 		spread := 1
 		if tier >= 2 || g.IsVIP {
 			spread = 3
 		}
+		spd := float32(155.0) * bulletSpeedMult
 		for k := -(spread / 2); k <= spread/2; k++ {
 			ang := aimAng + float32(k)*0.22
 			bullets.Spawn(Bullet{
 				X:           g.X,
 				Y:           g.Y,
-				VX:          float32(math.Cos(float64(ang))) * 155,
-				VY:          float32(math.Sin(float64(ang))) * 155,
+				VX:          float32(math.Cos(float64(ang))) * spd,
+				VY:          float32(math.Sin(float64(ang))) * spd,
 				Radius:      4.0,
 				MaxAge:      4.2,
 				Kind:        BulletProtractor,
@@ -209,19 +224,22 @@ func (g *Girl) firePattern(tier int, playerX, playerY float32, bullets *BulletPo
 		}
 
 	case ArchKawaii:
-		g.ShootTimer = 2.2
-		ringCount := 5
+		g.ShootTimer = 2.2 / difficultyScale
+		ringCount := 3
 		if g.IsVIP || tier >= 3 {
 			ringCount = 7
+		} else if tier >= 2 {
+			ringCount = 5
 		}
+		spd := float32(118.0) * bulletSpeedMult
 		g.SpiralAngle += 0.4
 		for i := 0; i < ringCount; i++ {
 			ang := g.SpiralAngle + float32(i)*(6.283/float32(ringCount))
 			bullets.Spawn(Bullet{
 				X:           g.X,
 				Y:           g.Y,
-				VX:          float32(math.Cos(float64(ang))) * 118,
-				VY:          float32(math.Sin(float64(ang))) * 118,
+				VX:          float32(math.Cos(float64(ang))) * spd,
+				VY:          float32(math.Sin(float64(ang))) * spd,
 				Radius:      4.5,
 				MaxAge:      4.5,
 				Kind:        BulletTear,
@@ -230,23 +248,48 @@ func (g *Girl) firePattern(tier int, playerX, playerY float32, bullets *BulletPo
 		}
 
 	case ArchGyaru:
-		g.ShootTimer = 2.0
-		// Trifurcated flash spread
-		fans := 3
+		g.ShootTimer = 2.0 / difficultyScale
+		spd := float32(175.0) * bulletSpeedMult
 		if g.IsVIP {
-			fans = 5
-		}
-		for k := -(fans / 2); k <= fans/2; k++ {
-			ang := aimAng + float32(k)*0.26
-			bullets.Spawn(Bullet{
-				X:      g.X,
-				Y:      g.Y,
-				VX:     float32(math.Cos(float64(ang))) * 175,
-				VY:     float32(math.Sin(float64(ang))) * 175,
-				Radius: 4.0,
-				MaxAge: 3.4,
-				Kind:   BulletFlash,
-			})
+			for k := -2; k <= 2; k++ {
+				ang := aimAng + float32(k)*0.26
+				bullets.Spawn(Bullet{
+					X:      g.X,
+					Y:      g.Y,
+					VX:     float32(math.Cos(float64(ang))) * spd,
+					VY:     float32(math.Sin(float64(ang))) * spd,
+					Radius: 4.0,
+					MaxAge: 3.4,
+					Kind:   BulletFlash,
+				})
+			}
+		} else if tier >= 2 {
+			for k := -1; k <= 1; k++ {
+				ang := aimAng + float32(k)*0.26
+				bullets.Spawn(Bullet{
+					X:      g.X,
+					Y:      g.Y,
+					VX:     float32(math.Cos(float64(ang))) * spd,
+					VY:     float32(math.Sin(float64(ang))) * spd,
+					Radius: 4.0,
+					MaxAge: 3.4,
+					Kind:   BulletFlash,
+				})
+			}
+		} else {
+			// Tier 1: 2-shot narrow spread
+			for _, off := range [2]float32{-0.13, 0.13} {
+				ang := aimAng + off
+				bullets.Spawn(Bullet{
+					X:      g.X,
+					Y:      g.Y,
+					VX:     float32(math.Cos(float64(ang))) * spd,
+					VY:     float32(math.Sin(float64(ang))) * spd,
+					Radius: 4.0,
+					MaxAge: 3.4,
+					Kind:   BulletFlash,
+				})
+			}
 		}
 	}
 }

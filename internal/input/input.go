@@ -59,12 +59,13 @@ func ReadInput(camX, camY float32) game.InputState {
 // Read collects Keyboard + Mouse, Gamepad, and Touch input into a single game.InputState.
 // stopPhase: 0=none, 1=1-button minigame (Emo/Kawaii/Gyaru), 2=directional minigame/combo (Pragmata/Phase2).
 func (r *Reader) Read(camX, camY float32, activeArch int, stopPhase int, stopScreenX, stopScreenY float32, canThrowExtraStop bool, chronosToggle bool) game.InputState {
+	_ = canThrowExtraStop
 	r.currentArch = activeArch
-	inComboOrMinigame := stopPhase > 0
 
 	st := game.InputState{
 		SelectArchetype:   -1,
 		ActionDir:         game.ActionNone,
+		MouseHoverDir:     game.ActionNone,
 		ChooseUpgrade:     -1,
 		ShopAction:        game.ShopActionNone,
 		ChronosToggleMode: chronosToggle,
@@ -72,7 +73,7 @@ func (r *Reader) Read(camX, camY float32, activeArch int, stopPhase int, stopScr
 
 	var mx, my float32
 
-	// 1. Keyboard movement (WASD always; Arrow keys when not in combo/minigame)
+	// 1. Keyboard movement (WASD only; all minigames/combos are Mouse-driven)
 	if ebiten.IsKeyPressed(ebiten.KeyW) {
 		my -= 1
 	}
@@ -84,20 +85,6 @@ func (r *Reader) Read(camX, camY float32, activeArch int, stopPhase int, stopScr
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyD) {
 		mx += 1
-	}
-	if !inComboOrMinigame {
-		if ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
-			my -= 1
-		}
-		if ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
-			my += 1
-		}
-		if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
-			mx -= 1
-		}
-		if ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
-			mx += 1
-		}
 	}
 
 	// 2. Gamepad Twin-Stick + Face Buttons (action dirs without leaving Left Stick)
@@ -330,55 +317,25 @@ func (r *Reader) Read(camX, camY float32, activeArch int, stopPhase int, stopScr
 		r.currentArch = st.SelectArchetype
 	}
 
-	// 7. Minigame & 4-Step Boarding Combo directional actions (Arrows / IJKL / Zero Hand-Lift LMB)
-	if st.ActionDir == game.ActionNone {
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyI) {
-			st.ActionDir = game.ActionUp
-		} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyL) {
-			st.ActionDir = game.ActionRight
-		} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyK) {
-			st.ActionDir = game.ActionDown
-		} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyJ) {
-			st.ActionDir = game.ActionLeft
-		}
-	}
-	if stopPhase > 0 && (ebiten.IsKeyPressed(ebiten.KeyArrowUp) || ebiten.IsKeyPressed(ebiten.KeyI) ||
-		ebiten.IsKeyPressed(ebiten.KeyArrowRight) || ebiten.IsKeyPressed(ebiten.KeyL) ||
-		ebiten.IsKeyPressed(ebiten.KeyArrowDown) || ebiten.IsKeyPressed(ebiten.KeyK) ||
-		ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyJ)) {
-		st.ActionHeld = true
-	}
-
+	// 7. Minigame & 4-Step Boarding Combo actions (strictly Mouse-driven on desktop; Gamepad preserved)
+	// While inside an active stop (Phase 1 or Phase 2), LMB ALWAYS drives the minigame/combo
+	// regardless of cursor distance so the player never accidentally mis-throws.
 	if stopPhase > 0 {
-		dxCur := float32(curX) - stopScreenX
-		dyCur := float32(curY) - stopScreenY
-		lmbForMinigame := !canThrowExtraStop || (dxCur*dxCur+dyCur*dyCur <= 145*145)
-		if stopPhase == 1 {
-			if lmbForMinigame && st.MouseLeftJustPressed {
-				if st.ActionDir == game.ActionNone {
-					st.ActionDir = game.ActionUp
-				}
-				st.ThrowJustPressed = false
-			}
-			if lmbForMinigame && ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-				st.ActionHeld = true
-			}
-		} else if stopPhase == 2 && lmbForMinigame && st.MouseLeftJustPressed {
-			if st.ActionDir == game.ActionNone {
-				if float32(math.Abs(float64(dxCur))) >= float32(math.Abs(float64(dyCur))) {
-					if dxCur >= 0 {
-						st.ActionDir = game.ActionRight
-					} else {
-						st.ActionDir = game.ActionLeft
-					}
-				} else {
-					if dyCur >= 0 {
-						st.ActionDir = game.ActionDown
-					} else {
-						st.ActionDir = game.ActionUp
-					}
-				}
-			}
+		mDir, mHeld, mHover, suppressThrow := ResolveStopMouseInput(
+			stopPhase,
+			float32(curX), float32(curY),
+			stopScreenX, stopScreenY,
+			st.MouseLeftJustPressed,
+			ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft),
+		)
+		st.MouseHoverDir = mHover
+		if st.ActionDir == game.ActionNone && mDir != game.ActionNone {
+			st.ActionDir = mDir
+		}
+		if mHeld {
+			st.ActionHeld = true
+		}
+		if suppressThrow {
 			st.ThrowJustPressed = false
 		}
 	}
@@ -408,14 +365,66 @@ func (r *Reader) Read(camX, camY float32, activeArch int, stopPhase int, stopScr
 	return st
 }
 
-// ReadMenuInput reads keyboard, gamepad, and mouse input for UI menu screens.
+// ComputeMouseCardinalDir maps a cursor screen position relative to an origin (e.g. Bus Stop center)
+// into the nearest cardinal ActionDir (Up/Right/Down/Left), responding cleanly even near center.
+func ComputeMouseCardinalDir(cursorX, cursorY, originX, originY float32) int {
+	dx := cursorX - originX
+	dy := cursorY - originY
+	absX := float32(math.Abs(float64(dx)))
+	absY := float32(math.Abs(float64(dy)))
+	if absX > absY {
+		if dx >= 0 {
+			return game.ActionRight
+		}
+		return game.ActionLeft
+	}
+	if dy > 0 {
+		return game.ActionDown
+	}
+	return game.ActionUp
+}
+
+// ResolveStopMouseInput resolves Mouse-Only controls for Phase 1 (1-button minigame) and
+// Phase 2 (Pragmata 4x4 Grid & 4-Step Boarding Combo), returning the action direction,
+// hold flag, live hover direction for UI highlight, and whether LMB throw should be suppressed.
+func ResolveStopMouseInput(stopPhase int, curX, curY, stopScreenX, stopScreenY float32, lmbJustPressed, lmbHeld bool) (actionDir int, actionHeld bool, hoverDir int, suppressThrow bool) {
+	actionDir = game.ActionNone
+	hoverDir = game.ActionNone
+	if stopPhase <= 0 {
+		return actionDir, false, hoverDir, false
+	}
+
+	if stopPhase == 1 {
+		if lmbJustPressed {
+			actionDir = game.ActionUp
+			suppressThrow = true
+		}
+		if lmbHeld {
+			actionHeld = true
+		}
+		return actionDir, actionHeld, hoverDir, suppressThrow
+	}
+
+	// stopPhase == 2: Pragmata 4x4 Grid & 4-Step Boarding Combo
+	hoverDir = ComputeMouseCardinalDir(curX, curY, stopScreenX, stopScreenY)
+	if lmbJustPressed {
+		actionDir = hoverDir
+		suppressThrow = true
+	}
+	if lmbHeld {
+		actionHeld = true
+	}
+	return actionDir, actionHeld, hoverDir, suppressThrow
+}
+
+// ReadMenuInput reads keyboard (WASD), gamepad, and mouse input for UI menu screens.
 func (r *Reader) ReadMenuInput() MenuInput {
 	curX, curY := ebiten.CursorPosition()
 	mi := MenuInput{
-		Up:                   inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW),
-		Down:                 inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS),
-		Left:                 inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA),
-		Right:                inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD),
+		Up:                   inpututil.IsKeyJustPressed(ebiten.KeyW),
+		Down:                 inpututil.IsKeyJustPressed(ebiten.KeyS),
+		Left:                 inpututil.IsKeyJustPressed(ebiten.KeyA),
+		Right:                inpututil.IsKeyJustPressed(ebiten.KeyD),
 		Confirm:              inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace),
 		Back:                 inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyBackspace),
 		MouseX:               float32(curX),

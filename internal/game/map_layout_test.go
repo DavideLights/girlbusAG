@@ -2,6 +2,10 @@ package game
 
 import "testing"
 
+func rectsOverlap(a, b Rect) bool {
+	return a.X < b.X+b.W && a.X+a.W > b.X && a.Y < b.Y+b.H && a.Y+a.H > b.Y
+}
+
 func TestDistrictTopologyAndNoOverlaps(t *testing.T) {
 	w := NewWorldWithSeed(101)
 
@@ -20,30 +24,47 @@ func TestDistrictTopologyAndNoOverlaps(t *testing.T) {
 	if len(w.CrosswalkCols) == 0 || len(w.CrosswalkRows) == 0 {
 		t.Fatalf("expected CrosswalkCols and CrosswalkRows to be populated")
 	}
-	if len(w.Lights) < 20 {
+	if len(w.Lights) < 40 {
 		t.Fatalf("expected rich LightSource setup, got %d", len(w.Lights))
 	}
 
-	// Count storefronts, parked cars, trees, benches
-	var buildings, cars, trees int
+	// Count storefronts, parked cars, cyber vans, trees
+	var buildings, cars, vans, trees int
 	for _, p := range w.Props {
 		switch p.Kind {
-		case PropBuildingKonbini, PropBuildingCoffee, PropBuildingArcade, PropBuildingRamen, PropBuildingBookstore, PropBuildingMetro:
+		case PropBuildingKonbini, PropBuildingCoffee, PropBuildingArcade, PropBuildingRamen,
+			PropBuildingBookstore, PropBuildingMetro, PropBuildingPizzeria, PropBuildingVinylBar, PropBuildingGelateria:
 			buildings++
 		case PropCarRed, PropCarYellow, PropCarMint:
 			cars++
+			if p.W != 48 || p.H != 32 {
+				t.Fatalf("expected parked car 48x32, got %vx%v (%+v)", p.W, p.H, p)
+			}
+		case PropCarVanCyber:
+			vans++
+			if p.W != 64 || p.H != 36 {
+				t.Fatalf("expected cyber van 64x36, got %vx%v (%+v)", p.W, p.H, p)
+			}
 		case PropTreeLush:
 			trees++
+		case PropStreetlamp:
+			if p.W != 24 || p.H != 48 {
+				t.Fatalf("expected streetlamp 24x48, got %vx%v (%+v)", p.W, p.H, p)
+			}
+		case PropArchGate, PropTrafficLight:
+			if p.Solid {
+				t.Fatalf("expected non-solid overhead/slim prop %+v", p)
+			}
 		}
 	}
-	if buildings != 8 || cars != 4 || trees != 4 {
-		t.Fatalf("unexpected prop counts: buildings=%d cars=%d trees=%d", buildings, cars, trees)
+	if buildings != 8 || cars != 4 || vans != 1 || trees != 4 {
+		t.Fatalf("unexpected prop counts: buildings=%d cars=%d vans=%d trees=%d", buildings, cars, vans, trees)
 	}
 	if len(w.SlotMachines) != 2 {
 		t.Fatalf("expected 2 SlotMachines, got %d", len(w.SlotMachines))
 	}
 
-	// Verify alleys and central cross-street are open (no solid prop inside alleys)
+	// Verify alleys and central cross-street north edge are open (no solid prop inside alleys)
 	for _, x := range []float32{280, 640, 992} {
 		for _, p := range w.Props {
 			if p.Solid && p.CollideRect.Contains(x, 42) {
@@ -52,31 +73,133 @@ func TestDistrictTopologyAndNoOverlaps(t *testing.T) {
 		}
 	}
 
-	// Verify BusBays don't overlap ZTLZones, ParkIslands, or Solid props
+	// Verify BusBays don't overlap ZTLZones or any Solid prop collider
 	for _, bay := range w.BusBays {
 		cx, cy := bay.X+bay.W*0.5, bay.Y+bay.H*0.5
 		if w.isPointInZTL(cx, cy) {
 			t.Fatalf("BusBay %+v overlaps ZTLZone", bay)
 		}
 		for _, p := range w.Props {
-			if p.Solid && p.CollideRect.Contains(cx, cy) {
-				t.Fatalf("BusBay %+v center overlaps solid prop %+v", bay, p)
+			if p.Solid && rectsOverlap(bay, p.CollideRect) {
+				t.Fatalf("BusBay %+v overlaps solid prop %+v", bay, p)
 			}
 		}
 	}
 
-	// Verify VendingShops and SlotMachines are accessible (not inside solid props)
-	for _, sh := range w.Shops {
+	// Verify ZTLZones don't overlap any Solid prop collider
+	for _, ztl := range w.ZTLZones {
 		for _, p := range w.Props {
-			if p.Solid && p.CollideRect.Contains(sh.X, sh.Y) {
-				t.Fatalf("VendingShop %+v is inside solid prop %+v", sh, p)
+			if p.Solid && rectsOverlap(ztl, p.CollideRect) {
+				t.Fatalf("ZTLZone %+v overlaps solid prop %+v", ztl, p)
 			}
 		}
 	}
+
+	// Verify VendingShops use EspressoHealCost and are accessible (clear of solid props)
+	for _, sh := range w.Shops {
+		if sh.HealCost != EspressoHealCost {
+			t.Fatalf("expected VendingShop HealCost=%d, got %d", EspressoHealCost, sh.HealCost)
+		}
+		for _, p := range w.Props {
+			if p.Solid && p.CollideRect.IntersectsCircle(sh.X, sh.Y, 16) {
+				t.Fatalf("VendingShop %+v overlaps solid prop %+v", sh, p)
+			}
+		}
+	}
+
+	// Verify SlotMachines are accessible (clear of solid props)
 	for _, sm := range w.SlotMachines {
 		for _, p := range w.Props {
-			if p.Solid && p.CollideRect.Contains(sm.X, sm.Y) {
-				t.Fatalf("SlotMachine %+v is inside solid prop %+v", sm, p)
+			if p.Solid && p.CollideRect.IntersectsCircle(sm.X, sm.Y, 16) {
+				t.Fatalf("SlotMachine %+v overlaps solid prop %+v", sm, p)
+			}
+		}
+	}
+}
+
+func TestDistrictNewPropsLightsClearancesAndBounds(t *testing.T) {
+	layout := BuildDistrictLayout()
+
+	// 1. Verify all 14 new PropKinds are placed in BuildDistrictLayout()
+	propCounts := make(map[PropKind]int)
+	for _, p := range layout.Props {
+		propCounts[p.Kind]++
+	}
+	requiredProps := []PropKind{
+		PropBuildingPizzeria,
+		PropBuildingVinylBar,
+		PropBuildingGelateria,
+		PropFountain,
+		PropArchGate,
+		PropPhoneBooth,
+		PropFoodCart,
+		PropKioskUmbrella,
+		PropTrafficLight,
+		PropBollardGlow,
+		PropPlanterNeon,
+		PropVendingDrink,
+		PropBusShelterDeco,
+		PropCarVanCyber,
+	}
+	for _, kind := range requiredProps {
+		if propCounts[kind] == 0 {
+			t.Fatalf("expected PropKind %d to be placed in BuildDistrictLayout()", kind)
+		}
+	}
+
+	// 2. Verify all LightKinds (existing + 5 new) are placed in BuildDistrictLayout()
+	lightCounts := make(map[LightKind]int)
+	for _, l := range layout.Lights {
+		lightCounts[l.Kind]++
+		if l.X < 0 || l.X > ArenaWidth || l.Y < 0 || l.Y > ArenaHeight {
+			t.Fatalf("LightSource out of arena bounds [0..%v, 0..%v]: %+v", ArenaWidth, ArenaHeight, l)
+		}
+		if l.Radius <= 0 || l.Intensity <= 0 {
+			t.Fatalf("LightSource has non-positive radius or intensity: %+v", l)
+		}
+	}
+	requiredLights := []LightKind{
+		LightStreetlamp,
+		LightShopWindow,
+		LightNeonSign,
+		LightVending,
+		LightSlotMachine,
+		LightLantern,
+		LightFountain,
+		LightBollard,
+		LightTraffic,
+		LightVehicle,
+	}
+	for _, lk := range requiredLights {
+		if lightCounts[lk] == 0 {
+			t.Fatalf("expected LightKind %d to be placed in BuildDistrictLayout()", lk)
+		}
+	}
+
+	// 3. Verify Alfredo's default spawn (640, 360) and tutorial spawn (540, 360) have generous clearance
+	for _, p := range layout.Props {
+		if !p.Solid {
+			continue
+		}
+		if p.CollideRect.IntersectsCircle(640, 360, 48) {
+			t.Fatalf("solid prop %+v overlaps Alfredo default spawn (640,360) clearance radius 48", p)
+		}
+		if p.CollideRect.IntersectsCircle(540, 360, 44) {
+			t.Fatalf("solid prop %+v overlaps tutorial spawn (540,360) clearance radius 44", p)
+		}
+	}
+
+	// 4. Verify no two solid CollideRects overlap each other
+	solidProps := make([]MapProp, 0, len(layout.Props))
+	for _, p := range layout.Props {
+		if p.Solid {
+			solidProps = append(solidProps, p)
+		}
+	}
+	for i := 0; i < len(solidProps); i++ {
+		for j := i + 1; j < len(solidProps); j++ {
+			if rectsOverlap(solidProps[i].CollideRect, solidProps[j].CollideRect) {
+				t.Fatalf("solid props overlap: [%d]=%+v vs [%d]=%+v", i, solidProps[i], j, solidProps[j])
 			}
 		}
 	}

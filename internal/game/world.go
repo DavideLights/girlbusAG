@@ -5,6 +5,8 @@ import (
 	"math"
 	"math/rand"
 	"time"
+
+	"girlbusAG/internal/meta"
 )
 
 // World is the complete, deterministic pure-Go game simulation state.
@@ -24,6 +26,7 @@ type World struct {
 	Express      []ExpressLine
 	WaveRings    []WaveRing
 	Slipstreams  []BusSlipstream
+	HealPickups  []HealPickup
 
 	Props         []MapProp
 	Lights        []LightSource
@@ -55,6 +58,14 @@ type World struct {
 	GameOver          bool
 	Victory           bool
 
+	TutorialMode         bool
+	TutorialStep         int
+	TutMoved             bool
+	TutThrewStop         bool
+	TutCompletedMinigame bool
+	TutBoardedBus        bool
+	TutUsedSlotOrShop    bool
+
 	PendingLevelUp bool
 	UpgradeChoices [3]UpgradeCard
 	ShopMenu       ShopMenuState
@@ -64,9 +75,12 @@ type World struct {
 
 	CameraX, CameraY float32
 
-	girlSpawnTimer float32
-	nextEntityID   int
-	rng            *rand.Rand
+	girlSpawnTimer      float32
+	healSpawnTimer      float64
+	boardedSinceHeal    int
+	tutHealRestoreTimer float32
+	nextEntityID        int
+	rng                 *rand.Rand
 }
 
 // NewWorld creates a new normal run using a time-based seed.
@@ -84,6 +98,14 @@ func NewWorldWithOptions(seed int64, bossRush bool) *World {
 	layout := BuildDistrictLayout()
 	rng := rand.New(rand.NewSource(seed))
 
+	shops := make([]VendingShop, len(layout.Shops))
+	copy(shops, layout.Shops)
+	for i := range shops {
+		shops[i].HealCost = EspressoHealCost
+	}
+	slots := make([]SlotMachine, len(layout.SlotMachines))
+	copy(slots, layout.SlotMachines)
+
 	w := &World{
 		Player:         NewPlayer(),
 		Stops:          make([]BusStop, 0, 8),
@@ -91,8 +113,8 @@ func NewWorldWithOptions(seed int64, bossRush bool) *World {
 		Police:         NewPoliceSystem(),
 		Buses:          make([]NeonBus, 0, 4),
 		ZTLZones:       layout.ZTLZones,
-		Shops:          layout.Shops,
-		SlotMachines:   layout.SlotMachines,
+		Shops:          shops,
+		SlotMachines:   slots,
 		Props:          layout.Props,
 		Lights:         layout.Lights,
 		ParkIslands:    layout.ParkIslands,
@@ -106,11 +128,13 @@ func NewWorldWithOptions(seed int64, bossRush bool) *World {
 		Express:        make([]ExpressLine, 0, 8),
 		WaveRings:      make([]WaveRing, 0, 16),
 		Slipstreams:    make([]BusSlipstream, 0, 4),
+		HealPickups:    make([]HealPickup, 0, 8),
 		WorldEvents:    make([]WorldEvent, 0, 32),
 		MusicBPM:       108.0,
 		DifficultyTier: 1,
 		BossRushMode:   bossRush,
 		girlSpawnTimer: 1.5,
+		healSpawnTimer: 24.0,
 		nextEntityID:   1,
 		rng:            rng,
 	}
@@ -140,14 +164,109 @@ func NewWorldWithOptions(seed int64, bossRush bool) *World {
 		w.BossScheduleTimes = []float32{105.0, 225.0, 355.0, 485.0}
 	}
 
-	// Seed initial horde across all 4 archetypes
-	for i := 0; i < 8; i++ {
+	// Seed initial horde across all 4 archetypes (5 girls, 0 VIPs initially)
+	for i := 0; i < 5; i++ {
 		arch := Archetype(i % int(ArchCount))
-		w.spawnGirl(arch, i == 7)
+		w.spawnGirl(arch, false)
 	}
+
+	// Seed 2 initial world healing pickups on clear avenue/plaza spots
+	w.spawnInitialHealPickups()
 
 	w.snapCamera()
 	return w
+}
+
+// NewTutorialWorld creates a safe interactive tutorial sandbox world where Alfredo can practice
+// movement, throwing Bus Stops, Mouse-Only minigames/combos, boarding buses, healing, and shops/slots.
+func NewTutorialWorld(save *meta.SaveData) *World {
+	_ = save
+	w := NewWorldWithOptions(4242, false)
+	w.TutorialMode = true
+	w.TutorialStep = 0
+	w.BossSchedule = nil
+	w.BossScheduleTimes = nil
+
+	w.Player.X = 540
+	w.Player.Y = 360
+	w.constrainPlayerPos()
+	w.Player.Cash = 180
+	w.Player.MaxHP = 6
+	w.Player.HP = 6
+	w.Player.StopCooldownBase = 3.0
+	w.Player.StopCooldownTimer = 0
+
+	// Ensure 1 nearby Vending Shop and 1 nearby Slot Machine are right beside the central plaza
+	shopX, shopY := w.constrainCircleToWorld(460, 316, 16, 60, ArenaWidth-60, 96, w.walkableMaxY()-20)
+	slotX, slotY := w.constrainCircleToWorld(460, 404, 16, 60, ArenaWidth-60, 96, w.walkableMaxY()-20)
+	w.Shops = append(w.Shops, VendingShop{
+		X:         shopX,
+		Y:         shopY,
+		Radius:    60,
+		HealCost:  EspressoHealCost,
+		BribeCost: 100,
+	})
+	w.SlotMachines = append(w.SlotMachines, SlotMachine{
+		X:        slotX,
+		Y:        slotY,
+		Radius:   60,
+		SpinCost: 35,
+	})
+	w.Lights = append(w.Lights,
+		LightSource{X: shopX, Y: shopY, Radius: 88, Kind: LightVending, R: 80, G: 235, B: 255, Intensity: 0.80},
+		LightSource{X: slotX, Y: slotY, Radius: 92, Kind: LightSlotMachine, R: 255, G: 215, B: 60, Intensity: 0.85},
+	)
+
+	// Place 1 nearby HealPickup in clear view of the central plaza
+	w.HealPickups = w.HealPickups[:0]
+	hx, hy := w.findSafePickupSpot(612, 360, true)
+	w.HealPickups = append(w.HealPickups, HealPickup{
+		X:         hx,
+		Y:         hy,
+		Amount:    1,
+		Chronos:   20.0,
+		LifeTimer: 120.0,
+		BobPhase:  0.4,
+		Big:       false,
+	})
+
+	// Spawn 4 gentle practice girls (1 of each archetype, zero VIPs)
+	w.Girls = w.Girls[:0]
+	w.spawnTutorialPracticeGirls()
+
+	w.snapCamera()
+	return w
+}
+
+func (w *World) spawnTutorialPracticeGirls() {
+	spots := [ArchCount][2]float32{
+		ArchEmo:     {685, 312},
+		ArchStudent: {735, 392},
+		ArchKawaii:  {655, 418},
+		ArchGyaru:   {725, 294},
+	}
+	for a := Archetype(0); a < ArchCount; a++ {
+		g := NewGirl(w.allocID(), spots[a][0], spots[a][1], a, false, w.rng)
+		g.ShootTimer = 3.5 + w.rng.Float32()*2.0
+		w.constrainGirlPos(&g)
+		w.Girls = append(w.Girls, g)
+	}
+}
+
+// EarlyDifficultyScale returns an early-run intensity ramp starting at 0.55 at t=0
+// and smoothly ramping to 1.0 over the first 120 seconds (or immediately 1.0 in Tier 2+ / Boss Rush).
+func (w *World) EarlyDifficultyScale() float64 {
+	if w.DifficultyTier >= 2 || w.BossRushMode {
+		return 1.0
+	}
+	t := float64(w.RunTime) / 120.0
+	if t <= 0 {
+		return 0.55
+	}
+	if t >= 1.0 {
+		return 1.0
+	}
+	return 0.55 + 0.45*t
 }
 
 func (w *World) emitEvent(kind WorldEventKind, val int, flag bool) {
@@ -249,12 +368,18 @@ func (w *World) Update(in InputState, dt float32) {
 	// Vending Shop mini-menu pauses simulation cleanly
 	if w.ShopMenu.Active {
 		w.HandleShopInput(in)
+		if w.TutorialMode {
+			w.syncTutorialStep()
+		}
 		return
 	}
 
 	// Rizz-Slots 777 modal pauses simulation cleanly
 	if w.SlotModal.Active {
 		w.UpdateSlotMachine(dt, in)
+		if w.TutorialMode {
+			w.syncTutorialStep()
+		}
 		return
 	}
 
@@ -276,6 +401,15 @@ func (w *World) Update(in InputState, dt float32) {
 	}
 
 	w.RunTime += dt
+
+	if w.TutorialMode && w.tutHealRestoreTimer > 0 {
+		w.tutHealRestoreTimer -= dt
+		if w.tutHealRestoreTimer <= 0 {
+			w.tutHealRestoreTimer = 0
+			w.Player.Heal(w.Player.MaxHP)
+			w.addPopup(w.Player.X, w.Player.Y-28, "HP RIPRISTINATI (6/6)!", 3)
+		}
+	}
 
 	if w.StreakTimer > 0 {
 		w.StreakTimer -= dt
@@ -300,6 +434,11 @@ func (w *World) Update(in InputState, dt float32) {
 	if dashed {
 		w.emitEvent(EventDash, 0, false)
 	}
+	if w.TutorialMode && !w.TutMoved {
+		if math.Abs(float64(in.MoveX)) > 0.05 || math.Abs(float64(in.MoveY)) > 0.05 || dashed {
+			w.TutMoved = true
+		}
+	}
 	w.constrainPlayerPos()
 
 	// Time scales: Chronos slows enemy/bullet simulation while keeping Alfredo & minigames crisp
@@ -314,6 +453,11 @@ func (w *World) Update(in InputState, dt float32) {
 			w.BulletFreezeTimer = 0
 		}
 		bulletTimeScale = 0.08
+	}
+
+	// Mouse-click interaction with nearby Vending Shop / Slot Machine (when not inside an active stop)
+	if w.tryMouseClickInteract(in) {
+		return
 	}
 
 	// Smart Magnetic Aim, Tactical Stop Recall, and Throw Input Buffer (120 ms)
@@ -340,20 +484,28 @@ func (w *World) Update(in InputState, dt float32) {
 	// Update Neon Buses
 	w.updateBuses(dt)
 
-	// Boss Gatekeeper schedule
-	w.checkTimedBossSpawns(dt)
+	// Boss Gatekeeper schedule (disabled in TutorialMode)
+	if !w.TutorialMode {
+		w.checkTimedBossSpawns(dt)
+	}
 
 	// Update Girls & horde spawning
 	w.updateGirlSpawner(dt)
+	diffScale := float32(w.EarlyDifficultyScale())
+	if w.TutorialMode {
+		diffScale = 0.25
+	}
 	for i := range w.Girls {
 		expressSlow := w.isPointInExpressLane(w.Girls[i].X, w.Girls[i].Y)
-		w.Girls[i].Update(dt, enemyTimeScale, w.DifficultyTier, w.Player.X, w.Player.Y, w.Stops, expressSlow, &w.Bullets)
+		w.Girls[i].Update(dt, enemyTimeScale, w.DifficultyTier, diffScale, w.Player.X, w.Player.Y, w.Stops, expressSlow, &w.Bullets)
 		w.constrainGirlPos(&w.Girls[i])
 	}
 
-	// Update Police & Boss
-	w.Police.Update(dt, enemyTimeScale, w.Player.X, w.Player.Y, w.Stops, &w.Bullets, &w.Telegraphs, w.rng)
-	w.Boss.Update(dt, enemyTimeScale, w.Player.X, w.Player.Y, w.Stops, w.Girls, &w.Bullets, &w.Telegraphs)
+	// Update Police & Boss (skipped in TutorialMode so urban events/bosses do not interrupt)
+	if !w.TutorialMode {
+		w.Police.Update(dt, enemyTimeScale, w.Player.X, w.Player.Y, w.Stops, &w.Bullets, &w.Telegraphs, w.rng)
+		w.Boss.Update(dt, enemyTimeScale, w.Player.X, w.Player.Y, w.Stops, w.Girls, &w.Bullets, &w.Telegraphs)
+	}
 
 	// Update BulletPool & resolve solid prop cover collisions
 	w.Bullets.Update(dt, bulletTimeScale, w.Player.X, w.Player.Y, w.Stops)
@@ -362,8 +514,15 @@ func (w *World) Update(in InputState, dt float32) {
 	// Check Tear-Graze & Bullet-Player collisions
 	w.handleBulletInteractions()
 
+	// Update World Healing Pickups ("Cure in giro")
+	w.updateHealPickups(dt)
+
 	// Vending Machine Shop & Slot Machine interaction [E]
 	w.updateShops(dt, in.InteractJustPressed)
+
+	if w.TutorialMode {
+		w.syncTutorialStep()
+	}
 
 	// Smooth camera follow
 	targetCamX := clamp32(w.Player.X-ScreenWidth*0.5, 0, ArenaWidth-ScreenWidth)
@@ -878,10 +1037,14 @@ func (w *World) tryThrowBusStop(aimX, aimY float32) {
 	}
 
 	if inZTL {
-		added := w.Police.AddStar(1)
-		if added > 0 {
-			w.addPopup(tx, ty-44, "ZTL! +1* WANTED!", 2)
-			w.emitEvent(EventPoliceStarUp, w.Police.Stars, false)
+		if !w.TutorialMode {
+			added := w.Police.AddStar(1)
+			if added > 0 {
+				w.addPopup(tx, ty-44, "ZTL! +1* WANTED!", 2)
+				w.emitEvent(EventPoliceStarUp, w.Police.Stars, false)
+			} else {
+				w.addPopup(tx, ty-44, "BONUS ZTL 3x!", 2)
+			}
 		} else {
 			w.addPopup(tx, ty-44, "BONUS ZTL 3x!", 2)
 		}
@@ -948,7 +1111,7 @@ func (w *World) tryThrowBusStop(aimX, aimY float32) {
 		w.emitEvent(EventHook, len(stop.HookedGirlIDs), perfectDrop)
 	}
 
-	if hookedVIP {
+	if hookedVIP && !w.TutorialMode {
 		if w.Police.AddStar(1) > 0 {
 			w.addPopup(tx, ty-56, "BERSAGLIO VIP! +1*!", 2)
 			w.emitEvent(EventPoliceStarUp, w.Police.Stars, false)
@@ -991,6 +1154,9 @@ func (w *World) tryThrowBusStop(aimX, aimY float32) {
 	}
 
 	w.Stops = append(w.Stops, stop)
+	if w.TutorialMode {
+		w.TutThrewStop = true
+	}
 }
 
 func (w *World) updateStops(dt float32, actionDir int, actionHeld bool) {
@@ -1154,6 +1320,9 @@ func (w *World) updateStops(dt float32, actionDir int, actionHeld bool) {
 		}
 
 		if st.Minigame.Completed && !st.Combo.Active && !st.Combo.Completed && !st.Combo.Failed {
+			if w.TutorialMode {
+				w.TutCompletedMinigame = true
+			}
 			strict := st.HookedBoss && w.Boss.Active && w.Boss.Kind == BossProfessor
 			st.Combo.Start(st.Arch == ArchEmo && st.SynergyActive, strict, w.rng)
 		} else if st.Combo.Active && !st.Combo.Completed && !st.Combo.Failed {
@@ -1329,6 +1498,21 @@ func (w *World) completeStopBoarding(st *BusStop) {
 
 	if boardedHere > 0 {
 		w.emitEvent(EventGirlBoarded, boardedHere, false)
+		if w.TutorialMode {
+			w.TutBoardedBus = true
+		}
+		for k := 0; k < boardedHere; k++ {
+			w.boardedSinceHeal++
+			if w.boardedSinceHeal == 3 && w.rng.Float32() < 0.35 {
+				w.boardedSinceHeal = 0
+				w.spawnHealPickupNear(st.X, st.Y, 1, 20.0, false)
+			} else if w.boardedSinceHeal >= 4 {
+				if w.Player.HP < w.Player.MaxHP {
+					w.spawnHealPickupNear(st.X, st.Y, 1, 20.0, false)
+				}
+				w.boardedSinceHeal = 0
+			}
+		}
 	}
 
 	// Boss 3-Stop Break!
@@ -1358,11 +1542,16 @@ func (w *World) completeStopBoarding(st *BusStop) {
 
 		if canBreak {
 			bossBroken = true
+			bossX, bossY := w.Boss.X, w.Boss.Y
 			w.HitStopTimer = 0.140 // 140ms Boss Break Hit-Stop
 			w.ScreenShake = 11.5
-			w.Bullets.ClearRadius(w.Boss.X, w.Boss.Y, 240)
+			w.Bullets.ClearRadius(bossX, bossY, 240)
 			bossKind := w.Boss.Kind
 			defeated := w.Boss.BreakShield()
+
+			// Boss shield break ALWAYS drops a Big (+2 HP, +35 Chronos) healing pickup near the boss!
+			w.spawnHealPickupNear(bossX, bossY, 2, 35.0, true)
+
 			if defeated {
 				starsAtKill := w.Police.Stars
 				totalXP += int(240 * xpMult)
@@ -1441,6 +1630,14 @@ func (w *World) checkTimedBossSpawns(dt float32) {
 }
 
 func (w *World) updateGirlSpawner(dt float32) {
+	if w.TutorialMode {
+		if len(w.Girls) == 0 {
+			w.spawnTutorialPracticeGirls()
+			w.addPopup(w.Player.X, w.Player.Y-32, "NUOVE RAGAZZE PRATICA!", 1)
+		}
+		return
+	}
+
 	targetCap := 10 + int(w.RunTime/18.0) + (w.DifficultyTier-1)*4
 	if targetCap > 42 {
 		targetCap = 42
@@ -1454,11 +1651,15 @@ func (w *World) updateGirlSpawner(dt float32) {
 		w.girlSpawnTimer = interval
 
 		arch := Archetype(w.rng.Intn(int(ArchCount)))
-		vipChance := float32(0.10)
-		if w.DifficultyTier >= 2 {
-			vipChance = 0.18
+		vipAllowed := w.RunTime >= 45.0 || w.DifficultyTier >= 2
+		isVIP := false
+		if vipAllowed {
+			vipChance := float32(0.10)
+			if w.DifficultyTier >= 2 {
+				vipChance = 0.18
+			}
+			isVIP = w.rng.Float32() < vipChance
 		}
-		isVIP := w.rng.Float32() < vipChance
 		w.spawnGirl(arch, isVIP)
 	}
 }
@@ -1466,6 +1667,9 @@ func (w *World) updateGirlSpawner(dt float32) {
 func (w *World) spawnGirl(arch Archetype, isVIP bool) {
 	sx, sy := randomEdgePos(w.rng)
 	g := NewGirl(w.allocID(), sx, sy, arch, isVIP, w.rng)
+	if w.DifficultyTier >= 2 {
+		g.ShootTimer = 0.9 + w.rng.Float32()*1.3
+	}
 	w.constrainGirlPos(&g)
 	w.Girls = append(w.Girls, g)
 }
@@ -1626,7 +1830,235 @@ func (w *World) damagePlayer(dmg int, kind BulletKind) {
 	}
 
 	if w.Player.HP <= 0 {
-		w.GameOver = true
+		if w.TutorialMode {
+			w.Player.HP = 1
+			w.tutHealRestoreTimer = 1.0
+			w.addPopup(w.Player.X, w.Player.Y-34, "TUTORIAL: RECUPERO HP!", 3)
+		} else {
+			w.GameOver = true
+		}
+	}
+}
+
+func (w *World) isPlayerInActiveStop() bool {
+	for i := range w.Stops {
+		st := &w.Stops[i]
+		if !st.Active || st.BusRushTriggered {
+			continue
+		}
+		if st.PlayerInside || st.CoyoteTimer > 0 || distSq(w.Player.X, w.Player.Y, st.X, st.Y) <= st.CaptureRadius*st.CaptureRadius {
+			return true
+		}
+	}
+	return false
+}
+
+// tryMouseClickInteract allows opening a nearby Vending Shop or Slot Machine with a direct LMB click
+// when Alfredo is not inside an active Bus Stop minigame/combo.
+func (w *World) tryMouseClickInteract(in InputState) bool {
+	if !in.MouseLeftJustPressed || w.isPlayerInActiveStop() {
+		return false
+	}
+	clickX, clickY := in.AimWorldX, in.AimWorldY
+	if clickX == 0 && clickY == 0 && (in.MouseScreenX != 0 || in.MouseScreenY != 0) {
+		clickX = w.CameraX + in.MouseScreenX
+		clickY = w.CameraY + in.MouseScreenY
+	}
+
+	const (
+		nearPlayerSq = float32(85.0 * 85.0)
+		farPlayerSq  = float32(110.0 * 110.0)
+		nearClickSq  = float32(36.0 * 36.0)
+		tightClickSq = float32(28.0 * 28.0)
+	)
+
+	for i := range w.Shops {
+		sh := &w.Shops[i]
+		if sh.Cooldown > 0 {
+			continue
+		}
+		pD2 := distSq(w.Player.X, w.Player.Y, sh.X, sh.Y)
+		cD2 := distSq(clickX, clickY, sh.X, sh.Y)
+		if (pD2 <= nearPlayerSq && cD2 <= nearClickSq) || (pD2 <= farPlayerSq && cD2 <= tightClickSq) {
+			w.OpenShop(i)
+			return true
+		}
+	}
+
+	for i := range w.SlotMachines {
+		sm := &w.SlotMachines[i]
+		pD2 := distSq(w.Player.X, w.Player.Y, sm.X, sm.Y)
+		cD2 := distSq(clickX, clickY, sm.X, sm.Y)
+		if (pD2 <= nearPlayerSq && cD2 <= nearClickSq) || (pD2 <= farPlayerSq && cD2 <= tightClickSq) {
+			w.OpenSlotMachine(i)
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) spawnInitialHealPickups() {
+	candidates := [2][2]float32{
+		{460, 236},
+		{820, 476},
+	}
+	for _, c := range candidates {
+		px, py := w.findSafePickupSpot(c[0], c[1], true)
+		w.HealPickups = append(w.HealPickups, HealPickup{
+			X:         px,
+			Y:         py,
+			Amount:    1,
+			Chronos:   20.0,
+			LifeTimer: 45.0,
+			BobPhase:  w.rng.Float64() * 6.283,
+			Big:       false,
+		})
+	}
+}
+
+func (w *World) isClearPickupPos(x, y float32) bool {
+	if x < 48 || x > ArenaWidth-48 || y < 108 || y > w.walkableMaxY()-18 {
+		return false
+	}
+	for i := range w.Props {
+		if w.Props[i].Solid && w.Props[i].CollideRect.IntersectsCircle(x, y, 14.0) {
+			return false
+		}
+	}
+	return true
+}
+
+func (w *World) findSafePickupSpot(nearX, nearY float32, nearTarget bool) (float64, float64) {
+	maxY := w.walkableMaxY() - 20
+	if nearTarget {
+		// Try exact or tiny radial jitter around target position
+		for attempt := 0; attempt < 12; attempt++ {
+			ang := w.rng.Float64() * 6.283
+			rad := float32(0)
+			if attempt > 0 {
+				rad = 14.0 + float32(attempt)*4.0
+			}
+			cx := clamp32(nearX+float32(math.Cos(ang))*rad, 48, ArenaWidth-48)
+			cy := clamp32(nearY+float32(math.Sin(ang))*rad, 108, maxY)
+			if w.isClearPickupPos(cx, cy) {
+				return float64(cx), float64(cy)
+			}
+		}
+		cx, cy := w.constrainCircleToWorld(nearX, nearY, 14.0, 48, ArenaWidth-48, 108, maxY)
+		return float64(cx), float64(cy)
+	}
+
+	// Random walkable avenue/plaza spot clear of solid props
+	for attempt := 0; attempt < 24; attempt++ {
+		cx := 80.0 + w.rng.Float32()*(ArenaWidth-160.0)
+		cy := 148.0 + w.rng.Float32()*(maxY-168.0)
+		if !w.isClearPickupPos(cx, cy) {
+			continue
+		}
+		tooClose := false
+		for i := range w.HealPickups {
+			if distSq(cx, cy, float32(w.HealPickups[i].X), float32(w.HealPickups[i].Y)) < 96*96 {
+				tooClose = true
+				break
+			}
+		}
+		if !tooClose {
+			return float64(cx), float64(cy)
+		}
+	}
+	cx, cy := w.constrainCircleToWorld(ArenaWidth*0.5, ArenaHeight*0.5, 14.0, 48, ArenaWidth-48, 108, maxY)
+	return float64(cx), float64(cy)
+}
+
+func (w *World) spawnHealPickupNear(x, y float32, amount int, chronos float64, big bool) {
+	px, py := w.findSafePickupSpot(x, y, true)
+	w.HealPickups = append(w.HealPickups, HealPickup{
+		X:         px,
+		Y:         py,
+		Amount:    amount,
+		Chronos:   chronos,
+		LifeTimer: 45.0,
+		BobPhase:  w.rng.Float64() * 6.283,
+		Big:       big,
+	})
+}
+
+func (w *World) updateHealPickups(dt float32) {
+	dt64 := float64(dt)
+
+	// Periodic world heal spawning: every 24s if fewer than 3 pickups exist
+	w.healSpawnTimer -= dt64
+	if w.healSpawnTimer <= 0 {
+		w.healSpawnTimer = 24.0
+		if len(w.HealPickups) < 3 {
+			px, py := w.findSafePickupSpot(0, 0, false)
+			w.HealPickups = append(w.HealPickups, HealPickup{
+				X:         px,
+				Y:         py,
+				Amount:    1,
+				Chronos:   20.0,
+				LifeTimer: 45.0,
+				BobPhase:  w.rng.Float64() * 6.283,
+				Big:       false,
+			})
+		}
+	}
+
+	px := float64(w.Player.X)
+	py := float64(w.Player.Y)
+	canCollect := w.Player.HP < w.Player.MaxHP || w.Player.ChronosMeter < 95.0
+
+	for i := 0; i < len(w.HealPickups); {
+		p := &w.HealPickups[i]
+		p.BobPhase += dt64 * 4.2
+		p.LifeTimer -= dt64
+		if p.LifeTimer <= 0 {
+			w.HealPickups[i] = w.HealPickups[len(w.HealPickups)-1]
+			w.HealPickups = w.HealPickups[:len(w.HealPickups)-1]
+			continue
+		}
+
+		if canCollect {
+			dx := px - p.X
+			dy := py - p.Y
+			d := math.Hypot(dx, dy)
+			if d <= 56.0 && d > 0.001 {
+				step := 160.0 * dt64
+				if step > d {
+					step = d
+				}
+				p.X += (dx / d) * step
+				p.Y += (dy / d) * step
+				dx = px - p.X
+				dy = py - p.Y
+				d = math.Hypot(dx, dy)
+			}
+			if d <= 26.0 {
+				w.Player.Heal(p.Amount)
+				w.Player.HealFlashTimer = 0.45
+				w.Player.ChronosMeter = clamp32(w.Player.ChronosMeter+float32(p.Chronos), 0, w.Player.ChronosMax)
+				w.addPopup(w.Player.X, w.Player.Y-28, fmt.Sprintf("+%d HP", p.Amount), 3)
+				w.emitEvent(EventHealPickup, p.Amount, p.Big)
+
+				w.HealPickups[i] = w.HealPickups[len(w.HealPickups)-1]
+				w.HealPickups = w.HealPickups[:len(w.HealPickups)-1]
+				continue
+			}
+		}
+
+		i++
+	}
+}
+
+func (w *World) syncTutorialStep() {
+	if w.TutorialStep < 1 && w.TutMoved && w.TutThrewStop {
+		w.TutorialStep = 1
+	}
+	if w.TutorialStep < 2 && w.TutCompletedMinigame {
+		w.TutorialStep = 2
+	}
+	if w.TutorialStep < 3 && w.TutBoardedBus {
+		w.TutorialStep = 3
 	}
 }
 

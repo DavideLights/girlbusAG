@@ -215,6 +215,7 @@ const (
 	EventStopRecall
 	EventSlipstream
 	EventFeverUp
+	EventHealPickup
 )
 
 // WorldEvent records a single simulation event emitted during World.Update.
@@ -239,6 +240,7 @@ type InputState struct {
 	SelectArchetype      int // -1 if none, 0..3 to switch active Bus Stop archetype
 	ActionDir            int // -1 none, 0=Up, 1=Right, 2=Down, 3=Left
 	ActionHeld           bool
+	MouseHoverDir        int // -1 none, 0=Up, 1=Right, 2=Down, 3=Left (live quadrant hover in stopPhase == 2)
 	InteractJustPressed  bool
 	ChooseUpgrade        int // -1 none, 0..2 when Level-Up 3-Card choice is active
 	ShopAction           int // 0 none, 1..4 when Vending Shop modal is active
@@ -324,6 +326,16 @@ type WaveRing struct {
 type BusSlipstream struct {
 	X1, X2, Y     float32
 	Life, MaxLife float32
+}
+
+// HealPickup represents a world-space healing collectible ("Cure in giro") dropped across the district.
+type HealPickup struct {
+	X, Y      float64
+	Amount    int // 1 or 2 HP
+	Chronos   float64
+	LifeTimer float64
+	BobPhase  float64
+	Big       bool
 }
 
 // UpgradeKind identifies an in-run Level-Up upgrade card.

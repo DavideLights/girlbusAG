@@ -11,6 +11,11 @@ const (
 	PropBuildingBookstore
 	PropBuildingMetro
 	PropBuildingNewsstand
+	PropBuildingPizzeria
+	PropBuildingVinylBar
+	PropBuildingGelateria
+	PropFountain
+	PropArchGate
 	PropTreeLush
 	PropStreetlamp
 	PropBenchPlants
@@ -25,9 +30,18 @@ const (
 	PropAsphaltCrack
 	PropFlowerBox
 	PropNeonBillboard
+	PropPhoneBooth
+	PropFoodCart
+	PropKioskUmbrella
+	PropTrafficLight
+	PropBollardGlow
+	PropPlanterNeon
+	PropVendingDrink
+	PropBusShelterDeco
 	PropCarRed
 	PropCarYellow
 	PropCarMint
+	PropCarVanCyber
 )
 
 // MapProp represents a placed architectural, foliage, or street-furniture prop in the city district.
@@ -50,6 +64,11 @@ const (
 	LightNeonSign
 	LightVending
 	LightSlotMachine
+	LightLantern
+	LightFountain
+	LightBollard
+	LightTraffic
+	LightVehicle
 )
 
 // LightSource defines a colored world-space light emitter for the evening/night lighting pass.
@@ -112,19 +131,19 @@ func BuildDistrictLayout() DistrictLayout {
 		},
 		// 3 Konbini Neon Vending Machines on the North & South Sidewalk Promenades.
 		Shops: []VendingShop{
-			{X: 220, Y: 92, Radius: 54, HealCost: 50, BribeCost: 100},
-			{X: 500, Y: 92, Radius: 54, HealCost: 50, BribeCost: 100},
-			{X: 1040, Y: 592, Radius: 54, HealCost: 50, BribeCost: 100},
+			{X: 220, Y: 92, Radius: 54, HealCost: EspressoHealCost, BribeCost: 100},
+			{X: 500, Y: 92, Radius: 54, HealCost: EspressoHealCost, BribeCost: 100},
+			{X: 1040, Y: 592, Radius: 54, HealCost: EspressoHealCost, BribeCost: 100},
 		},
 		// 2 Rizz-Slots 777 Cabinets: North Arcade & South Waterfront Boardwalk.
 		SlotMachines: []SlotMachine{
 			{X: 386, Y: 94, Radius: 54, SpinCost: 35},
-			{X: 740, Y: 584, Radius: 54, SpinCost: 35},
+			{X: 774, Y: 586, Radius: 54, SpinCost: 35},
 		},
 	}
 
-	props := make([]MapProp, 0, 84)
-	lights := make([]LightSource, 0, 56)
+	props := make([]MapProp, 0, 128)
+	lights := make([]LightSource, 0, 96)
 
 	// --- Layer 1: Varied North Storefront Boulevard (Y = 0..144) ---
 	type storefrontSpec struct {
@@ -132,17 +151,17 @@ func BuildDistrictLayout() DistrictLayout {
 		kind PropKind
 	}
 	storefronts := []storefrontSpec{
-		// Block 1 (X = 32..240), alley 240..320
+		// Block 1 (X = 32..240), West Alley 240..320
 		{x: 32, kind: PropBuildingKonbini},
-		{x: 144, kind: PropBuildingRamen},
-		// Block 2 (X = 320..528), Central Cross-Street North Avenue 528..752
+		{x: 144, kind: PropBuildingPizzeria},
+		// Block 2 (X = 320..528), Central Cross-Street North Plaza 528..752
 		{x: 320, kind: PropBuildingArcade},
-		{x: 432, kind: PropBuildingBookstore},
-		// Block 3 (X = 752..960), East alley 960..1024
+		{x: 432, kind: PropBuildingVinylBar},
+		// Block 3 (X = 752..960), East Alley 960..1024
 		{x: 752, kind: PropBuildingMetro},
-		{x: 864, kind: PropBuildingCoffee},
+		{x: 864, kind: PropBuildingGelateria},
 		// Block 4 (X = 1024..1232)
-		{x: 1024, kind: PropBuildingKonbini},
+		{x: 1024, kind: PropBuildingCoffee},
 		{x: 1136, kind: PropBuildingRamen},
 	}
 	for _, b := range storefronts {
@@ -157,71 +176,116 @@ func BuildDistrictLayout() DistrictLayout {
 			CollideRect: Rect{X: b.x, Y: 12, W: 96, H: 60},
 			CastShadow:  true,
 		})
-		// Warm interior shop window glow
-		lights = append(lights, LightSource{
-			X: b.x + 48, Y: 58, Radius: 96, Kind: LightShopWindow,
-			R: 255, G: 222, B: 165, Intensity: 0.65,
-		})
-		// Colored neon storefront sign light
+		// Tailored warm interior shop window glow + themed colored neon sign light
+		wr, wg, wb := uint8(255), uint8(222), uint8(165)
 		var nr, ng, nb uint8
 		switch b.kind {
 		case PropBuildingKonbini:
+			wr, wg, wb = 248, 240, 210
 			nr, ng, nb = 0, 245, 212
+		case PropBuildingPizzeria:
+			wr, wg, wb = 255, 210, 138
+			nr, ng, nb = 255, 86, 62
 		case PropBuildingCoffee:
+			wr, wg, wb = 255, 216, 148
 			nr, ng, nb = 255, 160, 90
 		case PropBuildingArcade:
+			wr, wg, wb = 240, 185, 255
 			nr, ng, nb = 255, 42, 133
+		case PropBuildingVinylBar:
+			wr, wg, wb = 255, 198, 142
+			nr, ng, nb = 192, 88, 255
 		case PropBuildingRamen:
+			wr, wg, wb = 255, 214, 140
 			nr, ng, nb = 255, 92, 74
 		case PropBuildingBookstore:
+			wr, wg, wb = 255, 224, 158
 			nr, ng, nb = 255, 208, 108
 		case PropBuildingMetro:
+			wr, wg, wb = 212, 238, 255
 			nr, ng, nb = 64, 210, 255
+		case PropBuildingGelateria:
+			wr, wg, wb = 255, 226, 210
+			nr, ng, nb = 255, 132, 198
 		}
-		lights = append(lights, LightSource{
-			X: b.x + 48, Y: 28, Radius: 118, Kind: LightNeonSign,
-			R: nr, G: ng, B: nb, Intensity: 0.85,
-		})
+		lights = append(lights,
+			LightSource{
+				X: b.x + 48, Y: 58, Radius: 96, Kind: LightShopWindow,
+				R: wr, G: wg, B: wb, Intensity: 0.68,
+			},
+			LightSource{
+				X: b.x + 48, Y: 28, Radius: 118, Kind: LightNeonSign,
+				R: nr, G: ng, B: nb, Intensity: 0.85,
+			},
+		)
 	}
 
-	// North Sidewalk Promenade streetlamps, benches, bike racks, hydrants, billboards & cats
-	northLampsX := []float32{136, 304, 520, 744, 976, 1128}
+	// Iconic North Central Plaza Landmarks (Fountain + Overhead ArchGate + Flanking PhoneBooth + Bollards)
+	props = append(props,
+		makeFountain(608, 42),
+		makeArchGate(592, 108, 146),
+		makePhoneBooth(534, 110),
+		makeBollardGlow(572, 124),
+		makeBollardGlow(694, 124),
+	)
+	lights = append(lights,
+		LightSource{X: 640, Y: 68, Radius: 110, Kind: LightFountain, R: 60, G: 235, B: 255, Intensity: 1.0},
+		LightSource{X: 602, Y: 122, Radius: 72, Kind: LightLantern, R: 255, G: 198, B: 112, Intensity: 0.78},
+		LightSource{X: 678, Y: 122, Radius: 72, Kind: LightLantern, R: 255, G: 198, B: 112, Intensity: 0.78},
+		LightSource{X: 546, Y: 124, Radius: 76, Kind: LightNeonSign, R: 255, G: 68, B: 210, Intensity: 0.80},
+		LightSource{X: 580, Y: 132, Radius: 56, Kind: LightBollard, R: 0, G: 245, B: 212, Intensity: 0.68},
+		LightSource{X: 702, Y: 132, Radius: 56, Kind: LightBollard, R: 0, G: 245, B: 212, Intensity: 0.68},
+	)
+
+	// North Sidewalk Promenade streetlamps, benches, bike racks, hydrants, drink machines, patio kiosks, food cart, transit kiosk & cats
+	northLampsX := []float32{168, 304, 518, 744, 1024, 1128}
 	for _, lx := range northLampsX {
 		props = append(props, makeStreetlamp(lx, 84))
-		lights = append(lights, makeStreetlampLight(lx+8, 92))
+		lights = append(lights, makeStreetlampLight(lx+12, 94))
 	}
 
-	northBenchesX := []float32{64, 916}
+	northBenchesX := []float32{60, 1184}
 	for _, bx := range northBenchesX {
-		props = append(props, makeBenchPlants(bx, 94))
+		props = append(props, makeBenchPlants(bx, 96))
 	}
 
 	props = append(props,
-		makeBikeRack(458, 102),
-		makeBikeRack(812, 102),
-		makeHydrantBin(108, 116),
-		makeHydrantBin(748, 116),
+		makeBusShelterDeco(108, 108),
+		makeVendingDrink(262, 86),
+		makeBikeRack(446, 106),
+		makeHydrantBin(28, 116),
+		makeHydrantBin(722, 116),
 		makeNeonBillboard(548, 78),
+		makeVendingDrink(760, 86),
+		makeBikeRack(812, 102),
+		makeKioskUmbrella(904, 86),
+		makeFoodCart(966, 96),
+		makeKioskUmbrella(1076, 86),
 	)
-	lights = append(lights, LightSource{
-		X: 572, Y: 94, Radius: 92, Kind: LightNeonSign,
-		R: 0, G: 245, B: 212, Intensity: 0.72,
-	})
+	lights = append(lights,
+		LightSource{X: 132, Y: 126, Radius: 82, Kind: LightShopWindow, R: 255, G: 220, B: 150, Intensity: 0.72},
+		LightSource{X: 276, Y: 104, Radius: 82, Kind: LightVending, R: 70, G: 215, B: 255, Intensity: 0.78},
+		LightSource{X: 572, Y: 94, Radius: 92, Kind: LightNeonSign, R: 0, G: 245, B: 212, Intensity: 0.72},
+		LightSource{X: 774, Y: 104, Radius: 82, Kind: LightVending, R: 70, G: 215, B: 255, Intensity: 0.78},
+		LightSource{X: 924, Y: 98, Radius: 72, Kind: LightLantern, R: 255, G: 210, B: 145, Intensity: 0.72},
+		LightSource{X: 990, Y: 104, Radius: 86, Kind: LightLantern, R: 255, G: 184, B: 96, Intensity: 0.82},
+		LightSource{X: 1096, Y: 98, Radius: 72, Kind: LightLantern, R: 255, G: 210, B: 138, Intensity: 0.72},
+	)
 
-	for _, cx := range []float32{264, 984, 1176} {
+	for _, cx := range []float32{294, 1016, 1234} {
 		props = append(props, MapProp{
 			Kind:       PropCatsClutter,
 			X:          cx,
-			Y:          88,
+			Y:          92,
 			W:          24,
 			H:          20,
-			SortY:      108,
+			SortY:      112,
 			Solid:      false,
 			CastShadow: true,
 		})
 	}
 
-	// --- Layer 2: Pocket-Park Islands, Flower Boxes, ZTL Signs, Scooters, Cars & Subtle Road Decals ---
+	// --- Layer 2: Pocket-Park Islands, Planters, Traffic Lights, ZTL Signs, Vehicles & Road Decals ---
 	// West Pocket-Park Island: Rect{X: 256, Y: 288, W: 160, H: 112}
 	props = append(props,
 		makeTreeLush(272, 296),
@@ -230,8 +294,14 @@ func BuildDistrictLayout() DistrictLayout {
 		makeStreetlamp(328, 344),
 		makeFlowerBox(262, 376),
 		makeFlowerBox(378, 292),
+		makeBollardGlow(250, 284),
+		makeBollardGlow(402, 380),
 	)
-	lights = append(lights, makeStreetlampLight(336, 352))
+	lights = append(lights,
+		makeStreetlampLight(340, 354),
+		LightSource{X: 258, Y: 292, Radius: 56, Kind: LightBollard, R: 0, G: 245, B: 212, Intensity: 0.68},
+		LightSource{X: 410, Y: 388, Radius: 56, Kind: LightBollard, R: 0, G: 245, B: 212, Intensity: 0.68},
+	)
 
 	// East Pocket-Park Island: Rect{X: 864, Y: 288, W: 160, H: 112}
 	props = append(props,
@@ -241,8 +311,43 @@ func BuildDistrictLayout() DistrictLayout {
 		makeStreetlamp(936, 344),
 		makeFlowerBox(870, 292),
 		makeFlowerBox(986, 376),
+		makeBollardGlow(862, 380),
+		makeBollardGlow(1014, 284),
 	)
-	lights = append(lights, makeStreetlampLight(944, 352))
+	lights = append(lights,
+		makeStreetlampLight(948, 354),
+		LightSource{X: 870, Y: 388, Radius: 56, Kind: LightBollard, R: 0, G: 245, B: 212, Intensity: 0.68},
+		LightSource{X: 1022, Y: 292, Radius: 56, Kind: LightBollard, R: 0, G: 245, B: 212, Intensity: 0.68},
+	)
+
+	// Tactical Low-Cover Illuminated Planters flanking West & East Avenues
+	props = append(props,
+		makePlanterNeon(72, 324),
+		makePlanterNeon(1152, 324),
+	)
+	lights = append(lights,
+		LightSource{X: 96, Y: 336, Radius: 64, Kind: LightBollard, R: 255, G: 196, B: 112, Intensity: 0.68},
+		LightSource{X: 1176, Y: 336, Radius: 64, Kind: LightBollard, R: 255, G: 196, B: 112, Intensity: 0.68},
+	)
+
+	// 4 Central Cross-Street Intersection Traffic Lights (non-solid slim poles + traffic signal spill)
+	type trafficSpec struct {
+		x, y    float32
+		r, g, b uint8
+	}
+	trafficLights := []trafficSpec{
+		{x: 530, y: 146, r: 56, g: 255, b: 148},
+		{x: 730, y: 146, r: 255, g: 194, b: 56},
+		{x: 530, y: 502, r: 255, g: 194, b: 56},
+		{x: 730, y: 502, r: 56, g: 255, b: 148},
+	}
+	for _, tl := range trafficLights {
+		props = append(props, makeTrafficLight(tl.x, tl.y))
+		lights = append(lights, LightSource{
+			X: tl.x + 12, Y: tl.y + 12, Radius: 72, Kind: LightTraffic,
+			R: tl.r, G: tl.g, B: tl.b, Intensity: 0.72,
+		})
+	}
 
 	// ZTL Enforcement Signs flanking the 2 ZTL zones
 	props = append(props,
@@ -254,14 +359,32 @@ func BuildDistrictLayout() DistrictLayout {
 		LightSource{X: 724, Y: 444, Radius: 64, Kind: LightNeonSign, R: 255, G: 48, B: 88, Intensity: 0.78},
 	)
 
-	// 4 Parked Civilian Cars + 2 Scooters along curbs (clear of BusBays)
+	// 4 Parked Civilian Cars + 1 Cyber Van + 2 Scooters along curbs (clear of BusBays & ZTLZones)
+	type carSpec struct {
+		kind PropKind
+		x, y float32
+	}
+	parkedCars := []carSpec{
+		{kind: PropCarRed, x: 68, y: 150},
+		{kind: PropCarYellow, x: 788, y: 150},
+		{kind: PropCarMint, x: 280, y: 504},
+		{kind: PropCarRed, x: 928, y: 504},
+	}
+	for _, c := range parkedCars {
+		props = append(props, makeParkedCar(c.kind, c.x, c.y))
+		lights = append(lights, LightSource{
+			X: c.x + 48, Y: c.y + 16, Radius: 54, Kind: LightVehicle,
+			R: 255, G: 235, B: 175, Intensity: 0.55,
+		})
+	}
 	props = append(props,
-		makeParkedCar(PropCarRed, 68, 150),
-		makeParkedCar(PropCarYellow, 788, 150),
-		makeParkedCar(PropCarMint, 280, 504),
-		makeParkedCar(PropCarRed, 928, 504),
+		makeCyberVan(1084, 228),
 		makeScooter(302, 152),
-		makeScooter(708, 508),
+		makeScooter(724, 508),
+	)
+	lights = append(lights,
+		LightSource{X: 1148, Y: 248, Radius: 68, Kind: LightVehicle, R: 255, G: 236, B: 170, Intensity: 0.65},
+		LightSource{X: 1084, Y: 248, Radius: 48, Kind: LightVehicle, R: 255, G: 52, B: 74, Intensity: 0.58},
 	)
 
 	// Subtle non-solid road details (manholes & asphalt cracks) outside BusBays & Crosswalks
@@ -290,29 +413,45 @@ func BuildDistrictLayout() DistrictLayout {
 		})
 	}
 
-	// --- Layer 3: South Waterfront Promenade, Edicola, Boardwalk & Canal Boats ---
+	// --- Layer 3: South Waterfront Promenade, Plaza Arch, Edicola, Boardwalk & Canal Boats ---
 	props = append(props,
-		makeNewsstand(338, 566),
-		makeNeonBillboard(824, 572),
-		makeHydrantBin(124, 550),
-		makeHydrantBin(968, 550),
+		makeHydrantBin(92, 556),
+		makeFoodCart(140, 554),
 		makeFlowerBox(182, 594),
-		makeFlowerBox(648, 594),
+		makeBenchPlants(226, 588),
+		makeKioskUmbrella(280, 560),
+		makeNewsstand(338, 566),
+		makeBenchPlants(548, 586),
+		makeBollardGlow(570, 554),
+		makeArchGate(592, 538, 576),
+		makeBollardGlow(694, 554),
+		makeFlowerBox(624, 596),
+		makePhoneBooth(726, 556),
+		makeNeonBillboard(824, 572),
+		makeKioskUmbrella(890, 560),
+		makeBenchPlants(944, 588),
+		makeHydrantBin(968, 550),
+		makeBusShelterDeco(1142, 554),
 		makeFlowerBox(1148, 594),
 	)
 	lights = append(lights,
+		LightSource{X: 164, Y: 562, Radius: 86, Kind: LightLantern, R: 255, G: 184, B: 96, Intensity: 0.82},
+		LightSource{X: 300, Y: 572, Radius: 72, Kind: LightLantern, R: 255, G: 210, B: 140, Intensity: 0.72},
 		LightSource{X: 362, Y: 586, Radius: 88, Kind: LightShopWindow, R: 255, G: 215, B: 150, Intensity: 0.70},
+		LightSource{X: 578, Y: 562, Radius: 56, Kind: LightBollard, R: 0, G: 245, B: 212, Intensity: 0.68},
+		LightSource{X: 602, Y: 552, Radius: 74, Kind: LightLantern, R: 60, G: 235, B: 255, Intensity: 0.80},
+		LightSource{X: 678, Y: 552, Radius: 74, Kind: LightLantern, R: 255, G: 210, B: 105, Intensity: 0.80},
+		LightSource{X: 702, Y: 562, Radius: 56, Kind: LightBollard, R: 0, G: 245, B: 212, Intensity: 0.68},
+		LightSource{X: 738, Y: 570, Radius: 76, Kind: LightNeonSign, R: 0, G: 235, B: 255, Intensity: 0.80},
 		LightSource{X: 848, Y: 588, Radius: 92, Kind: LightNeonSign, R: 255, G: 42, B: 133, Intensity: 0.75},
+		LightSource{X: 910, Y: 572, Radius: 72, Kind: LightLantern, R: 255, G: 210, B: 140, Intensity: 0.72},
+		LightSource{X: 1166, Y: 572, Radius: 82, Kind: LightShopWindow, R: 255, G: 220, B: 150, Intensity: 0.72},
 	)
 
-	southLampsX := []float32{160, 440, 790, 1120}
+	southLampsX := []float32{118, 440, 796, 1110}
 	for _, lx := range southLampsX {
 		props = append(props, makeStreetlamp(lx, 540))
-		lights = append(lights, makeStreetlampLight(lx+8, 548))
-	}
-
-	for _, bx := range []float32{236, 566, 902} {
-		props = append(props, makeBenchPlants(bx, 584))
+		lights = append(lights, makeStreetlampLight(lx+12, 550))
 	}
 
 	props = append(props, MapProp{
@@ -326,7 +465,7 @@ func BuildDistrictLayout() DistrictLayout {
 		CastShadow: true,
 	})
 
-	// Canal Boats moored along South Canal Water (Y=688)
+	// Canal Boats moored along South Canal Water (Y=688) with warm bow lanterns
 	for _, bx := range []float32{176, 616, 1020} {
 		props = append(props, MapProp{
 			Kind:       PropCanalBoat,
@@ -339,8 +478,8 @@ func BuildDistrictLayout() DistrictLayout {
 			CastShadow: false,
 		})
 		lights = append(lights, LightSource{
-			X: bx + 8, Y: 696, Radius: 68, Kind: LightStreetlamp,
-			R: 255, G: 205, B: 120, Intensity: 0.65,
+			X: bx + 41, Y: 690, Radius: 68, Kind: LightLantern,
+			R: 255, G: 205, B: 120, Intensity: 0.70,
 		})
 	}
 
@@ -379,6 +518,158 @@ func makeNewsstand(x, y float32) MapProp {
 	}
 }
 
+func makeFountain(x, y float32) MapProp {
+	return MapProp{
+		Kind:        PropFountain,
+		X:           x,
+		Y:           y,
+		W:           64,
+		H:           48,
+		SortY:       y + 44,
+		Solid:       true,
+		CollideRect: Rect{X: x + 6, Y: y + 14, W: 52, H: 28},
+		CastShadow:  true,
+	}
+}
+
+func makeArchGate(x, y, sortY float32) MapProp {
+	return MapProp{
+		Kind:       PropArchGate,
+		X:          x,
+		Y:          y,
+		W:          96,
+		H:          40,
+		SortY:      sortY,
+		Solid:      false,
+		CastShadow: true,
+	}
+}
+
+func makePhoneBooth(x, y float32) MapProp {
+	return MapProp{
+		Kind:        PropPhoneBooth,
+		X:           x,
+		Y:           y,
+		W:           24,
+		H:           40,
+		SortY:       y + 38,
+		Solid:       true,
+		CollideRect: Rect{X: x + 2, Y: y + 10, W: 20, H: 26},
+		CastShadow:  true,
+	}
+}
+
+func makeFoodCart(x, y float32) MapProp {
+	return MapProp{
+		Kind:        PropFoodCart,
+		X:           x,
+		Y:           y,
+		W:           48,
+		H:           36,
+		SortY:       y + 34,
+		Solid:       true,
+		CollideRect: Rect{X: x + 4, Y: y + 10, W: 40, H: 24},
+		CastShadow:  true,
+	}
+}
+
+func makeKioskUmbrella(x, y float32) MapProp {
+	return MapProp{
+		Kind:        PropKioskUmbrella,
+		X:           x,
+		Y:           y,
+		W:           40,
+		H:           36,
+		SortY:       y + 34,
+		Solid:       true,
+		CollideRect: Rect{X: x + 6, Y: y + 10, W: 28, H: 22},
+		CastShadow:  true,
+	}
+}
+
+func makeTrafficLight(x, y float32) MapProp {
+	return MapProp{
+		Kind:       PropTrafficLight,
+		X:          x,
+		Y:          y,
+		W:          24,
+		H:          48,
+		SortY:      y + 48,
+		Solid:      false,
+		CastShadow: true,
+	}
+}
+
+func makeBollardGlow(x, y float32) MapProp {
+	return MapProp{
+		Kind:        PropBollardGlow,
+		X:           x,
+		Y:           y,
+		W:           16,
+		H:           24,
+		SortY:       y + 22,
+		Solid:       true,
+		CollideRect: Rect{X: x + 3, Y: y + 10, W: 10, H: 12},
+		CastShadow:  true,
+	}
+}
+
+func makePlanterNeon(x, y float32) MapProp {
+	return MapProp{
+		Kind:        PropPlanterNeon,
+		X:           x,
+		Y:           y,
+		W:           48,
+		H:           24,
+		SortY:       y + 24,
+		Solid:       true,
+		CollideRect: Rect{X: x + 3, Y: y + 6, W: 42, H: 16},
+		CastShadow:  true,
+	}
+}
+
+func makeVendingDrink(x, y float32) MapProp {
+	return MapProp{
+		Kind:        PropVendingDrink,
+		X:           x,
+		Y:           y,
+		W:           28,
+		H:           36,
+		SortY:       y + 34,
+		Solid:       true,
+		CollideRect: Rect{X: x + 2, Y: y + 8, W: 24, H: 26},
+		CastShadow:  true,
+	}
+}
+
+func makeBusShelterDeco(x, y float32) MapProp {
+	return MapProp{
+		Kind:        PropBusShelterDeco,
+		X:           x,
+		Y:           y,
+		W:           48,
+		H:           36,
+		SortY:       y + 34,
+		Solid:       true,
+		CollideRect: Rect{X: x + 4, Y: y + 10, W: 40, H: 24},
+		CastShadow:  true,
+	}
+}
+
+func makeCyberVan(x, y float32) MapProp {
+	return MapProp{
+		Kind:        PropCarVanCyber,
+		X:           x,
+		Y:           y,
+		W:           64,
+		H:           36,
+		SortY:       y + 36,
+		Solid:       true,
+		CollideRect: Rect{X: x + 4, Y: y + 8, W: 56, H: 26},
+		CastShadow:  true,
+	}
+}
+
 func makeTreeLush(x, y float32) MapProp {
 	return MapProp{
 		Kind:        PropTreeLush,
@@ -412,7 +703,7 @@ func makeStreetlamp(x, y float32) MapProp {
 		Kind:       PropStreetlamp,
 		X:          x,
 		Y:          y,
-		W:          16,
+		W:          24,
 		H:          48,
 		SortY:      y + 48,
 		Solid:      false,
@@ -432,11 +723,11 @@ func makeParkedCar(kind PropKind, x, y float32) MapProp {
 		Kind:        kind,
 		X:           x,
 		Y:           y,
-		W:           64,
+		W:           48,
 		H:           32,
 		SortY:       y + 32,
 		Solid:       true,
-		CollideRect: Rect{X: x + 2, Y: y + 4, W: 60, H: 26},
+		CollideRect: Rect{X: x + 2, Y: y + 4, W: 44, H: 26},
 		CastShadow:  true,
 	}
 }

@@ -86,6 +86,15 @@ func (a *App) startRun(bossRush bool) {
 	a.applyPrefsToRenderer()
 }
 
+func (a *App) startTutorial() {
+	a.world = game.NewTutorialWorld(&a.save)
+	a.tracker = meta.NewRunTracker()
+	a.overdriveAck = false
+	a.lastPerfectAim = false
+	a.ui.Scene = ui.ScenePlaying
+	a.applyPrefsToRenderer()
+}
+
 func (a *App) applyPrefsToRenderer() {
 	a.renderer.SetVisualPrefs(
 		a.save.Profile.SelectedPlayerSkin,
@@ -114,6 +123,7 @@ func (a *App) Update() error {
 	// Sync dynamic Synthwave BPM & Chronos/Pause low-pass filter
 	isPlaying := a.ui.Scene == ui.ScenePlaying
 	isPaused := a.ui.Scene == ui.ScenePaused ||
+		a.ui.Scene == ui.SceneTutorial ||
 		a.ui.Scene == ui.SceneOptions ||
 		a.ui.Scene == ui.SceneControls ||
 		(a.world != nil && (a.world.PendingLevelUp || a.world.ShopMenu.Active || a.world.SlotModal.Active))
@@ -122,7 +132,7 @@ func (a *App) Update() error {
 	wanted := 0
 	chronos := false
 	fever := false
-	if a.world != nil && (isPlaying || a.ui.Scene == ui.ScenePaused) {
+	if a.world != nil && (isPlaying || a.ui.Scene == ui.ScenePaused || a.ui.Scene == ui.SceneTutorial) {
 		tier = a.world.DifficultyTier
 		bossActive = a.world.Boss.Active
 		wanted = a.world.Police.Stars
@@ -151,12 +161,18 @@ func (a *App) Update() error {
 		switch res.Action {
 		case ui.ActionStartNormal:
 			a.startRun(false)
+		case ui.ActionStartTutorial:
+			a.startTutorial()
 		case ui.ActionStartBossRush:
 			a.startRun(true)
 		case ui.ActionResume:
 			a.ui.Scene = ui.ScenePlaying
 		case ui.ActionRestart:
-			a.startRun(a.world != nil && a.world.BossRushMode)
+			if a.world != nil && a.world.TutorialMode {
+				a.startTutorial()
+			} else {
+				a.startRun(a.world != nil && a.world.BossRushMode)
+			}
 		case ui.ActionContinueOverdrive:
 			a.overdriveAck = true
 			a.ui.Scene = ui.ScenePlaying
@@ -225,7 +241,7 @@ func (a *App) Update() error {
 		a.save.Settings.ChronosToggle,
 	)
 
-	// Mouse click routing for Level-Up cards, Shop modal, Slot modal, and Hotbar dock
+	// Mouse click routing for Level-Up cards, Shop modal, Slot modal, Tutorial HUD buttons, and Hotbar dock
 	if in.MouseLeftJustPressed {
 		mx, my := in.MouseScreenX, in.MouseScreenY
 		if a.world.PendingLevelUp {
@@ -256,6 +272,24 @@ func (a *App) Update() error {
 				a.audio.PlaySFX(audio.SFXUIClick)
 			}
 		} else {
+			if a.world.TutorialMode {
+				if render.TutorialExitRect().Contains(mx, my) {
+					in.ThrowJustPressed = false
+					in.ActionDir = game.ActionNone
+					in.ActionHeld = false
+					a.audio.PlaySFX(audio.SFXUIClick)
+					a.ui.OpenScene(ui.SceneTitle, ui.SceneTitle)
+					return nil
+				}
+				if render.TutorialGuideRect().Contains(mx, my) {
+					in.ThrowJustPressed = false
+					in.ActionDir = game.ActionNone
+					in.ActionHeld = false
+					a.audio.PlaySFX(audio.SFXUIClick)
+					a.ui.OpenScene(ui.SceneTutorial, ui.ScenePlaying)
+					return nil
+				}
+			}
 			for i := 0; i < int(game.ArchCount); i++ {
 				if render.HotbarSlotRect(i).Contains(mx, my) {
 					in.SelectArchetype = i
@@ -282,30 +316,34 @@ func (a *App) Update() error {
 
 	a.renderer.SetAim(aimX, aimY)
 	a.renderer.SetMouseScreen(in.MouseScreenX, in.MouseScreenY)
+	a.renderer.SetMouseHoverDir(in.MouseHoverDir)
 	a.world.Update(in, dt)
 
-	if !a.world.PendingLevelUp && !a.world.ShopMenu.Active && !a.world.SlotModal.Active && !a.world.GameOver {
+	if !a.world.TutorialMode && !a.world.PendingLevelUp && !a.world.ShopMenu.Active && !a.world.SlotModal.Active && !a.world.GameOver {
 		a.tracker.TickWanted(dt, a.world.Police.Stars)
 	}
 
 	a.processWorldEvents()
 
-	if a.world.GameOver {
-		prevBest := a.save.Profile.BestScore
-		a.tracker.FinalizeRun(a.world.Score, int(a.world.RunTime), a.world.GirlsBoarded, &a.save.Profile)
-		_ = meta.Save(a.save)
-		a.ui.SetEndRun(false, a.world, a.world.Score > prevBest, a.tracker.NewlyUnlocked)
-	} else if a.world.Victory && !a.overdriveAck {
-		prevBest := a.save.Profile.BestScore
-		a.tracker.FinalizeRun(a.world.Score, int(a.world.RunTime), a.world.GirlsBoarded, &a.save.Profile)
-		_ = meta.Save(a.save)
-		a.ui.SetEndRun(true, a.world, a.world.Score > prevBest, a.tracker.NewlyUnlocked)
+	if !a.world.TutorialMode {
+		if a.world.GameOver {
+			prevBest := a.save.Profile.BestScore
+			a.tracker.FinalizeRun(a.world.Score, int(a.world.RunTime), a.world.GirlsBoarded, &a.save.Profile)
+			_ = meta.Save(a.save)
+			a.ui.SetEndRun(false, a.world, a.world.Score > prevBest, a.tracker.NewlyUnlocked)
+		} else if a.world.Victory && !a.overdriveAck {
+			prevBest := a.save.Profile.BestScore
+			a.tracker.FinalizeRun(a.world.Score, int(a.world.RunTime), a.world.GirlsBoarded, &a.save.Profile)
+			_ = meta.Save(a.save)
+			a.ui.SetEndRun(true, a.world, a.world.Score > prevBest, a.tracker.NewlyUnlocked)
+		}
 	}
 
 	return nil
 }
 
 func (a *App) processWorldEvents() {
+	isTutorial := a.world != nil && a.world.TutorialMode
 	events := a.world.DrainEvents()
 	for _, ev := range events {
 		switch ev.Kind {
@@ -313,10 +351,12 @@ func (a *App) processWorldEvents() {
 			a.audio.PlaySFX(audio.SFXThrow)
 		case game.EventPerfectDrop:
 			a.audio.PlaySFX(audio.SFXPerfectDrop)
-			a.tracker.PerfectDrops++
+			if !isTutorial {
+				a.tracker.PerfectDrops++
+			}
 		case game.EventHook:
 			a.audio.PlaySFX(audio.SFXHook)
-			if ev.Value > a.tracker.MaxHookInOneStop {
+			if !isTutorial && ev.Value > a.tracker.MaxHookInOneStop {
 				a.tracker.MaxHookInOneStop = ev.Value
 			}
 		case game.EventMinigameHit:
@@ -337,7 +377,9 @@ func (a *App) processWorldEvents() {
 			a.audio.PlaySFX(audio.SFXDash)
 		case game.EventPlayerHit:
 			a.audio.PlaySFX(audio.SFXPlayerHit)
-			a.tracker.OnPlayerHit(ev.Flag)
+			if !isTutorial {
+				a.tracker.OnPlayerHit(ev.Flag)
+			}
 		case game.EventPoliceStarUp:
 			a.audio.PlaySFX(audio.SFXPoliceSiren)
 		case game.EventBossSpawn:
@@ -345,11 +387,13 @@ func (a *App) processWorldEvents() {
 		case game.EventBossBreak:
 			a.audio.PlaySFX(audio.SFXBossBreak)
 		case game.EventBossDefeated:
-			starsArg := 0
-			if ev.Flag {
-				starsArg = 3
+			if !isTutorial {
+				starsArg := 0
+				if ev.Flag {
+					starsArg = 3
+				}
+				a.tracker.RecordBossDefeated(ev.Value, starsArg, &a.save.Profile)
 			}
-			a.tracker.RecordBossDefeated(ev.Value, starsArg, &a.save.Profile)
 		case game.EventLevelUp:
 			a.audio.PlaySFX(audio.SFXLevelUp)
 		case game.EventShopBuy:
@@ -360,15 +404,19 @@ func (a *App) processWorldEvents() {
 			a.audio.PlaySFX(audio.SFXSlotWin)
 		case game.EventSlotJackpot:
 			a.audio.PlaySFX(audio.SFXSlotJackpot)
-			a.tracker.JackpotWon = true
+			if !isTutorial {
+				a.tracker.JackpotWon = true
+			}
 		case game.EventSlotBust:
 			a.audio.PlaySFX(audio.SFXSlotBust)
 		case game.EventSynergy:
-			if ev.Value >= 0 && ev.Value < 4 {
+			if !isTutorial && ev.Value >= 0 && ev.Value < 4 {
 				a.tracker.SynergyMask |= 1 << uint(ev.Value)
 			}
 		case game.EventGirlBoarded:
-			a.tracker.GirlsBoarded += ev.Value
+			if !isTutorial {
+				a.tracker.GirlsBoarded += ev.Value
+			}
 		case game.EventGraze:
 			a.audio.PlaySFX(audio.SFXSlotTick)
 		case game.EventDashParry:
@@ -379,37 +427,41 @@ func (a *App) processWorldEvents() {
 			a.audio.PlaySFX(audio.SFXDash)
 		case game.EventFeverUp:
 			a.audio.PlaySFX(audio.SFXComboStep4)
+		case game.EventHealPickup:
+			if ev.Value >= 2 {
+				a.audio.PlaySFX(audio.SFXSlotWin)
+			} else {
+				a.audio.PlaySFX(audio.SFXShopBuy)
+			}
 		}
 	}
 
-	if unlocked := a.tracker.CheckAndUnlock(&a.save.Profile); len(unlocked) > 0 {
-		for _, ch := range unlocked {
-			a.audio.PlaySFX(audio.SFXChallengeUnlock)
-			a.renderer.ShowChallengeToast(ch.TitleIT)
+	if !isTutorial {
+		if unlocked := a.tracker.CheckAndUnlock(&a.save.Profile); len(unlocked) > 0 {
+			for _, ch := range unlocked {
+				a.audio.PlaySFX(audio.SFXChallengeUnlock)
+				a.renderer.ShowChallengeToast(ch.TitleIT)
+			}
+			_ = meta.Save(a.save)
 		}
-		_ = meta.Save(a.save)
 	}
 }
 
-// Draw renders the 640x360 virtual screen through the selected Kage post-processing shader.
+// Draw renders the world through the Kage post-processing shader, then draws razor-sharp
+// HUD, overlays, and UI menus directly onto screen with zero CRT distortion.
 func (a *App) Draw(screen *ebiten.Image) {
 	buf := a.post.BeginScene()
 	a.renderer.SetPlayingActive(a.ui.Scene == ui.ScenePlaying)
 
 	useTitleBg := a.ui.Scene == ui.SceneTitle ||
-		((a.ui.Scene == ui.SceneOptions || a.ui.Scene == ui.SceneControls || a.ui.Scene == ui.SceneChallenges) &&
+		((a.ui.Scene == ui.SceneTutorial || a.ui.Scene == ui.SceneOptions || a.ui.Scene == ui.SceneControls || a.ui.Scene == ui.SceneChallenges) &&
 			a.ui.ReturnScene == ui.SceneTitle)
 
+	activeWorld := a.world
 	if useTitleBg {
-		a.renderer.DrawWorldScene(buf, a.bgWorld, false)
-	} else {
-		a.renderer.DrawWorldScene(buf, a.world, true)
+		activeWorld = a.bgWorld
 	}
-
-	if a.ui.Scene != ui.ScenePlaying {
-		mx, my := ebiten.CursorPosition()
-		a.ui.Draw(buf, a.renderer, &a.save, a.world, float32(mx), float32(my))
-	}
+	a.renderer.DrawWorldScene(buf, activeWorld, false)
 
 	var chronosAmt float32
 	if a.ui.Scene == ui.ScenePlaying && a.world != nil && (a.world.Player.ChronosActive || a.world.BulletFreezeTimer > 0) {
@@ -421,6 +473,14 @@ func (a *App) Draw(screen *ebiten.Image) {
 	}
 
 	a.post.Present(screen, a.save.Settings.FilterMode, a.tick, chronosAmt, rewindAmt)
+
+	if !useTitleBg {
+		a.renderer.DrawHUDAndOverlays(screen, a.world)
+	}
+	if a.ui.Scene != ui.ScenePlaying {
+		mx, my := ebiten.CursorPosition()
+		a.ui.Draw(screen, a.renderer, &a.save, a.world, float32(mx), float32(my))
+	}
 }
 
 // Layout fixes the internal virtual resolution at 640x360 (16:9 pixel-art).

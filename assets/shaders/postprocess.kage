@@ -19,6 +19,74 @@ func sampleClamped(uv vec2, origin vec2, srcSize vec2, minPos vec2, maxPos vec2)
 	return imageSrc0UnsafeAt(pos)
 }
 
+func highlightTap(c vec3) vec3 {
+	peak := max(c.r, max(c.g, c.b))
+	mask := smoothstep(0.68, 1.0, peak)
+	return c * mask
+}
+
+// dualRingBloom performs an 8-tap isotropic dual-ring optical bloom:
+// inner tight glow at 1.5px (cardinal) + outer atmospheric halation at 3.2px (diagonal).
+func dualRingBloom(uv vec2, origin vec2, srcSize vec2, minPos vec2, maxPos vec2) vec3 {
+	inX := vec2(1.5, 0.0) / srcSize
+	inY := vec2(0.0, 1.5) / srcSize
+	i0 := highlightTap(sampleClamped(uv+inX, origin, srcSize, minPos, maxPos).rgb)
+	i1 := highlightTap(sampleClamped(uv-inX, origin, srcSize, minPos, maxPos).rgb)
+	i2 := highlightTap(sampleClamped(uv+inY, origin, srcSize, minPos, maxPos).rgb)
+	i3 := highlightTap(sampleClamped(uv-inY, origin, srcSize, minPos, maxPos).rgb)
+	inner := (i0 + i1 + i2 + i3) * 0.25
+
+	outStep := vec2(2.263, 2.263) / srcSize
+	o0 := highlightTap(sampleClamped(uv+vec2(-outStep.x, -outStep.y), origin, srcSize, minPos, maxPos).rgb)
+	o1 := highlightTap(sampleClamped(uv+vec2(outStep.x, -outStep.y), origin, srcSize, minPos, maxPos).rgb)
+	o2 := highlightTap(sampleClamped(uv+vec2(-outStep.x, outStep.y), origin, srcSize, minPos, maxPos).rgb)
+	o3 := highlightTap(sampleClamped(uv+vec2(outStep.x, outStep.y), origin, srcSize, minPos, maxPos).rgb)
+	outer := (o0 + o1 + o2 + o3) * 0.25
+
+	return inner*0.62 + outer*0.38
+}
+
+// eveningGrade applies a subtle evening contrast curve with velvety warm indigo-plum
+// shadows (#181224) and crisp warm highlights without crushing darks or bullets.
+func eveningGrade(rgb vec3, strength float) vec3 {
+	c := clamp(rgb, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0))
+	luma := dot(c, vec3(0.299, 0.587, 0.114))
+
+	// Gentle filmic S-curve around midtones.
+	sCurve := c * c * (vec3(3.0, 3.0, 3.0) - 2.0*c)
+	graded := mix(c, sCurve, 0.12*strength)
+
+	// Deep velvety shadows shifted gently toward warm indigo-plum (#181224).
+	indigoPlum := vec3(0.094, 0.071, 0.141)
+	shadowMask := (1.0 - smoothstep(0.08, 0.44, luma)) * smoothstep(0.005, 0.06, luma)
+	graded = mix(graded, graded*vec3(0.96, 0.92, 1.07)+indigoPlum*0.14, shadowMask*0.36*strength)
+
+	// Crisp warm highlights while preserving bullet hue purity.
+	hiMask := smoothstep(0.58, 0.96, luma)
+	graded = mix(graded, graded*vec3(1.035, 1.01, 0.965), hiMask*0.42*strength)
+
+	// Subtle saturation preservation so neon accents stay punchy.
+	outLuma := dot(graded, vec3(0.299, 0.587, 0.114))
+	graded = mix(vec3(outLuma, outLuma, outLuma), graded, 1.0+0.05*strength)
+	return graded
+}
+
+// applyChronos adds a rich cyan/indigo radial slow-mo rim glow and subtle desaturation shift.
+func applyChronos(rgb vec3, cUV vec2, t float, chronosAmt float, intensity float) vec3 {
+	rad := length(cUV * vec2(0.92, 1.0))
+	rim := smoothstep(0.46, 1.18, rad)
+	outerRim := smoothstep(0.74, 1.24, rad)
+	pulse := 0.88 + 0.12*sin(t*7.2)
+
+	luma := dot(rgb, vec3(0.299, 0.587, 0.114))
+	desat := mix(rgb, vec3(luma, luma, luma), chronosAmt*(0.18+0.20*rim)*intensity)
+	coolGrade := desat * vec3(0.86, 0.97, 1.14)
+	graded := mix(rgb, coolGrade, chronosAmt*(0.30+0.42*rim)*intensity)
+
+	rimColor := mix(vec3(0.26, 0.14, 0.68), vec3(0.0, 0.96, 0.86), outerRim)
+	return graded + rimColor*(rim*pulse*chronosAmt*0.30*intensity)
+}
+
 func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 	origin := imageSrc0Origin()
 	srcSize := max(imageSrc0Size(), vec2(1.0, 1.0))
@@ -27,6 +95,7 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 	maxPos := max(minPos, origin+srcSize-vec2(0.5, 0.5))
 
 	uv := clamp((srcPos-origin)/srcSize, vec2(0.0, 0.0), vec2(1.0, 1.0))
+	cUV := uv*2.0 - vec2(1.0, 1.0)
 	t := mod(Time, 1024.0)
 	chronosAmt := clamp(Chronos, 0.0, 1.0)
 	rewindAmt := clamp(Rewind, 0.0, 1.0)
@@ -35,21 +104,21 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 	outAlpha := 1.0
 
 	if Mode < 0.5 {
-		// Mode 0: Pixel Crisp / Off - exact pixel-center sample with minimal Chronos/Rewind cues.
+		// Mode 0: Pixel Crisp - exact pixel-center sample, zero CRT distortion/scanlines,
+		// with subtle 8-tap optical bloom, gentle evening polish, and smooth Chronos/Rewind.
 		base := imageSrc0UnsafeAt(clamp(srcPos, minPos, maxPos))
-		rgb := base.rgb
-		effectAlpha := 0.0
+		bloom := dualRingBloom(uv, origin, srcSize, minPos, maxPos)
+		bloomAdd := bloom * vec3(1.03, 0.99, 0.96) * 0.14
+
+		rgb := eveningGrade(base.rgb, 0.55) + bloomAdd
+		effectAlpha := max(bloomAdd.r, max(bloomAdd.g, bloomAdd.b))
 
 		if chronosAmt > 0.001 {
-			centered := uv - vec2(0.5, 0.5)
-			edge := max(abs(centered.x), abs(centered.y)) * 2.0
-			rim := smoothstep(0.72, 1.0, edge)
-			pulse := 0.85 + 0.15*sin(t*7.5)
-			rimGlow := mix(vec3(0.32, 0.14, 0.68), vec3(0.0, 0.96, 0.83), smoothstep(0.78, 1.0, edge))
-			rgb = mix(rgb, rgb*vec3(0.90, 0.97, 1.06), chronosAmt*0.16)
-			addGlow := rim * pulse * chronosAmt * 0.24
-			rgb = rgb + rimGlow*addGlow
-			effectAlpha = max(effectAlpha, addGlow)
+			rad := length(cUV * vec2(0.92, 1.0))
+			rim := smoothstep(0.46, 1.18, rad)
+			pulse := 0.88 + 0.12*sin(t*7.2)
+			rgb = applyChronos(rgb, cUV, t, chronosAmt, 0.80)
+			effectAlpha = max(effectAlpha, rim*pulse*chronosAmt*0.24)
 		}
 
 		if rewindAmt > 0.001 {
@@ -64,16 +133,16 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 		outAlpha = clamp(max(base.a, effectAlpha), 0.0, 1.0)
 		outRGB = clamp(rgb, vec3(0.0, 0.0, 0.0), vec3(outAlpha, outAlpha, outAlpha))
 	} else if Mode < 1.5 {
-		// Mode 1: Warm CRT (Default) - ultra-subtle barrel curve (keeps UI borders smooth), Trinitron glow & scanlines.
-		cUV := uv*2.0 - vec2(1.0, 1.0)
+		// Mode 1: Warm CRT (Default) - ultra-gentle barrel curve, silky dual-ring warm halation,
+		// subtle 4.5% Trinitron scanlines, evening contrast grade, and warm amber vignette.
 		r2 := dot(cUV, cUV)
-		curved := cUV * (0.980 + 0.011*r2)
+		curved := cUV * (0.988 + 0.006*r2)
 		crtUV := curved*0.5 + vec2(0.5, 0.5)
 
-		bezelX := smoothstep(0.0, 0.006, crtUV.x) * smoothstep(1.0, 0.994, crtUV.x)
-		bezelY := smoothstep(0.0, 0.008, crtUV.y) * smoothstep(1.0, 0.992, crtUV.y)
-		cornerDist := length(max(abs(curved)-vec2(0.968, 0.968), vec2(0.0, 0.0)))
-		cornerMask := 1.0 - smoothstep(0.018, 0.052, cornerDist)
+		bezelX := smoothstep(0.0, 0.004, crtUV.x) * smoothstep(1.0, 0.996, crtUV.x)
+		bezelY := smoothstep(0.0, 0.005, crtUV.y) * smoothstep(1.0, 0.995, crtUV.y)
+		cornerDist := length(max(abs(curved)-vec2(0.978, 0.978), vec2(0.0, 0.0)))
+		cornerMask := 1.0 - smoothstep(0.014, 0.036, cornerDist)
 		bezelMask := bezelX * bezelY * cornerMask
 
 		if rewindAmt > 0.001 {
@@ -81,44 +150,31 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 			crtUV = vec2(crtUV.x+tearWave, crtUV.y)
 		}
 
-		// Soft bilinear-ish vertical blend for crisp curved UI borders without stair-stepping
-		subHalfY := 0.25 / srcSize.y
+		// Soft vertical sub-pixel blend for crisp curved UI borders without stair-stepping.
+		subHalfY := 0.20 / srcSize.y
 		cTop := sampleClamped(crtUV-vec2(0.0, subHalfY), origin, srcSize, minPos, maxPos)
 		cBot := sampleClamped(crtUV+vec2(0.0, subHalfY), origin, srcSize, minPos, maxPos)
 		centerSample := mix(cTop, cBot, 0.5)
 		rgb := centerSample.rgb
 
-		// 4-tap mild warm halation/bloom for streetlamps, neon signs, and bullets.
-		pxStep := vec2(1.25, 1.25) / srcSize
-		s0 := sampleClamped(crtUV+vec2(-pxStep.x, -pxStep.y), origin, srcSize, minPos, maxPos).rgb
-		s1 := sampleClamped(crtUV+vec2(pxStep.x, -pxStep.y), origin, srcSize, minPos, maxPos).rgb
-		s2 := sampleClamped(crtUV+vec2(-pxStep.x, pxStep.y), origin, srcSize, minPos, maxPos).rgb
-		s3 := sampleClamped(crtUV+vec2(pxStep.x, pxStep.y), origin, srcSize, minPos, maxPos).rgb
-		blur := (s0 + s1 + s2 + s3) * 0.25
+		// Rich 8-tap dual-ring warm halation & neon bloom.
+		bloom := dualRingBloom(crtUV, origin, srcSize, minPos, maxPos)
+		rgb = eveningGrade(rgb, 1.0) + bloom*(vec3(1.09, 0.97, 0.88)*0.28)
 
-		peak := max(blur.r, max(blur.g, blur.b))
-		bloomMask := smoothstep(0.74, 1.0, peak)
-		rgb = rgb + blur*(vec3(1.08, 0.96, 0.86)*(0.025+bloomMask*0.20))
-
-		// Warm Trinitron horizontal scanlines (~7% gentle modulation) + phosphor triad warmth.
+		// Soft subtle Trinitron horizontal scanlines (4.5% modulation) + delicate phosphor warmth.
 		scanPhase := 0.5 + 0.5*sin(crtUV.y*screenDim.y*3.14159265)
-		scanMod := 1.0 - 0.07*scanPhase
+		scanMod := 1.0 - 0.045*scanPhase
 		triadPhase := sin(crtUV.x * screenDim.x * 3.14159265)
-		triadTint := vec3(1.045+0.012*triadPhase, 1.01, 0.935-0.012*triadPhase)
+		triadTint := vec3(1.028+0.008*triadPhase, 1.005, 0.962-0.008*triadPhase)
 		rgb = rgb * triadTint * scanMod
 
-		// Soft warm amber-vignette at outer edges.
+		// Soft warm amber edge vignette (14%).
 		vigDist := length(cUV * vec2(0.86, 0.94))
-		vig := 1.0 - smoothstep(0.65, 1.38, vigDist)*0.20
-		rgb = mix(vec3(0.08, 0.03, 0.05), rgb, vig)
+		vig := 1.0 - smoothstep(0.68, 1.38, vigDist)*0.14
+		rgb = mix(vec3(0.094, 0.052, 0.072), rgb, vig)
 
 		if chronosAmt > 0.001 {
-			rim := smoothstep(0.55, 1.18, length(cUV))
-			pulse := 0.85 + 0.15*sin(t*8.0)
-			coolGrade := rgb * vec3(0.84, 0.98, 1.14)
-			rgb = mix(rgb, coolGrade, chronosAmt*(0.24+0.44*rim))
-			rimColor := mix(vec3(0.36, 0.12, 0.72), vec3(0.0, 0.96, 0.83), rim)
-			rgb = rgb + rimColor*(rim*pulse*chronosAmt*0.34)
+			rgb = applyChronos(rgb, cUV, t, chronosAmt, 1.0)
 		}
 
 		if rewindAmt > 0.001 {
@@ -134,8 +190,8 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 		outAlpha = 1.0
 		outRGB = clamp(rgb, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0))
 	} else {
-		// Mode 2: VHS Noir - RGB chromatic aberration, tape grain, tracking bands, neon-noir grade.
-		cUV := uv*2.0 - vec2(1.0, 1.0)
+		// Mode 2: VHS Noir - RGB chromatic aberration, stylized neon bleed, tape grain,
+		// tracking bands, and evening neon-noir color grade.
 		tSnap := floor(t * 16.0)
 		bandY := floor(uv.y * 72.0)
 		bandHash := hash21(vec2(bandY, tSnap))
@@ -160,22 +216,25 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 		bCol := sampleClamped(vhsUV-vec2(chromaUV, 0.0), origin, srcSize, minPos, maxPos).b
 		rgb := vec3(rCol, gSample.g, bCol)
 
-		// Cooler neon-noir magenta/cyan color grade.
+		// Stylized 8-tap dual-ring neon bleed + evening contrast & noir magenta/cyan shadow grade.
+		bloom := dualRingBloom(vhsUV, origin, srcSize, minPos, maxPos)
+		rgb = eveningGrade(rgb, 0.70) + bloom*(vec3(1.08, 0.92, 1.14)*0.26)
+
 		luma := dot(rgb, vec3(0.299, 0.587, 0.114))
 		shadowTone := smoothstep(0.15, 0.85, 1.0-luma)
 		noirCool := rgb * vec3(0.95, 0.93, 1.09)
-		rgb = mix(noirCool, noirCool*vec3(1.06, 0.89, 1.13), shadowTone*0.48)
-		rgb = rgb + vec3(0.025, 0.008, 0.042)*shadowTone
+		rgb = mix(noirCool, noirCool*vec3(1.06, 0.89, 1.13), shadowTone*0.44)
+		rgb = rgb + vec3(0.022, 0.008, 0.038)*shadowTone
 
 		// Deterministic analog tape grain (gentle so UI text stays legible).
 		pixCoord := floor(uv * screenDim)
 		grainSeed := vec2(fract(t*23.7)*97.0, fract(t*17.3)*53.0)
-		grain := (hash21(pixCoord+grainSeed) - 0.5) * (0.042 + 0.07*rewindAmt)
+		grain := (hash21(pixCoord+grainSeed) - 0.5) * (0.040 + 0.068*rewindAmt)
 		rgb = rgb + vec3(grain*0.95, grain*0.85, grain*1.10)
 
-		// VHS scanlines (~12% modulation).
+		// VHS scanlines (~10% modulation).
 		scanPhase := 0.5 + 0.5*sin(uv.y*screenDim.y*3.14159265)
-		rgb = rgb * (1.0 - 0.12*scanPhase)
+		rgb = rgb * (1.0 - 0.10*scanPhase)
 
 		if trackZone > 0.01 {
 			tearNoise := hash21(vec2(floor(uv.x*screenDim.x*0.5), floor(uv.y*screenDim.y)+floor(t*40.0)))
@@ -193,14 +252,11 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 		}
 
 		if chronosAmt > 0.001 {
-			rim := smoothstep(0.55, 1.15, length(cUV))
-			pulse := 0.85 + 0.15*sin(t*8.0)
-			rgb = mix(rgb, rgb*vec3(0.84, 0.98, 1.12), chronosAmt*0.22)
-			rgb = rgb + vec3(0.0, 0.96, 0.83)*(rim*pulse*chronosAmt*0.30)
+			rgb = applyChronos(rgb, cUV, t, chronosAmt, 1.0)
 		}
 
-		vig := 1.0 - smoothstep(0.64, 1.38, length(cUV))*0.26
-		rgb = mix(vec3(0.04, 0.015, 0.07), rgb, vig)
+		vig := 1.0 - smoothstep(0.66, 1.38, length(cUV))*0.22
+		rgb = mix(vec3(0.055, 0.022, 0.088), rgb, vig)
 		outAlpha = 1.0
 		outRGB = clamp(rgb, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0))
 	}
