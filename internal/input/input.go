@@ -20,6 +20,7 @@ type MenuInput struct {
 	MouseX, MouseY       float32
 	MouseLeftJustPressed bool
 	MouseLeftPressed     bool
+	MapScroll            float64
 }
 
 // Reader tracks stateful input helpers (touch drag origin, archetype cycling, aim mode, gamepad buffer) across frames.
@@ -317,7 +318,7 @@ func (r *Reader) Read(camX, camY float32, activeArch int, stopPhase int, stopScr
 		r.currentArch = st.SelectArchetype
 	}
 
-	// 7. Minigame & 4-Step Boarding Combo actions (strictly Mouse-driven on desktop; Gamepad preserved)
+	// 7. Minigame & 4-Step Boarding Combo actions (strictly Mouse-driven on desktop; Gamepad + Arrows/IJKL fallback preserved)
 	// While inside an active stop (Phase 1 or Phase 2), LMB ALWAYS drives the minigame/combo
 	// regardless of cursor distance so the player never accidentally mis-throws.
 	if stopPhase > 0 {
@@ -337,6 +338,25 @@ func (r *Reader) Read(camX, camY float32, activeArch int, stopPhase int, stopScr
 		}
 		if suppressThrow {
 			st.ThrowJustPressed = false
+		}
+
+		// Keyboard fallback (Arrow keys / IJKL) while preserving WASD movement and LMB mouse controls
+		kbDir, kbHeld := ResolveStopKeyboardFallback(
+			stopPhase,
+			inpututil.IsKeyJustPressed(ebiten.KeyUp) || inpututil.IsKeyJustPressed(ebiten.KeyI),
+			inpututil.IsKeyJustPressed(ebiten.KeyRight) || inpututil.IsKeyJustPressed(ebiten.KeyL),
+			inpututil.IsKeyJustPressed(ebiten.KeyDown) || inpututil.IsKeyJustPressed(ebiten.KeyK),
+			inpututil.IsKeyJustPressed(ebiten.KeyLeft) || inpututil.IsKeyJustPressed(ebiten.KeyJ),
+			ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyI) ||
+				ebiten.IsKeyPressed(ebiten.KeyRight) || ebiten.IsKeyPressed(ebiten.KeyL) ||
+				ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyK) ||
+				ebiten.IsKeyPressed(ebiten.KeyLeft) || ebiten.IsKeyPressed(ebiten.KeyJ),
+		)
+		if st.ActionDir == game.ActionNone && kbDir != game.ActionNone {
+			st.ActionDir = kbDir
+		}
+		if kbHeld {
+			st.ActionHeld = true
 		}
 	}
 
@@ -417,20 +437,44 @@ func ResolveStopMouseInput(stopPhase int, curX, curY, stopScreenX, stopScreenY f
 	return actionDir, actionHeld, hoverDir, suppressThrow
 }
 
-// ReadMenuInput reads keyboard (WASD), gamepad, and mouse input for UI menu screens.
+// ResolveStopKeyboardFallback resolves Arrow / IJKL fallback controls when inside an active stop
+// (stopPhase > 0), preserving WASD movement and LMB mouse controls.
+func ResolveStopKeyboardFallback(stopPhase int, upJustPressed, rightJustPressed, downJustPressed, leftJustPressed, anyHeld bool) (actionDir int, actionHeld bool) {
+	actionDir = game.ActionNone
+	if stopPhase <= 0 {
+		return actionDir, false
+	}
+	if upJustPressed {
+		actionDir = game.ActionUp
+	} else if rightJustPressed {
+		actionDir = game.ActionRight
+	} else if downJustPressed {
+		actionDir = game.ActionDown
+	} else if leftJustPressed {
+		actionDir = game.ActionLeft
+	}
+	return actionDir, anyHeld
+}
+
+// ReadMenuInput reads keyboard, gamepad, and mouse input for UI menu screens.
 func (r *Reader) ReadMenuInput() MenuInput {
 	curX, curY := ebiten.CursorPosition()
+	scrollX, scrollY := ebiten.Wheel()
+	if scrollX == 0 {
+		scrollX = -scrollY
+	}
 	mi := MenuInput{
-		Up:                   inpututil.IsKeyJustPressed(ebiten.KeyW),
-		Down:                 inpututil.IsKeyJustPressed(ebiten.KeyS),
-		Left:                 inpututil.IsKeyJustPressed(ebiten.KeyA),
-		Right:                inpututil.IsKeyJustPressed(ebiten.KeyD),
+		Up:                   inpututil.IsKeyJustPressed(ebiten.KeyW) || inpututil.IsKeyJustPressed(ebiten.KeyArrowUp),
+		Down:                 inpututil.IsKeyJustPressed(ebiten.KeyS) || inpututil.IsKeyJustPressed(ebiten.KeyArrowDown),
+		Left:                 inpututil.IsKeyJustPressed(ebiten.KeyA) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft),
+		Right:                inpututil.IsKeyJustPressed(ebiten.KeyD) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight),
 		Confirm:              inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace),
 		Back:                 inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyBackspace),
 		MouseX:               float32(curX),
 		MouseY:               float32(curY),
 		MouseLeftJustPressed: inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft),
 		MouseLeftPressed:     ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft),
+		MapScroll:            scrollX,
 	}
 
 	r.gamepadIDs = ebiten.AppendGamepadIDs(r.gamepadIDs[:0])

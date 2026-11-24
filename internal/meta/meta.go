@@ -9,12 +9,20 @@ const (
 	FilterVHS     = 2
 )
 
+// Directional mouse input mode constants for Pragmata & Boarding Combo.
+const (
+	DirModePadBox     = 0 // Locked pad inside box (clickable inside pad & outside box)
+	DirModeAroundStop = 1 // 4-way compass around Bus Stop circle outside box
+)
+
 // Player skin constants.
 const (
 	SkinAlfredoBase  = 0
 	SkinNeonDrip     = 1
-	SkinCyberSamurai = 2
-	PlayerSkinCount  = 3
+	SkinBanana       = 2
+	SkinChickenWing  = 3
+	SkinCyberSamurai = 4
+	PlayerSkinCount  = 5
 )
 
 // Bus skin constants.
@@ -34,6 +42,7 @@ type Settings struct {
 	ScreenShake   bool    `json:"screen_shake"`
 	ShowFPS       bool    `json:"show_fps"`
 	ChronosToggle bool    `json:"chronos_toggle"`
+	DirInputMode  int     `json:"dir_input_mode"`
 }
 
 // Profile holds persisted player progression, stats, and cosmetic selections.
@@ -46,6 +55,7 @@ type Profile struct {
 	UnlockedChallenges map[string]bool `json:"unlocked_challenges"`
 	SelectedPlayerSkin int             `json:"selected_player_skin"`
 	SelectedBusSkin    int             `json:"selected_bus_skin"`
+	SelectedTitle      string          `json:"selected_title"`
 }
 
 // SaveData is the root persisted save payload.
@@ -66,6 +76,7 @@ func DefaultSaveData() SaveData {
 			ScreenShake:   true,
 			ShowFPS:       false,
 			ChronosToggle: false,
+			DirInputMode:  DirModePadBox,
 		},
 		Profile: Profile{
 			UnlockedChallenges: make(map[string]bool),
@@ -91,6 +102,11 @@ func (s *SaveData) Normalize() {
 		s.Settings.FilterMode = FilterOff
 	} else if s.Settings.FilterMode > FilterVHS {
 		s.Settings.FilterMode = FilterVHS
+	}
+	if s.Settings.DirInputMode < DirModePadBox {
+		s.Settings.DirInputMode = DirModePadBox
+	} else if s.Settings.DirInputMode > DirModeAroundStop {
+		s.Settings.DirInputMode = DirModeAroundStop
 	}
 
 	s.Settings.MasterVol = clamp01(s.Settings.MasterVol)
@@ -122,6 +138,9 @@ func (s *SaveData) Normalize() {
 		!s.Profile.IsBusSkinUnlocked(s.Profile.SelectedBusSkin) {
 		s.Profile.SelectedBusSkin = BusNeonClassic
 	}
+	if !s.Profile.IsTitleUnlocked(s.Profile.SelectedTitle) {
+		s.Profile.SelectedTitle = ""
+	}
 }
 
 // MarkBossDefeated records that the given BossKind (0..5) has been defeated.
@@ -152,11 +171,52 @@ func (p Profile) IsPlayerSkinUnlocked(skin int) bool {
 		return true
 	case SkinNeonDrip:
 		return p.UnlockedChallenges["first_ride"]
+	case SkinBanana:
+		return p.UnlockedChallenges["full_bus"]
+	case SkinChickenWing:
+		return p.UnlockedChallenges["all_synergies"]
 	case SkinCyberSamurai:
 		return p.UnlockedChallenges["chaos_king_5star"]
 	default:
 		return false
 	}
+}
+
+type titleUnlockRule struct {
+	challengeID string
+	title       string
+}
+
+var titleUnlockRules = []titleUnlockRule{
+	{challengeID: "perfect_surgeon", title: "Veterano"},
+	{challengeID: "outlaw_3star", title: "Gloria Criminale"},
+	{challengeID: "beat_rector_3star", title: "Onore della Strada"},
+	{challengeID: "beat_mom_clean", title: "Figlio Modello"},
+}
+
+// UnlockedTitles returns "" (no title) followed by each unlocked title in stable order.
+func (p Profile) UnlockedTitles() []string {
+	out := make([]string, 0, 1+len(titleUnlockRules))
+	out = append(out, "")
+	for _, rule := range titleUnlockRules {
+		if p.UnlockedChallenges[rule.challengeID] {
+			out = append(out, rule.title)
+		}
+	}
+	return out
+}
+
+// IsTitleUnlocked reports whether title is "" or unlocked by its corresponding challenge.
+func (p Profile) IsTitleUnlocked(title string) bool {
+	if title == "" {
+		return true
+	}
+	for _, rule := range titleUnlockRules {
+		if rule.title == title {
+			return p.UnlockedChallenges[rule.challengeID]
+		}
+	}
+	return false
 }
 
 // IsBusSkinUnlocked reports whether the given bus skin index is unlocked.
@@ -183,6 +243,10 @@ func (p Profile) PlayerSkinName(skin int) string {
 		return "Alfredo Base"
 	case SkinNeonDrip:
 		return "Neon Drip"
+	case SkinBanana:
+		return "Alfredo Banana"
+	case SkinChickenWing:
+		return "Aletta di Pollo"
 	case SkinCyberSamurai:
 		return "Cyber-Samurai Zero"
 	default:

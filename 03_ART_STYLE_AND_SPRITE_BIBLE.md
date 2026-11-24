@@ -1,4 +1,4 @@
-# 🎨 GIRLBUS: NEON STOP — Art Direction & Sprite Bible (v1.0)
+# 🎨 GIRLBUS: NEON STOP — Art Direction & Sprite Bible (v1.1)
 > **Sintesi Estetica**: **"Vibrant Pop-Urban Chibi Pixel Art"**
 > Unione tra le meccaniche ad alta tensione di *Katana ZERO / PokéBonk* e uno stile visivo **solare, saturo, ironico e super-leggibile** ispirato alla pixel art urbana giapponese contemporanea (`peak-envref7`), alla densità satirica da metropoli pop (`peak-envref4`) e a sprite **Chibi 3/4 Top-Down ultra-espressivi** (`peak-npcref4`, `peak-npcref5`, `peak-npcref6`, `peak-npcref1`), con **Alfredo (versione base urban/casual)** come protagonista (`mainref-alfredo1/2`).
 
@@ -107,3 +107,42 @@ Per garantire che i **3 sprite master** creati ora e tutti gli **sprite secondar
 | **Archetipo Studentessa**| Blu Campus & Caramello | `#3B6998` | `#244366` | `#D98A4E` (Cardigan/Capelli) | `peak-npcref1 / 4` |
 | **Archetipo Cyber-Gyaru**| Biondo Pop & Ciano 5G | `#FFB84D` | `#E08924` | `#00F0FF` (Ologramma Neon) | `peak-npcref4` |
 | **Ambiente & Strada** | Asfalto, Marciapiede, Konbini | `#5A566B` | `#3F3B4D` | `#D8CEBE` (Marciapiede caldo) | `peak-envref7 / envref3` |
+
+---
+
+## 3. Costumi Alfredo, Livree Bus & Regole UI Pixel-Perfect (Aggiornamento v1.1)
+
+### 3.1 I 5 Costumi di Alfredo (`32×32 px`, 8 Frame) & Livree Autobus (`96×48 px`)
+Generati tramite [tools/gen_characters.py](./tools/gen_characters.py) e [tools/gen_skin_costumes.py](./tools/gen_skin_costumes.py) seguendo rigorosamente l'outline `1px #1C1124` e la regola **Zero Dithering Sporco**:
+
+| Asset / Costume | Sblocco (Challenge) | Direzione Visiva & Palette | Chiave `assets` |
+| :--- | :--- | :--- | :--- |
+| **Alfredo Base** | Sbloccato di default | Giacca streetwear blu-ardesia, t-shirt bianca, jeans scuri, sneakers rosse (`alfredo_*`). | `SpriteAlfredoIdle0..Throw` |
+| **Neon Drip** | `first_ride` (*Primo Giro*) | Visiera cyber ciano elettrico con riflesso `2px`, giacca magenta-viola con revers ciano, sneakers abbinate. | `SpriteAlfredoDripIdle0..Throw` |
+| **Alfredo Banana** | `full_bus` (*Autobus Pieno*) | Tuta a banana gialla curva (`#FFF59D` / `#FFE135` / `#E0A214`), picciolo marrone, viso pieno centrato nel ritaglio ovale. | `SpriteAlfredoBananaIdle0..Throw` |
+| **Aletta di Pollo** | `all_synergies` (*Affinità Totale*) | Costume da coscia/aletta fritta dorata (`#F4BE58` / `#D4822A` / `#9E5216`) con osso bianco `2`-lobi in alto a destra e ZERO dithering a scacchiera. | `SpriteAlfredoChickenIdle0..Throw` |
+| **Cyber-Samurai Zero** | `chaos_king_5star` (*Re del Caos 5★*) | Armatura cremisi-ossidiana proporzionata su Alfredo Base, elmo kabuto con corna oro, visore ciano, spallacci oro e elsa katana sulla spalla. | `SpriteAlfredoSamuraiIdle0..Throw` |
+| **Autobus Dorato Drift** | `rizz_jackpot` (*Re della Slot*) | Livrea dorata metallizzata `96×48` con fiamme laterali cremisi-arancio, fascia ciano neon e luci LED sul tetto. | `SpriteBusGold` |
+
+### 3.2 Regole UI Pixel-Perfect & Rendering UI
+1. Nei riquadri dei premi e nell'anteprima **Personalizzazione** di **Sfide & skin**, gli sprite di Alfredo vengono disegnati a **`1.0x`** (`32×32 px` nativi).
+2. **Testo Nitido e Accenti Italiani**: il renderer evita scale sub-`1.0` frazionarie nei riquadri diegetici dei minigiochi e disegna gli accenti italiani (`à è é ì ò ù`) sopra i glifi nella cache testo in [internal/render/ui_helpers.go](./internal/render/ui_helpers.go) contando le rune reali (`utf8.RuneCountInString`).
+3. **Bordi & Barre Allineate al Pixel (`+0.5`)**: per `vector.StrokeRect(..., 1.0, ..., false)` su Ebitengine, il bordo va posizionato a `(x+0.5, y+0.5, w-1, h-1)` con riempimento interno confinato in `[x+1 .. x+w-1]` per eliminare qualsiasi scarto di `1px`.
+4. **Collezionabili bloccati in Sfide & skin**. Il riquadro del premio usa un'icona per categoria con un lucchetto. Puntatore e focus da tastiera o gamepad aggiornano i dettagli del premio.
+
+## 4. Segnaletica, luci e asset del quartiere
+
+Il menu usa fondi prugna (`#201C2E`) e testo crema (`#FFEFDB`). Il menta (`#84E6D0`) evidenzia **Gioca** e l'oro caldo (`#FFD596`) dà risalto a **Impara a giocare**. Fasce colorate, ombre e bordi distinguono pulsanti e pannelli. Nel selettore la scheda Centro Neon riutilizza autobus, personaggi e sprite del quartiere. La Spiaggia resta in penombra con un lucchetto in primo piano. La scheda Upcoming soon usa un punto interrogativo lilla.
+
+In partita, menta per Chronos, oro per cassa, rosa per salute e lilla per XP accompagnano le etichette dell'HUD. Il corallo evidenzia le zone e i segnali di rischio. I minigiochi conservano il colore dell'archetipo.
+
+Le facciate mantengono colori più saturi del pavimento. Asfalto bagnato e mosaici usano un contrasto contenuto, con riflessi brevi e motivi sottili. Lampioni e insegne proiettano pozze di luce localizzate. I riflessi del canale restano confinati all'acqua. Il segnale di cura di Alfredo è concentrato ai piedi, lasciando leggibili volto e giacca.
+
+| Sprite rifiniti | Generatore |
+| :--- | :--- |
+| Autobus Neon `96×48`, quattro pensiline `48×48` e distributore `32×32` | [gen_world_assets.py](./tools/gen_world_assets.py) |
+| Pizzeria, Vinyl Bar e Gelateria `96×64` | [gen_map_buildings_v2.py](./tools/gen_map_buildings_v2.py) |
+| Slot `32×32` e pavé della piazza `32×32` | [gen_layered_map_assets.py](./tools/gen_layered_map_assets.py) |
+| Asfalto bagnato e mosaico della piazza `32×32` | [gen_tiles_and_icons.py](./tools/gen_tiles_and_icons.py) |
+
+Le pensiline si riconoscono dalle sigle **EMO**, **UNI**, **POP** e **5G**. La livrea Neon usa una fascia menta, vetri prugna e fanali crema. Il renderer colloca scie, ombre a contatto e lampi in scena secondo lo stato dell'azione.

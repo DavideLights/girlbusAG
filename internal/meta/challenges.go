@@ -42,7 +42,7 @@ var allChallenges = []ChallengeDef{
 		ID:       "full_bus",
 		TitleIT:  "Autobus Pieno",
 		DescIT:   "Cattura almeno 5 ragazze con una sola Fermata",
-		RewardIT: "Titolo Capolinea",
+		RewardIT: "Skin: Alfredo Banana",
 	},
 	{
 		ID:       "rizz_jackpot",
@@ -54,7 +54,7 @@ var allChallenges = []ChallengeDef{
 		ID:       "all_synergies",
 		TitleIT:  "Affinita Totale",
 		DescIT:   "Attiva tutte e 4 le Synergy in una sola partita",
-		RewardIT: "Maestria Urbis",
+		RewardIT: "Skin: Alfredo Aletta di Pollo",
 	},
 	{
 		ID:       "beat_rector_3star",
@@ -96,6 +96,8 @@ type RunTracker struct {
 	BeatRectorAt3Star bool
 	BeatMomThisRun    bool
 	NewlyUnlocked     []ChallengeDef
+	finalized         bool
+	committedGirls    int
 }
 
 // NewRunTracker creates an empty RunTracker for a new run.
@@ -202,9 +204,13 @@ func (rt *RunTracker) FinalizeRun(score, timeSec, girlsBoarded int, profile *Pro
 	if timeSec > profile.BestTimeSec {
 		profile.BestTimeSec = timeSec
 	}
-	profile.TotalRuns++
-	if girlsBoarded > 0 {
-		profile.TotalGirlsBoarded += girlsBoarded
+	if !rt.finalized {
+		profile.TotalRuns++
 	}
+	if delta := girlsBoarded - rt.committedGirls; delta > 0 {
+		profile.TotalGirlsBoarded += delta
+		rt.committedGirls = girlsBoarded
+	}
+	rt.finalized = true
 	rt.CheckAndUnlock(profile)
 }

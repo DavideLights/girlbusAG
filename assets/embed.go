@@ -30,6 +30,46 @@ const (
 	SpriteAlfredoDash  = "sprites/characters/alfredo_dash.png"
 	SpriteAlfredoThrow = "sprites/characters/alfredo_throw.png"
 
+	// Alfredo skin: Neon Drip
+	SpriteAlfredoDripIdle0 = "sprites/characters/alfredo_drip_idle_0.png"
+	SpriteAlfredoDripIdle1 = "sprites/characters/alfredo_drip_idle_1.png"
+	SpriteAlfredoDripRun0  = "sprites/characters/alfredo_drip_run_0.png"
+	SpriteAlfredoDripRun1  = "sprites/characters/alfredo_drip_run_1.png"
+	SpriteAlfredoDripRun2  = "sprites/characters/alfredo_drip_run_2.png"
+	SpriteAlfredoDripRun3  = "sprites/characters/alfredo_drip_run_3.png"
+	SpriteAlfredoDripDash  = "sprites/characters/alfredo_drip_dash.png"
+	SpriteAlfredoDripThrow = "sprites/characters/alfredo_drip_throw.png"
+
+	// Alfredo skin: Alfredo Banana
+	SpriteAlfredoBananaIdle0 = "sprites/characters/alfredo_banana_idle_0.png"
+	SpriteAlfredoBananaIdle1 = "sprites/characters/alfredo_banana_idle_1.png"
+	SpriteAlfredoBananaRun0  = "sprites/characters/alfredo_banana_run_0.png"
+	SpriteAlfredoBananaRun1  = "sprites/characters/alfredo_banana_run_1.png"
+	SpriteAlfredoBananaRun2  = "sprites/characters/alfredo_banana_run_2.png"
+	SpriteAlfredoBananaRun3  = "sprites/characters/alfredo_banana_run_3.png"
+	SpriteAlfredoBananaDash  = "sprites/characters/alfredo_banana_dash.png"
+	SpriteAlfredoBananaThrow = "sprites/characters/alfredo_banana_throw.png"
+
+	// Alfredo skin: Aletta di Pollo
+	SpriteAlfredoChickenIdle0 = "sprites/characters/alfredo_chicken_idle_0.png"
+	SpriteAlfredoChickenIdle1 = "sprites/characters/alfredo_chicken_idle_1.png"
+	SpriteAlfredoChickenRun0  = "sprites/characters/alfredo_chicken_run_0.png"
+	SpriteAlfredoChickenRun1  = "sprites/characters/alfredo_chicken_run_1.png"
+	SpriteAlfredoChickenRun2  = "sprites/characters/alfredo_chicken_run_2.png"
+	SpriteAlfredoChickenRun3  = "sprites/characters/alfredo_chicken_run_3.png"
+	SpriteAlfredoChickenDash  = "sprites/characters/alfredo_chicken_dash.png"
+	SpriteAlfredoChickenThrow = "sprites/characters/alfredo_chicken_throw.png"
+
+	// Alfredo skin: Cyber-Samurai Zero
+	SpriteAlfredoSamuraiIdle0 = "sprites/characters/alfredo_samurai_idle_0.png"
+	SpriteAlfredoSamuraiIdle1 = "sprites/characters/alfredo_samurai_idle_1.png"
+	SpriteAlfredoSamuraiRun0  = "sprites/characters/alfredo_samurai_run_0.png"
+	SpriteAlfredoSamuraiRun1  = "sprites/characters/alfredo_samurai_run_1.png"
+	SpriteAlfredoSamuraiRun2  = "sprites/characters/alfredo_samurai_run_2.png"
+	SpriteAlfredoSamuraiRun3  = "sprites/characters/alfredo_samurai_run_3.png"
+	SpriteAlfredoSamuraiDash  = "sprites/characters/alfredo_samurai_dash.png"
+	SpriteAlfredoSamuraiThrow = "sprites/characters/alfredo_samurai_throw.png"
+
 	// Girls & VIP aura
 	SpriteGirlKawaii0      = "sprites/characters/girl_kawaii_0.png"
 	SpriteGirlKawaiiSheet  = "sprites/characters/girl_kawaii_sheet.png"
@@ -50,6 +90,7 @@ const (
 
 	// Bus & police
 	SpriteBusNeon       = "sprites/world/bus_neon.png"
+	SpriteBusGold       = "sprites/world/bus_gold.png"
 	SpritePoliceOfficer = "sprites/world/police_officer.png"
 	SpritePoliceCar     = "sprites/world/police_car.png"
 
@@ -180,6 +221,46 @@ var expectedSpecs = []spriteSpec{
 	{SpriteAlfredoDash, 32, 32, color.RGBA{0, 245, 212, 255}, color.RGBA{255, 224, 200, 255}, "char"},
 	{SpriteAlfredoThrow, 32, 32, color.RGBA{75, 127, 179, 255}, color.RGBA{255, 224, 200, 255}, "char"},
 
+	// Alfredo skin: Neon Drip
+	{SpriteAlfredoDripIdle0, 32, 32, color.RGBA{255, 42, 133, 255}, color.RGBA{0, 240, 255, 255}, "char"},
+	{SpriteAlfredoDripIdle1, 32, 32, color.RGBA{255, 42, 133, 255}, color.RGBA{0, 240, 255, 255}, "char"},
+	{SpriteAlfredoDripRun0, 32, 32, color.RGBA{255, 42, 133, 255}, color.RGBA{0, 240, 255, 255}, "char"},
+	{SpriteAlfredoDripRun1, 32, 32, color.RGBA{255, 42, 133, 255}, color.RGBA{0, 240, 255, 255}, "char"},
+	{SpriteAlfredoDripRun2, 32, 32, color.RGBA{255, 42, 133, 255}, color.RGBA{0, 240, 255, 255}, "char"},
+	{SpriteAlfredoDripRun3, 32, 32, color.RGBA{255, 42, 133, 255}, color.RGBA{0, 240, 255, 255}, "char"},
+	{SpriteAlfredoDripDash, 32, 32, color.RGBA{255, 42, 133, 255}, color.RGBA{0, 240, 255, 255}, "char"},
+	{SpriteAlfredoDripThrow, 32, 32, color.RGBA{255, 42, 133, 255}, color.RGBA{0, 240, 255, 255}, "char"},
+
+	// Alfredo skin: Alfredo Banana
+	{SpriteAlfredoBananaIdle0, 32, 32, color.RGBA{255, 225, 53, 255}, color.RGBA{255, 224, 200, 255}, "char"},
+	{SpriteAlfredoBananaIdle1, 32, 32, color.RGBA{255, 225, 53, 255}, color.RGBA{255, 224, 200, 255}, "char"},
+	{SpriteAlfredoBananaRun0, 32, 32, color.RGBA{255, 225, 53, 255}, color.RGBA{255, 224, 200, 255}, "char"},
+	{SpriteAlfredoBananaRun1, 32, 32, color.RGBA{255, 225, 53, 255}, color.RGBA{255, 224, 200, 255}, "char"},
+	{SpriteAlfredoBananaRun2, 32, 32, color.RGBA{255, 225, 53, 255}, color.RGBA{255, 224, 200, 255}, "char"},
+	{SpriteAlfredoBananaRun3, 32, 32, color.RGBA{255, 225, 53, 255}, color.RGBA{255, 224, 200, 255}, "char"},
+	{SpriteAlfredoBananaDash, 32, 32, color.RGBA{255, 225, 53, 255}, color.RGBA{0, 240, 255, 255}, "char"},
+	{SpriteAlfredoBananaThrow, 32, 32, color.RGBA{255, 225, 53, 255}, color.RGBA{255, 224, 200, 255}, "char"},
+
+	// Alfredo skin: Aletta di Pollo
+	{SpriteAlfredoChickenIdle0, 32, 32, color.RGBA{217, 138, 48, 255}, color.RGBA{255, 243, 232, 255}, "char"},
+	{SpriteAlfredoChickenIdle1, 32, 32, color.RGBA{217, 138, 48, 255}, color.RGBA{255, 243, 232, 255}, "char"},
+	{SpriteAlfredoChickenRun0, 32, 32, color.RGBA{217, 138, 48, 255}, color.RGBA{255, 243, 232, 255}, "char"},
+	{SpriteAlfredoChickenRun1, 32, 32, color.RGBA{217, 138, 48, 255}, color.RGBA{255, 243, 232, 255}, "char"},
+	{SpriteAlfredoChickenRun2, 32, 32, color.RGBA{217, 138, 48, 255}, color.RGBA{255, 243, 232, 255}, "char"},
+	{SpriteAlfredoChickenRun3, 32, 32, color.RGBA{217, 138, 48, 255}, color.RGBA{255, 243, 232, 255}, "char"},
+	{SpriteAlfredoChickenDash, 32, 32, color.RGBA{217, 138, 48, 255}, color.RGBA{0, 240, 255, 255}, "char"},
+	{SpriteAlfredoChickenThrow, 32, 32, color.RGBA{217, 138, 48, 255}, color.RGBA{255, 243, 232, 255}, "char"},
+
+	// Alfredo skin: Cyber-Samurai Zero
+	{SpriteAlfredoSamuraiIdle0, 32, 32, color.RGBA{184, 29, 58, 255}, color.RGBA{255, 209, 102, 255}, "char"},
+	{SpriteAlfredoSamuraiIdle1, 32, 32, color.RGBA{184, 29, 58, 255}, color.RGBA{255, 209, 102, 255}, "char"},
+	{SpriteAlfredoSamuraiRun0, 32, 32, color.RGBA{184, 29, 58, 255}, color.RGBA{255, 209, 102, 255}, "char"},
+	{SpriteAlfredoSamuraiRun1, 32, 32, color.RGBA{184, 29, 58, 255}, color.RGBA{255, 209, 102, 255}, "char"},
+	{SpriteAlfredoSamuraiRun2, 32, 32, color.RGBA{184, 29, 58, 255}, color.RGBA{255, 209, 102, 255}, "char"},
+	{SpriteAlfredoSamuraiRun3, 32, 32, color.RGBA{184, 29, 58, 255}, color.RGBA{255, 209, 102, 255}, "char"},
+	{SpriteAlfredoSamuraiDash, 32, 32, color.RGBA{184, 29, 58, 255}, color.RGBA{0, 240, 255, 255}, "char"},
+	{SpriteAlfredoSamuraiThrow, 32, 32, color.RGBA{184, 29, 58, 255}, color.RGBA{255, 209, 102, 255}, "char"},
+
 	// Girls
 	{SpriteGirlKawaii0, 32, 32, color.RGBA{255, 107, 157, 255}, color.RGBA{255, 240, 245, 255}, "char"},
 	{SpriteGirlKawaiiSheet, 96, 32, color.RGBA{255, 107, 157, 255}, color.RGBA{255, 240, 245, 255}, "sheet"},
@@ -200,6 +281,7 @@ var expectedSpecs = []spriteSpec{
 
 	// Bus & Police
 	{SpriteBusNeon, 96, 48, color.RGBA{255, 42, 133, 255}, color.RGBA{0, 245, 212, 255}, "bus"},
+	{SpriteBusGold, 96, 48, color.RGBA{255, 209, 102, 255}, color.RGBA{230, 57, 70, 255}, "bus"},
 	{SpritePoliceOfficer, 32, 32, color.RGBA{36, 67, 140, 255}, color.RGBA{255, 60, 60, 255}, "char"},
 	{SpritePoliceCar, 48, 32, color.RGBA{30, 50, 110, 255}, color.RGBA{255, 40, 60, 255}, "bus"},
 
@@ -356,6 +438,27 @@ func LoadSpriteBank() *SpriteBank {
 	}
 
 	return bank
+}
+
+// PlayerSkinSpriteKey returns the embedded sprite key for a player skin (0..4) and pose name.
+func PlayerSkinSpriteKey(skin int, pose string) string {
+	if pose == "" {
+		pose = "idle_0"
+	}
+	var prefix string
+	switch skin {
+	case 1:
+		prefix = "alfredo_drip_"
+	case 2:
+		prefix = "alfredo_banana_"
+	case 3:
+		prefix = "alfredo_chicken_"
+	case 4:
+		prefix = "alfredo_samurai_"
+	default:
+		prefix = "alfredo_"
+	}
+	return "sprites/characters/" + prefix + pose + ".png"
 }
 
 func loadPNGFromFS(p string) *ebiten.Image {

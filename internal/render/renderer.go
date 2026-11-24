@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"image"
 	"image/color"
 	"math"
 	"sort"
@@ -61,24 +62,34 @@ type Renderer struct {
 	tick                 float32
 	textCache            map[string]*ebiten.Image
 	lightTex             *ebiten.Image
+	whitePixel           *ebiten.Image
 	particles            [numAmbientParticles]ambientParticle
 	drawables            []renderItem
 	playerSkin           int
 	busSkin              int
+	dirInputMode         int
 	screenShakeEnabled   bool
 	showFPS              bool
 	playingActive        bool
+	lastCamX, lastCamY   float32
 	activeChallengeToast string
 	toastTimer           float32
+	relicToastKind       game.RelicKind
+	relicToastName       string
+	relicToastDesc       string
+	relicToastTimer      float32
 }
 
 // NewRenderer constructs a Renderer backed by the embedded SpriteBank.
 func NewRenderer(sprites *assets.SpriteBank) *Renderer {
+	wp := ebiten.NewImage(1, 1)
+	wp.Fill(color.White)
 	r := &Renderer{
 		sprites:            sprites,
 		mouseHoverDir:      game.ActionNone,
 		textCache:          make(map[string]*ebiten.Image, 160),
 		lightTex:           buildRadialLightTexture(),
+		whitePixel:         wp,
 		drawables:          make([]renderItem, 0, 160),
 		screenShakeEnabled: true,
 		playingActive:      true,
@@ -122,10 +133,32 @@ func (r *Renderer) SetVisualPrefs(playerSkin, busSkin int, screenShake, showFPS 
 	r.showFPS = showFPS
 }
 
+// SetDirInputMode sets whether directional mouse actions use the locked box pad (0) or around-stop compass (1).
+func (r *Renderer) SetDirInputMode(mode int) {
+	r.dirInputMode = mode
+}
+
 // ShowChallengeToast triggers a temporary top-center challenge unlock banner.
 func (r *Renderer) ShowChallengeToast(title string) {
 	r.activeChallengeToast = title
 	r.toastTimer = 3.6
+}
+
+// ShowRelicToast triggers a clear 5s banner explaining a newly acquired passive Relic.
+func (r *Renderer) ShowRelicToast(rk game.RelicKind) {
+	spec := game.GetRelicSpec(rk)
+	r.relicToastKind = rk
+	r.relicToastName = spec.Name
+	r.relicToastDesc = spec.Desc
+	r.relicToastTimer = 5.0
+}
+
+// AdvanceVisuals runs ambient animation and notification timers at the update rate.
+func (r *Renderer) AdvanceVisuals(dt float32) {
+	r.tick += dt
+	r.updateAmbientParticles(dt)
+	r.toastTimer = max(0, r.toastTimer-dt)
+	r.relicToastTimer = max(0, r.relicToastTimer-dt)
 }
 
 // archetypeColor returns the signature neon color for a BusStop / Girl archetype.
@@ -151,16 +184,6 @@ func (r *Renderer) Draw(screen *ebiten.Image, w *game.World) {
 
 // DrawWorldScene renders the full Pop-Urban world scene and optionally calls DrawHUDAndOverlays when showHUD is true.
 func (r *Renderer) DrawWorldScene(screen *ebiten.Image, w *game.World, showHUD bool) {
-	const dt = 1.0 / 60.0
-	r.tick += dt
-	r.updateAmbientParticles(dt)
-	if r.toastTimer > 0 {
-		r.toastTimer -= dt
-		if r.toastTimer < 0 {
-			r.toastTimer = 0
-		}
-	}
-
 	// Compute clamped camera + screen shake offset
 	shakeX, shakeY := float32(0), float32(0)
 	if r.screenShakeEnabled && w.ScreenShake > 0.05 {
@@ -169,6 +192,8 @@ func (r *Renderer) DrawWorldScene(screen *ebiten.Image, w *game.World, showHUD b
 	}
 	camX := clampF(w.CameraX, 0, game.ArenaWidth-game.ScreenWidth) + shakeX
 	camY := clampF(w.CameraY, 0, game.ArenaHeight-game.ScreenHeight) + shakeY
+	r.lastCamX = camX
+	r.lastCamY = camY
 
 	// Clear backdrop
 	screen.Fill(color.RGBA{26, 20, 38, 255})
@@ -178,37 +203,30 @@ func (r *Renderer) DrawWorldScene(screen *ebiten.Image, w *game.World, showHUD b
 
 	// Layer 0.5: Architectural Golden-Hour Drop Shadows
 	r.drawGroundShadows(screen, w, camX, camY)
+	r.drawDistrictLighting(screen, w, camX, camY)
 
-	// Layer 1: Express Lanes, Wave Rings, Bus Stop Capture Circles & Tethers
+	// Lay markings and movement effects on the ground before sorting the world props.
 	r.drawExpressLanes(screen, w, camX, camY)
+	r.drawBusSlipstreams(screen, w, camX, camY)
 	r.drawWaveRings(screen, w, camX, camY)
 	r.drawStopCirclesAndTethers(screen, w, camX, camY)
-
-	// Layer 2: Lane / Laser Telegraphs
-	r.drawTelegraphs(screen, w, camX, camY)
-
-	// Layer 3: Y-Sorted 2.5D Props, Heal Pickups & World Entities
-	r.drawYSortedWorld(screen, w, camX, camY)
-
-	// Layer 4: Neon Buses, Bullets
-	r.drawBuses(screen, w, camX, camY)
-	r.drawBullets(screen, w, camX, camY)
-
-	// Layer 4.5: Evening Twilight Veil, Multi-Layer Additive Lighting, Canal Reflections & Ambient Particles
-	r.drawLightingPass(screen, w, camX, camY)
+	r.drawPoliceHazards(screen, w, camX, camY)
 	r.drawAmbientParticles(screen, camX, camY)
+
+	r.drawYSortedWorld(screen, w, camX, camY)
+	r.drawLightingPass(screen, w, camX, camY)
+	r.drawBuses(screen, w, camX, camY)
 	r.drawHeliSpotlight(screen, w, camX, camY)
 
-	// Layer 4.8: Diegetic Near-Player HP & Micro-Chronos Bar (hidden when Alfredo is offscreen in Title backdrop)
-	r.drawPlayerHealthBar(screen, w, camX, camY)
-
-	// Layer 5: Contextual Aim Reticle & Mouse-Only Diegetic Minigames / 4-Step Combos
 	if r.playingActive && !w.PendingLevelUp && !w.ShopMenu.Active && !w.SlotModal.Active {
 		r.drawAimAndRange(screen, w, camX, camY)
-		r.drawDiegeticStopUI(screen, w, camX, camY)
 	}
 
-	// Layer 6: Floating Popups & Offscreen Tactical Pointers
+	// Keep dangers legible over the scenery, light pools and targeting fills.
+	r.drawTelegraphs(screen, w, camX, camY)
+	r.drawBullets(screen, w, camX, camY)
+	r.drawPlayerHealthBar(screen, w, camX, camY)
+
 	if r.playingActive {
 		r.drawPopups(screen, w, camX, camY)
 		r.drawOffscreenIndicators(screen, w, camX, camY)
@@ -228,7 +246,6 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 	tileWetAsphalt := r.sprites.Get(assets.SpriteTileWetAsphalt)
 	tileSidewalk := r.sprites.Get(assets.SpriteTileSidewalk)
 	tileCross := r.sprites.Get(assets.SpriteTileCrosswalk)
-	tileZTL := r.sprites.Get(assets.SpriteTileZTL)
 	tileGrass := r.sprites.Get(assets.SpriteTileGrassPark)
 	tileParkPath := r.sprites.Get(assets.SpriteTileParkPath)
 	tileCobble := r.sprites.Get(assets.SpriteTileCobblePlaza)
@@ -250,8 +267,8 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 	if startRow < 0 {
 		startRow = 0
 	}
-	maxCols := game.ArenaWidth / tileSize
-	maxRows := game.ArenaHeight / tileSize
+	maxCols := (game.ArenaWidth + tileSize - 1) / tileSize
+	maxRows := (game.ArenaHeight + tileSize - 1) / tileSize
 	if endCol > maxCols {
 		endCol = maxCols
 	}
@@ -322,15 +339,15 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 			}
 
 			op.GeoM.Reset()
-			if img == tileWater {
-				waveShift := math.Sin(float64(r.tick*2.2+float32(row)*0.8)) * 2.5
-				op.GeoM.Translate(sx+waveShift, sy)
-			} else {
-				op.GeoM.Translate(sx, sy)
+			op.ColorScale.Reset()
+			if img == tileCross {
+				op.ColorScale.Scale(0.79, 0.76, 0.79, 1)
 			}
+			op.GeoM.Translate(sx, sy)
 			screen.DrawImage(img, op)
 		}
 	}
+	op.ColorScale.Reset()
 
 	// 1.5 Seamless South Boardwalk (Y=624..656) & Stone Canal Embankment (Y=656..688) above Canal Water
 	bwY := w.BoardwalkY - camY
@@ -449,39 +466,32 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 		r.drawScaledText(screen, "AREA BUS", int(bx+20), int(by+11), 1.0, colGold, colOutline)
 	}
 
-	// 6. Forbidden ZTL Zones
-	ztlPulse := float32(0.55 + 0.45*math.Sin(float64(r.tick*5.5)))
+	// Restricted bays use the same coral edge language as the police warnings.
 	for _, z := range w.ZTLZones {
-		cols := int(math.Ceil(float64(z.W) / tileSize))
-		rows := int(math.Ceil(float64(z.H) / tileSize))
-		for rIdx := 0; rIdx < rows; rIdx++ {
-			for cIdx := 0; cIdx < cols; cIdx++ {
-				tx := z.X + float32(cIdx*tileSize)
-				ty := z.Y + float32(rIdx*tileSize)
-				op.GeoM.Reset()
-				op.GeoM.Translate(float64(tx-camX), float64(ty-camY))
-				op.ColorScale.Reset()
-				op.ColorScale.ScaleAlpha(0.75)
-				screen.DrawImage(tileZTL, op)
-			}
+		zx, zy := snapPixel(z.X-camX), snapPixel(z.Y-camY)
+		if zx+z.W < 0 || zx >= game.ScreenWidth || zy+z.H < 0 || zy >= game.ScreenHeight {
+			continue
 		}
-		op.ColorScale.Reset()
-
-		zx, zy := z.X-camX, z.Y-camY
-		borderCol := Premul(255, uint8(40+60*ztlPulse), uint8(110+40*ztlPulse), 240)
-		vector.StrokeRect(screen, zx, zy, z.W, z.H, 2.0, borderCol, false)
-		vector.DrawFilledRect(screen, zx+4, zy+4, 78, 14, Premul(30, 8, 22, 220), false)
-		vector.StrokeRect(screen, zx+4, zy+4, 78, 14, 1, colGold, false)
-		r.drawTextColored(screen, "ZTL 3x +1*", int(zx)+8, int(zy)+3, colGold)
+		vector.DrawFilledRect(screen, zx, zy, z.W, z.H, Premul(145, 43, 70, 72), false)
+		vector.StrokeRect(screen, zx+0.5, zy+0.5, z.W-1, z.H-1, 1, PremulColor(actionCoral, 205), false)
+		for x := zx + 3; x < zx+z.W-6; x += 10 {
+			vector.StrokeLine(screen, x, zy+5, x+4, zy+1, 1, PremulColor(actionCoral, 155), false)
+			vector.StrokeLine(screen, x, zy+z.H-2, x+4, zy+z.H-6, 1, PremulColor(actionCoral, 155), false)
+		}
+		vector.DrawFilledRect(screen, zx+5, zy+9, 73, 15, Premul(38, 24, 43, 220), false)
+		r.drawTextColored(screen, "ZTL 3x +1", int(zx)+9, int(zy)+9, actionCream)
+		r.DrawSpriteIcon(screen, assets.SpriteIconStarWanted, zx+64, zy+10, 1.0)
 	}
 
 	// La Rettrice Martial ZTL Half-Arena Overlay
 	if w.Boss.Active && w.Boss.MartialZTLActive {
 		mz := w.Boss.MartialZTLRect
 		zx, zy := mz.X-camX, mz.Y-camY
-		vector.DrawFilledRect(screen, zx, zy, mz.W, mz.H, Premul(255, 35, 85, uint8(22+16*ztlPulse)), false)
+		vector.DrawFilledRect(screen, zx, zy, mz.W, mz.H, Premul(255, 35, 85, 32), false)
 		vector.StrokeRect(screen, zx, zy, mz.W, mz.H, 2.5, Premul(255, 45, 95, 220), false)
-		r.drawScaledText(screen, "ZTL MARZIALE (NO PERFECT = +1*)", int(zx+14), int(zy+10), 1.0, colRedAlert, colOutline)
+		r.drawScaledText(screen, "ZTL MARZIALE (NO PERFECT = +1", int(zx+14), int(zy+10), 1.0, colRedAlert, colOutline)
+		r.DrawSpriteIcon(screen, assets.SpriteIconStarWanted, zx+190, zy+11, 1.0)
+		r.drawScaledText(screen, ")", int(zx+203), int(zy+10), 1.0, colRedAlert, colOutline)
 	}
 
 	// 7. South Boardwalk Wooden Railing & Shimmering Canal Reflections
@@ -520,21 +530,34 @@ func (r *Renderer) drawExpressLanes(screen *ebiten.Image, w *game.World, camX, c
 
 func (r *Renderer) drawWaveRings(screen *ebiten.Image, w *game.World, camX, camY float32) {
 	for _, wr := range w.WaveRings {
+		if wr.MaxLife <= 0 || wr.Radius <= 0 {
+			continue
+		}
 		alpha := clampF(wr.Life/wr.MaxLife, 0, 1)
 		var c color.RGBA
+		var impact bool
 		switch wr.Kind {
 		case 0:
-			c = Premul(0, 245, 212, uint8(160*alpha))
+			c = color.RGBA{100, 230, 198, 255}
 		case 1:
-			c = Premul(255, 240, 120, uint8(230*alpha))
+			c = color.RGBA{255, 211, 131, 255}
+			impact = wr.MaxRadius >= 120
 		case 2:
-			c = Premul(255, 42, 133, uint8(230*alpha))
+			c = color.RGBA{255, 132, 160, 255}
+			impact = true
 		case 3:
-			c = Premul(75, 156, 226, uint8(210*alpha))
+			c = color.RGBA{108, 185, 250, 255}
+		case game.WaveBossBreak:
+			c = color.RGBA{255, 137, 115, 255}
+			impact = true
 		default:
-			c = Premul(255, 230, 0, uint8(220*alpha))
+			c = color.RGBA{247, 221, 121, 255}
 		}
-		vector.StrokeCircle(screen, wr.X-camX, wr.Y-camY, wr.Radius, 2.5, c, true)
+		x, y := wr.X-camX, wr.Y-camY
+		vector.StrokeCircle(screen, x, y, wr.Radius, 1.5, PremulColor(c, uint8(190*alpha)), true)
+		if impact {
+			drawImpactSparks(screen, x, y, wr.Radius, alpha, c, wr.Kind == game.WaveBossBreak)
+		}
 	}
 }
 
@@ -547,17 +570,17 @@ func (r *Renderer) drawStopCirclesAndTethers(screen *ebiten.Image, w *game.World
 		sx, sy := st.X-camX, st.Y-camY
 		ac := archetypeColor(st.Arch)
 
-		fillAlpha := uint8(24)
+		fillAlpha := uint8(13)
 		if st.PlayerInside {
-			fillAlpha = 38
+			fillAlpha = 22
 		}
 		vector.DrawFilledCircle(screen, sx, sy, st.CaptureRadius, PremulColor(ac, fillAlpha), true)
 
-		ringC := PremulColor(ac, 225)
+		ringC := PremulColor(ac, 176)
 		if st.SynergyActive {
 			ringC = colGold
 		}
-		vector.StrokeCircle(screen, sx, sy, st.CaptureRadius, 2.2, ringC, true)
+		vector.StrokeCircle(screen, sx, sy, st.CaptureRadius, 1.5, ringC, true)
 
 		// Kawaii Tear-Graze ring around Alfredo
 		if st.Arch == game.ArchKawaii && st.PlayerInside {
@@ -570,8 +593,7 @@ func (r *Renderer) drawStopCirclesAndTethers(screen *ebiten.Image, w *game.World
 			for g := range w.Girls {
 				if w.Girls[g].ID == gid {
 					gx, gy := w.Girls[g].X-camX, w.Girls[g].Y-camY
-					vector.StrokeLine(screen, sx, sy, gx, gy, 3.2, PremulColor(ac, 95), true)
-					vector.StrokeLine(screen, sx, sy, gx, gy, 1.5, Premul(255, 255, 255, 225), true)
+					drawTether(screen, sx, sy, gx, gy, r.tick, ac)
 					break
 				}
 			}
@@ -580,27 +602,90 @@ func (r *Renderer) drawStopCirclesAndTethers(screen *ebiten.Image, w *game.World
 		// Tether line to hooked Boss
 		if st.HookedBoss && w.Boss.Active {
 			bx, by := w.Boss.X-camX, w.Boss.Y-camY
-			vector.StrokeLine(screen, sx, sy, bx, by, 4.2, Premul(255, 42, 133, 125), true)
-			vector.StrokeLine(screen, sx, sy, bx, by, 1.8, colGold, true)
+			drawTether(screen, sx, sy, bx, by, r.tick, colGold)
 		}
 	}
 }
 
 func (r *Renderer) drawTelegraphs(screen *ebiten.Image, w *game.World, camX, camY float32) {
 	for _, t := range w.Telegraphs {
-		blink := math.Sin(float64(r.tick*28.0)) > 0
-		alpha := uint8(130)
-		if blink {
-			alpha = 235
-		}
 		x1, y1 := t.X1-camX, t.Y1-camY
 		x2, y2 := t.X2-camX, t.Y2-camY
-		if t.Kind == 0 {
-			vector.StrokeLine(screen, x1, y1, x2, y2, 18, color.RGBA{255, 30, 60, 38}, false)
-			vector.StrokeLine(screen, x1, y1, x2, y2, 2.0, color.RGBA{255, 45, 75, alpha}, false)
-		} else {
-			vector.StrokeLine(screen, x1, y1, x2, y2, 8, color.RGBA{255, 210, 40, 40}, true)
-			vector.StrokeLine(screen, x1, y1, x2, y2, 2.0, color.RGBA{255, 70, 90, alpha}, true)
+		progress := 1 - clampF(t.Timer/max(t.MaxTimer, 0.01), 0, 1)
+		drawHazardWarning(screen, x1, y1, x2, y2, progress, t.Kind == 0)
+	}
+}
+
+func (r *Renderer) drawPoliceHazards(screen *ebiten.Image, w *game.World, camX, camY float32) {
+	for _, h := range w.Police.Hazards {
+		if !h.Active {
+			continue
+		}
+		x1, y1 := h.X1-camX, h.Y1-camY
+		x2, y2 := h.X2-camX, h.Y2-camY
+		if x2 < -32 || x1 > game.ScreenWidth+32 || y1 < -32 || y1 > game.ScreenHeight+32 {
+			continue
+		}
+
+		if h.TelegraphTimer > 0 {
+			pulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*22.0)))
+			bandA := uint8(55 + 65*pulse)
+			vector.StrokeLine(screen, x1, y1, x2, y2, 14, Premul(255, 55, 45, bandA), false)
+			segLen := float32(8)
+			gapLen := float32(6)
+			for sx := x1; sx < x2; sx += segLen + gapLen {
+				ex := sx + segLen
+				if ex > x2 {
+					ex = x2
+				}
+				c := colGold
+				if int((sx+r.tick*60)/12)%2 == 0 {
+					c = colRedAlert
+				}
+				vector.StrokeLine(screen, sx, y1, ex, y2, 2.2, c, false)
+			}
+			continue
+		}
+
+		// Active electrified red/yellow laser-spike strip
+		flicker := int(r.tick*26)%2 == 0
+		vector.StrokeLine(screen, x1, y1, x2, y2, 10, Premul(255, 35, 65, 95), false)
+		vector.StrokeLine(screen, x1, y1, x2, y2, 4.5, Premul(255, 45, 75, 225), false)
+		coreCol := colGold
+		if flicker {
+			coreCol = color.RGBA{255, 250, 195, 255}
+		}
+		vector.StrokeLine(screen, x1, y1, x2, y2, 1.8, coreCol, false)
+
+		// Electrified spikes along the barrier strip
+		for sx := x1 + 6; sx < x2-4; sx += 11 {
+			spikeCol := colGold
+			if int(sx)%2 == 0 {
+				spikeCol = colRedAlert
+			}
+			vector.StrokeLine(screen, sx-3, y1+2, sx, y1-5, 1.4, spikeCol, true)
+			vector.StrokeLine(screen, sx+3, y1+2, sx, y1-5, 1.4, spikeCol, true)
+		}
+
+		// Heavy metallic road anchor pylons at endpoints
+		for _, ax := range [2]float32{x1, x2} {
+			vector.DrawFilledRect(screen, ax-3, y1-6, 6, 12, color.RGBA{28, 22, 42, 245}, false)
+			vector.StrokeRect(screen, ax-3, y1-6, 6, 12, 1.0, colRedAlert, false)
+			vector.DrawFilledRect(screen, ax-1.5, y1-4, 3, 3, colGold, false)
+		}
+
+		// Tiny "DASH!" prompt when Alfredo is nearby
+		nearX := clampF(w.Player.X, h.X1, h.X2)
+		dx := w.Player.X - nearX
+		dy := w.Player.Y - h.Y1
+		if dx*dx+dy*dy <= 68*68 {
+			midX := (x1 + x2) * 0.5
+			lbl := "DASH!"
+			pw := float32(textPixelWidth(lbl, 1.0) + 10)
+			px := clampF(midX-pw*0.5, 4, game.ScreenWidth-pw-4)
+			py := clampF(y1-22, 28, game.ScreenHeight-36)
+			drawPillBadge(screen, px, py, pw, 14, Premul(48, 10, 22, 230), colGold)
+			r.drawScaledText(screen, lbl, int(px+5), int(py-1), 1.0, colGold, colOutline)
 		}
 	}
 }
@@ -840,20 +925,47 @@ func (r *Renderer) drawSingleHealPickup(screen *ebiten.Image, hp *game.HealPicku
 		ringR = 13.0 + 2.8*pulse
 	}
 
-	// Ground contact shadow + soft pulsing mint-gold ground ring
+	// Ground contact shadow + soft pulsing ground ring
 	vector.DrawFilledCircle(screen, hx, hy+7, shadowR, Premul(20, 12, 32, 115), true)
-	vector.StrokeCircle(screen, hx, hy+6, ringR, 1.6, Premul(92, 255, 196, uint8(135+85*pulse)), true)
-	vector.StrokeCircle(screen, hx, hy+6, ringR*0.68, 1.2, Premul(255, 232, 108, uint8(150+90*pulse)), true)
+	if hp.BlackHeart {
+		vector.StrokeCircle(screen, hx, hy+6, ringR, 1.8, Premul(160, 38, 210, uint8(155+90*pulse)), true)
+		vector.StrokeCircle(screen, hx, hy+6, ringR*0.68, 1.3, Premul(245, 42, 108, uint8(165+85*pulse)), true)
 
-	// Gently bobbing pickup sprite
-	img := r.sprites.Get(assets.SpriteIconPickupHeal)
-	bw := float64(img.Bounds().Dx())
-	bh := float64(img.Bounds().Dy())
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(-bw*0.5, -bh*0.5)
-	op.GeoM.Scale(scale, scale)
-	op.GeoM.Translate(float64(hx), float64(hy-2+bob))
-	screen.DrawImage(img, op)
+		// Pulsing dark-violet/crimson heart with white sheen highlight
+		hScale := float32(scale) * (1.15 + 0.12*pulse)
+		hyHeart := hy - 3 + bob
+		vector.DrawFilledCircle(screen, hx, hyHeart, 8.5+1.5*pulse, Premul(110, 16, 145, uint8(85+55*pulse)), true)
+		heartImg := r.sprites.Get(assets.SpriteIconHeartFull)
+		hbw := float64(heartImg.Bounds().Dx())
+		hbh := float64(heartImg.Bounds().Dy())
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(-hbw*0.5, -hbh*0.5)
+		op.GeoM.Scale(float64(hScale), float64(hScale))
+		op.GeoM.Translate(float64(hx), float64(hyHeart))
+		op.ColorScale.Scale(0.62, 0.14, 0.72, 1.0)
+		screen.DrawImage(heartImg, op)
+		// Crisp inner dark-violet core & white specular sheen
+		drawHeartIcon(screen, hx, hyHeart, Premul(140, 24, 175, 215), true)
+		vector.DrawFilledRect(screen, hx-3.6, hyHeart-2.8, 2.2, 1.3, Premul(255, 240, 255, 245), false)
+		vector.DrawFilledRect(screen, hx-4.0, hyHeart-1.6, 1.2, 1.4, Premul(255, 240, 255, 220), false)
+
+		lbl := "CUORE +1"
+		lw := textPixelWidth(lbl, 1.0)
+		r.drawScaledText(screen, lbl, int(hx)-lw/2, int(hyHeart-18), 1.0, colKawaii, colOutline)
+	} else {
+		vector.StrokeCircle(screen, hx, hy+6, ringR, 1.6, Premul(92, 255, 196, uint8(135+85*pulse)), true)
+		vector.StrokeCircle(screen, hx, hy+6, ringR*0.68, 1.2, Premul(255, 232, 108, uint8(150+90*pulse)), true)
+
+		// Gently bobbing pickup sprite
+		img := r.sprites.Get(assets.SpriteIconPickupHeal)
+		bw := float64(img.Bounds().Dx())
+		bh := float64(img.Bounds().Dy())
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(-bw*0.5, -bh*0.5)
+		op.GeoM.Scale(scale, scale)
+		op.GeoM.Translate(float64(hx), float64(hy-2+bob))
+		screen.DrawImage(img, op)
+	}
 
 	// Crisp white sparkle orbiting the cure pickup
 	ang := float64(r.tick*3.4) + hp.BobPhase
@@ -889,8 +1001,8 @@ func (r *Renderer) drawSingleShop(screen *ebiten.Image, w *game.World, sh *game.
 	dx := w.Player.X - sh.X
 	dy := w.Player.Y - sh.Y
 	if dx*dx+dy*dy <= sh.Radius*sh.Radius {
-		lbl := "CLICK / [E] SHOP"
-		pw := float32(len(lbl)*6 + 24)
+		lbl := "[E / CLICK SX] DISTRIBUTORE (CURE, TANGENTE, RELIQUIE)"
+		pw := float32(textPixelWidth(lbl, 1.0) + 26)
 		px := clampF(sx-pw*0.5, 4, game.ScreenWidth-pw-4)
 		py := clampF(sy-40, 30, game.ScreenHeight-24)
 		drawPillBadge(screen, px, py, pw, 20, colHudBg, colGyaru)
@@ -918,8 +1030,8 @@ func (r *Renderer) drawSingleSlotMachine(screen *ebiten.Image, w *game.World, sm
 	dx := w.Player.X - sm.X
 	dy := w.Player.Y - sm.Y
 	if dx*dx+dy*dy <= sm.Radius*sm.Radius {
-		lbl := fmt.Sprintf("CLICK / [E] SLOT 777 ($%d)", sm.SpinCost)
-		pw := float32(len(lbl)*6 + 24)
+		lbl := fmt.Sprintf("[E / CLICK SX] SLOT 777 ($%d)", sm.SpinCost)
+		pw := float32(textPixelWidth(lbl, 1.0) + 26)
 		px := clampF(sx-pw*0.5, 4, game.ScreenWidth-pw-4)
 		py := clampF(sy-42, 30, game.ScreenHeight-24)
 		drawPillBadge(screen, px, py, pw, 20, colHudBg, colGold)
@@ -943,26 +1055,60 @@ func (r *Renderer) drawSingleStop(screen *ebiten.Image, st *game.BusStop, camX, 
 	img := r.sprites.Get(key)
 	bw := float64(img.Bounds().Dx())
 	bh := float64(img.Bounds().Dy())
-	sx, sy := st.X-camX, st.Y-camY
+	sx, sy := snapPixel(st.X-camX), snapPixel(st.Y-camY)
+	drop := 1 - clampF(st.DeployAge/0.16, 0, 1)
+	dropHeight := snapPixel(12 * drop * drop)
+	accent := archetypeColor(st.Arch)
+	if st.PerfectDrop {
+		accent = colGold
+	}
 
-	vector.DrawFilledCircle(screen, sx, sy+16, 16, color.RGBA{20, 12, 32, 120}, true)
+	drawContactShadow(screen, sx, sy+16, 36)
+	drawStopDeployment(screen, sx, sy, dropHeight, st.DeployAge, accent)
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(-bw*0.5, -bh*0.5)
-	op.GeoM.Translate(float64(sx), float64(sy))
+	op.GeoM.Translate(float64(sx), float64(sy-dropHeight))
 	screen.DrawImage(img, op)
 
 	// Back-glass shield pips above shelter
+	sy -= dropHeight
 	if st.MaxShieldHP > 0 {
 		pipW := float32(6)
 		totalW := float32(st.MaxShieldHP)*(pipW+2) - 2
 		startX := sx - totalW*0.5
 		for p := 0; p < st.MaxShieldHP; p++ {
-			c := color.RGBA{50, 50, 70, 190}
+			px := startX + float32(p)*(pipW+2)
+			c := Premul(24, 28, 48, 210)
 			if p < st.ShieldHP {
 				c = colGyaru
+				if st.ShieldFlashTimer > 0 {
+					c = color.RGBA{215, 255, 255, 255}
+				}
 			}
-			vector.DrawFilledRect(screen, startX+float32(p)*(pipW+2), sy-28, pipW, 3.5, c, false)
-			vector.StrokeRect(screen, startX+float32(p)*(pipW+2), sy-28, pipW, 3.5, 0.7, colOutline, false)
+			vector.DrawFilledRect(screen, px, sy-28, pipW, 4.0, c, false)
+			if p < st.ShieldHP {
+				vector.DrawFilledRect(screen, px+1, sy-27.5, pipW-2, 1.2, Premul(230, 255, 255, 225), false)
+			}
+			vector.StrokeRect(screen, px, sy-28, pipW, 4.0, 0.8, colOutline, false)
+		}
+	}
+
+	// Crisp cyan-white parry flash arc across top shelter edge on shield hit
+	if st.ShieldFlashTimer > 0 {
+		flashA := clampF(st.ShieldFlashTimer/0.30, 0, 1)
+		cyanCol := Premul(0, 245, 212, uint8(220*flashA))
+		whiteCol := Premul(240, 255, 255, uint8(250*flashA))
+		const segs = 10
+		const arcR = float32(22)
+		for s := 0; s < segs; s++ {
+			a1 := -math.Pi*0.85 + float64(s)*(math.Pi*0.70/segs)
+			a2 := -math.Pi*0.85 + float64(s+1)*(math.Pi*0.70/segs)
+			ax1 := sx + float32(math.Cos(a1))*arcR
+			ay1 := sy - 6 + float32(math.Sin(a1))*(arcR*0.65)
+			ax2 := sx + float32(math.Cos(a2))*arcR
+			ay2 := sy - 6 + float32(math.Sin(a2))*(arcR*0.65)
+			vector.StrokeLine(screen, ax1, ay1, ax2, ay2, 3.2, cyanCol, true)
+			vector.StrokeLine(screen, ax1, ay1, ax2, ay2, 1.4, whiteCol, true)
 		}
 	}
 
@@ -979,7 +1125,7 @@ func (r *Renderer) drawSingleGirl(screen *ebiten.Image, g *game.Girl, camX, camY
 	op := &ebiten.DrawImageOptions{}
 
 	// Ground shadow
-	vector.DrawFilledCircle(screen, gx, gy+12, 7, color.RGBA{26, 16, 37, 115}, true)
+	drawContactShadow(screen, gx, gy+12, 18)
 
 	if g.IsVIP {
 		vipAura := r.sprites.Get(assets.SpriteVIPAura)
@@ -1004,7 +1150,16 @@ func (r *Renderer) drawSingleGirl(screen *ebiten.Image, g *game.Girl, camX, camY
 	default:
 		sheetKey = assets.SpriteGirlGyaruSheet
 	}
-	frame := int(g.AnimTimer*6.0) % 3
+	frame, lift := 0, float32(0)
+	if g.VX*g.VX+g.VY*g.VY > 64 {
+		phase := int(g.AnimTimer*9) % 4
+		frame = [4]int{1, 0, 2, 0}[phase]
+		if phase%2 == 1 {
+			lift = 1
+		}
+	} else if int(g.AnimTimer*3+float32(g.ID))%7 == 0 {
+		lift = 1
+	}
 	img := r.sprites.GetSheetFrame(sheetKey, frame, 32, 32)
 	bw := float64(img.Bounds().Dx())
 	bh := float64(img.Bounds().Dy())
@@ -1014,15 +1169,16 @@ func (r *Renderer) drawSingleGirl(screen *ebiten.Image, g *game.Girl, camX, camY
 	if g.VX < -4 {
 		op.GeoM.Scale(-1, 1)
 	}
-	op.GeoM.Translate(float64(gx), float64(gy))
+	op.GeoM.Translate(float64(snapPixel(gx)), float64(snapPixel(gy)-lift))
 	if g.EnragedTimer > 0 {
 		op.ColorScale.Scale(1.3, 0.6, 0.6, 1.0)
 	}
 	screen.DrawImage(img, op)
 
 	if g.StunTimer > 0 {
-		vector.DrawFilledCircle(screen, gx-5, gy-18, 2.2, colGold, false)
-		vector.DrawFilledCircle(screen, gx+5, gy-18, 2.2, colGold, false)
+		orbit := float32(math.Sin(float64(g.AnimTimer*8))) * 5
+		vector.DrawFilledRect(screen, snapPixel(gx-orbit)-1, gy-18, 2, 2, colGold, false)
+		vector.DrawFilledRect(screen, snapPixel(gx+orbit)-1, gy-21, 2, 2, actionCream, false)
 	}
 }
 
@@ -1131,14 +1287,16 @@ func (r *Renderer) drawBossEntity(screen *ebiten.Image, w *game.World, camX, cam
 		}
 	}
 
-	vector.DrawFilledCircle(screen, bx, by+15, 11, color.RGBA{26, 16, 37, 135}, true)
-	vector.StrokeCircle(screen, bx, by, 22, 1.5, color.RGBA{255, 42, 133, 180}, true)
+	drawContactShadow(screen, bx, by+15, 25)
+	phaseGlow := clampF(w.Boss.EnrageFlashTimer/0.8, 0, 1)
+	vector.StrokeCircle(screen, bx, by, 22, 1.5+phaseGlow, PremulColor(actionCoral, uint8(182+68*phaseGlow)), true)
 
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(-bw*0.5, -bh*0.5)
-	op.GeoM.Translate(float64(bx), float64(by))
-	if w.Boss.EnrageFlashTimer > 0 && int(r.tick*20)%2 == 0 {
-		op.ColorScale.Scale(1.4, 0.6, 0.8, 1.0)
+	lift := float32(math.Round(1 + math.Sin(float64(w.Boss.PhaseTimer*8))))
+	op.GeoM.Translate(float64(snapPixel(bx)), float64(snapPixel(by)-lift))
+	if phaseGlow > 0 {
+		op.ColorScale.Scale(1+0.25*phaseGlow, 1-0.22*phaseGlow, 1-0.12*phaseGlow, 1)
 	}
 	screen.DrawImage(img, op)
 
@@ -1159,80 +1317,84 @@ func (r *Renderer) drawBossEntity(screen *ebiten.Image, w *game.World, camX, cam
 
 func (r *Renderer) drawPlayerEntity(screen *ebiten.Image, w *game.World, camX, camY float32) {
 	p := &w.Player
-	dashImg := r.sprites.Get(assets.SpriteAlfredoDash)
+	dashImg := r.sprites.Get(assets.PlayerSkinSpriteKey(r.playerSkin, "dash"))
 
 	op := &ebiten.DrawImageOptions{}
 	bw := float64(dashImg.Bounds().Dx())
 	bh := float64(dashImg.Bounds().Dy())
-	for _, af := range p.Afterimages {
+	trailColor := [...]color.RGBA{actionTeal, {255, 132, 198, 255}, {255, 216, 115, 255}, {243, 174, 103, 255}, actionCoral}
+	trail := trailColor[0]
+	if r.playerSkin > 0 && r.playerSkin < len(trailColor) {
+		trail = trailColor[r.playerSkin]
+	}
+	for i := len(p.Afterimages) - 1; i >= 0; i-- {
+		af := p.Afterimages[i]
 		if af.Alpha <= 0.02 {
 			continue
 		}
 		op.GeoM.Reset()
 		op.GeoM.Translate(-bw*0.5, -bh*0.5)
-		if p.FacingX < 0 {
+		if af.FacingX < 0 {
 			op.GeoM.Scale(-1, 1)
 		}
-		op.GeoM.Translate(float64(af.X-camX), float64(af.Y-camY))
+		op.GeoM.Translate(float64(snapPixel(af.X-camX)), float64(snapPixel(af.Y-camY)))
 		op.ColorScale.Reset()
-		switch r.playerSkin {
-		case 1:
-			op.ColorScale.Scale(1.0, 0.30, 0.85, af.Alpha*0.65)
-		case 2:
-			op.ColorScale.Scale(1.0, 0.82, 0.25, af.Alpha*0.65)
-		default:
-			op.ColorScale.Scale(0.15, 0.95, 1.0, af.Alpha*0.65)
-		}
+		op.ColorScale.ScaleWithColor(PremulColor(trail, uint8(168*af.Alpha)))
 		screen.DrawImage(dashImg, op)
 	}
 	op.ColorScale.Reset()
 
-	var key string
-	switch p.AnimState {
+	px, py := p.X-camX, p.Y-camY
+	var pose string
+	facing, lift := p.FacingX, float32(0)
+	if p.DashTimer > 0 {
+		drawDashStreak(screen, px, py, p.DashDirX, p.DashDirY, clampF(p.DashTimer/0.16, 0, 1), trail)
+	}
+	anim := p.AnimState
+	if p.ThrowAnimTimer > 0 && p.DashTimer <= 0 {
+		anim = game.AnimThrow
+	}
+	switch anim {
 	case game.AnimDash:
-		key = assets.SpriteAlfredoDash
+		pose = "dash"
+		if p.DashDirX != 0 {
+			facing = p.DashDirX
+		}
 	case game.AnimThrow:
-		key = assets.SpriteAlfredoThrow
+		pose = "throw"
+		if p.ThrowFacingX != 0 {
+			facing = p.ThrowFacingX
+		}
+		if p.ThrowAnimTimer > 0.15 {
+			lift = 1
+		}
 	case game.AnimRun:
-		switch int(p.AnimTimer*10) % 4 {
-		case 0:
-			key = assets.SpriteAlfredoRun0
-		case 1:
-			key = assets.SpriteAlfredoRun1
-		case 2:
-			key = assets.SpriteAlfredoRun2
-		default:
-			key = assets.SpriteAlfredoRun3
+		step := int(p.AnimTimer*12) % 4
+		pose = [4]string{"run_0", "run_1", "run_2", "run_3"}[step]
+		if step%2 == 1 {
+			lift = 1
 		}
 	default:
 		if int(p.AnimTimer*3)%2 == 0 {
-			key = assets.SpriteAlfredoIdle0
+			pose = "idle_0"
 		} else {
-			key = assets.SpriteAlfredoIdle1
+			pose = "idle_1"
 		}
 	}
 
-	img := r.sprites.Get(key)
-	px, py := p.X-camX, p.Y-camY
-	vector.DrawFilledCircle(screen, px, py+12, 7, color.RGBA{26, 16, 37, 130}, true)
-
-	if p.InvulnTimer > 0 && p.DashTimer <= 0 && int(r.tick*22)%2 == 0 {
-		return
-	}
+	img := r.sprites.Get(assets.PlayerSkinSpriteKey(r.playerSkin, pose))
+	drawContactShadow(screen, px, py+12, 18)
 
 	op.GeoM.Reset()
 	op.GeoM.Translate(-float64(img.Bounds().Dx())*0.5, -float64(img.Bounds().Dy())*0.5)
-	if p.FacingX < 0 {
+	if facing < 0 {
 		op.GeoM.Scale(-1, 1)
 	}
-	op.GeoM.Translate(float64(px), float64(py))
+	op.GeoM.Translate(float64(snapPixel(px)), float64(snapPixel(py)-lift))
 	op.ColorScale.Reset()
-	switch r.playerSkin {
-	case 1:
-		op.ColorScale.Scale(1.12, 0.92, 1.24, 1.0)
-	case 2:
-		op.ColorScale.Scale(0.95, 0.90, 0.85, 1.0)
-		vector.StrokeCircle(screen, px, py, 14, 1.0, Premul(255, 220, 70, 120), true)
+	if p.InvulnTimer > 0 && p.DashTimer <= 0 {
+		pulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*35)))
+		op.ColorScale.ScaleAlpha(0.55 + 0.45*pulse)
 	}
 	screen.DrawImage(img, op)
 
@@ -1240,28 +1402,41 @@ func (r *Renderer) drawPlayerEntity(screen *ebiten.Image, w *game.World, camX, c
 	vector.DrawFilledCircle(screen, px, py+2, 2.2, colGyaru, true)
 }
 
-func (r *Renderer) drawBuses(screen *ebiten.Image, w *game.World, camX, camY float32) {
-	// Draw lingering aerodynamic Bus Slipstream lanes (+45% speed & instant Dash reset)
+func (r *Renderer) drawBusSlipstreams(screen *ebiten.Image, w *game.World, camX, camY float32) {
 	for _, sl := range w.Slipstreams {
 		if sl.Life <= 0 || sl.MaxLife <= 0 {
 			continue
 		}
-		alpha := sl.Life / sl.MaxLife
-		aMain := uint8(float32(58) * alpha)
-		aEdge := uint8(float32(130) * alpha)
-		sx1 := sl.X1 - camX
-		sx2 := sl.X2 - camX
-		sy := sl.Y - camY
-		sw := sx2 - sx1
-		if sw <= 2 || sy < -32 || sy > game.ScreenHeight+32 {
+		alpha := clampF(sl.Life/sl.MaxLife, 0, 1)
+		x1, x2 := max(0, sl.X1-camX), min(game.ScreenWidth, sl.X2-camX)
+		y := snapPixel(sl.Y - camY)
+		if x2-x1 <= 2 || y < -20 || y > game.ScreenHeight+20 {
 			continue
 		}
-		vector.DrawFilledRect(screen, sx1, sy-16, sw, 32, Premul(0, 245, 212, aMain), false)
-		vector.DrawFilledRect(screen, sx1, sy-17, sw, 1.5, Premul(255, 220, 60, aEdge), false)
-		vector.DrawFilledRect(screen, sx1, sy+15.5, sw, 1.5, Premul(255, 220, 60, aEdge), false)
+		vector.DrawFilledRect(screen, x1, y-16, x2-x1, 32, PremulColor(actionTeal, uint8(31*alpha)), false)
+		for _, edge := range [...]float32{y - 16, y + 15} {
+			vector.DrawFilledRect(screen, x1, edge, x2-x1, 1, PremulColor(actionTeal, uint8(114*alpha)), false)
+		}
+		// Advance the lane dashes in world space so they remain stable as the camera moves.
+		phase := float32(math.Mod(float64(r.tick*140-camX), 48))
+		for x := x1 + phase - 48; x < x2; x += 48 {
+			start, end := max(x1, snapPixel(x)), min(x2, snapPixel(x)+13)
+			if end > start {
+				vector.DrawFilledRect(screen, start, y, end-start, 1, PremulColor(actionCream, uint8(103*alpha)), false)
+			}
+		}
 	}
+}
 
-	busImg := r.sprites.Get(assets.SpriteBusNeon)
+func (r *Renderer) drawBuses(screen *ebiten.Image, w *game.World, camX, camY float32) {
+	busKey := assets.SpriteBusNeon
+	trail, tail := actionTeal, actionCoral
+	if r.busSkin == 1 {
+		busKey = assets.SpriteBusGold
+		trail = color.RGBA{255, 210, 133, 255}
+		tail = color.RGBA{244, 130, 60, 255}
+	}
+	busImg := r.sprites.Get(busKey)
 	bw := float64(busImg.Bounds().Dx())
 	bh := float64(busImg.Bounds().Dy())
 	op := &ebiten.DrawImageOptions{}
@@ -1270,22 +1445,24 @@ func (r *Renderer) drawBuses(screen *ebiten.Image, w *game.World, camX, camY flo
 		if !b.Active {
 			continue
 		}
-		bx, by := b.X-camX, b.Y-camY
-		if r.busSkin == 1 {
-			vector.DrawFilledRect(screen, bx-140, by-18, 100, 36, Premul(255, 220, 40, 80), false)
-			vector.DrawFilledRect(screen, bx-180, by-8, 120, 16, Premul(255, 140, 30, 105), false)
-		} else {
-			vector.DrawFilledRect(screen, bx-140, by-18, 100, 36, Premul(0, 245, 212, 70), false)
-			vector.DrawFilledRect(screen, bx-180, by-8, 120, 16, Premul(255, 42, 133, 95), false)
+		bx, by := snapPixel(b.X-camX), snapPixel(b.Y-camY)
+		if bx < -115 || bx > game.ScreenWidth+188 || by < -27 || by > game.ScreenHeight+27 {
+			continue
+		}
+		drawContactShadow(screen, bx, by+17, 81)
+		r.drawAdditiveBeam(screen, bx+55, by+8, 64, 12, actionCream, 0.24)
+		r.drawAdditiveBeam(screen, bx-59, by+11, 75, 10, tail, 0.17)
+		for i := 0; i < 5; i++ {
+			y := by - 10 + float32(i)*5
+			phase := float32(math.Mod(float64(b.X*0.8+float32(i*23)), 50))
+			end := bx - 42 - snapPixel(phase)*0.7
+			vector.DrawFilledRect(screen, end-18-float32(i)*3, y, 18+float32(i)*3, 1, PremulColor(trail, uint8(70+i*23)), false)
 		}
 
 		op.GeoM.Reset()
 		op.GeoM.Translate(-bw*0.5, -bh*0.5)
-		op.GeoM.Translate(float64(bx), float64(by))
-		op.ColorScale.Reset()
-		if r.busSkin == 1 {
-			op.ColorScale.Scale(1.30, 1.15, 0.55, 1.0)
-		}
+		lift := math.Round(0.5 + math.Sin(float64(b.X*0.06))*0.5)
+		op.GeoM.Translate(float64(bx), float64(by)-lift)
 		screen.DrawImage(busImg, op)
 	}
 }
@@ -1466,9 +1643,110 @@ func (r *Renderer) drawPlayerHealthBar(screen *ebiten.Image, w *game.World, camX
 		}
 		vector.DrawFilledRect(screen, cX, cY, cW*chrFrac, 2.2, chrCol, false)
 	}
+
+	r.drawPlayerStatusIndicators(screen, w, px, py)
+}
+
+func (r *Renderer) drawPlayerStatusIndicators(screen *ebiten.Image, w *game.World, px, py float32) {
+	p := &w.Player
+	pulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*14.0)))
+
+	// 3 small spinning gold stars orbiting Alfredo's head when stunned
+	if p.StunTimer > 0 {
+		orbitY := py - 18
+		for k := 0; k < 3; k++ {
+			ang := float64(r.tick*7.0) + float64(k)*(2.0*math.Pi/3.0)
+			sx := px + float32(math.Cos(ang))*11.0
+			sy := orbitY + float32(math.Sin(ang))*3.5
+			drawStarIcon(screen, sx, sy, 2.6, colGold)
+		}
+	}
+
+	type statusBadge struct {
+		label     string
+		bgCol     color.RGBA
+		borderCol color.RGBA
+		txtCol    color.RGBA
+	}
+	var badges [4]statusBadge
+	n := 0
+
+	if p.StunTimer > 0 {
+		bdr := colGold
+		if int(r.tick*10)%2 == 0 {
+			bdr = colRedAlert
+		}
+		badges[n] = statusBadge{
+			label:     "STORDITO!",
+			bgCol:     Premul(56, 16, 24, 232),
+			borderCol: bdr,
+			txtCol:    colGold,
+		}
+		n++
+	}
+	if p.GroundedTimer > 0 {
+		remSec := math.Ceil(float64(p.GroundedTimer))
+		if remSec < 1 {
+			remSec = 1
+		}
+		badges[n] = statusBadge{
+			label:     fmt.Sprintf("PUNIZIONE -1 STOP %.0fs", remSec),
+			bgCol:     Premul(64, 10, 24, 236),
+			borderCol: Premul(255, 45, 75, uint8(190+65*pulse)),
+			txtCol:    color.RGBA{255, 200, 212, 255},
+		}
+		n++
+	}
+	if p.SlowTimer > 0 {
+		bdr := colStudent
+		if int(r.tick*8)%2 == 0 {
+			bdr = colRedAlert
+		}
+		badges[n] = statusBadge{
+			label:     "RALLENTATO",
+			bgCol:     Premul(18, 28, 62, 232),
+			borderCol: bdr,
+			txtCol:    color.RGBA{165, 218, 255, 255},
+		}
+		n++
+	}
+	if p.SlipstreamTimer > 0 {
+		bdr := colGyaru
+		if int(r.tick*10)%2 == 0 {
+			bdr = colGold
+		}
+		badges[n] = statusBadge{
+			label:     "SCIA +45%",
+			bgCol:     Premul(10, 44, 54, 232),
+			borderCol: bdr,
+			txtCol:    colGold,
+		}
+		n++
+	}
+
+	if n == 0 {
+		return
+	}
+
+	by := py - 34
+	if p.StunTimer > 0 {
+		by = py - 38
+	}
+	for i := 0; i < n; i++ {
+		b := badges[i]
+		bw := float32(textPixelWidth(b.label, 1.0) + 10)
+		bx := clampF(px-bw*0.5, 4, game.ScreenWidth-bw-4)
+		ry := clampF(by, 27, game.ScreenHeight-62)
+		drawPillBadge(screen, bx, ry, bw, 13, b.bgCol, b.borderCol)
+		r.drawTextColored(screen, b.label, int(bx+5), int(ry-1), b.txtCol)
+		by -= 15
+	}
 }
 
 func (r *Renderer) drawAimAndRange(screen *ebiten.Image, w *game.World, camX, camY float32) {
+	if st := focusedStop(w); st != nil && st.PlayerInside && r.stopPanelRect(st).W > 0 {
+		return // Mouse clicks act on the active minigame or boarding combo here.
+	}
 	fb := w.EvaluateAim(r.aimX, r.aimY)
 	spec := game.GetArchetypeSpec(w.Player.SelectedStopArch)
 	maxRange := spec.ThrowRange * w.Player.EffectiveRangeMult()
@@ -1476,14 +1754,11 @@ func (r *Renderer) drawAimAndRange(screen *ebiten.Image, w *game.World, camX, ca
 	sx, sy := fb.ClampedX-camX, fb.ClampedY-camY
 	ac := archetypeColor(w.Player.SelectedStopArch)
 
-	// When on cooldown or at max active stops, draw only a subtle minimal crosshair
-	// (plus a concise Mouse-LMB recall pill if hovering over an active stop for Stop Recall).
+	// When on cooldown or at max active stops, draw a clear blocked/loading indicator directly
+	// on the crosshair (radial recharge ring + countdown, or padlock + MAX indicator when slots are full),
+	// while still showing the Mouse-LMB recall pill if hovering over an active stop for Stop Recall.
 	if w.Player.StopCooldownTimer > 0 || w.ActiveStopCount() >= w.Player.EffectiveMaxStops() {
-		muted := PremulColor(ac, 145)
-		vector.StrokeCircle(screen, sx, sy, 7, 1.2, muted, true)
-		vector.StrokeLine(screen, sx-10, sy, sx+10, sy, 1.0, muted, false)
-		vector.StrokeLine(screen, sx, sy-10, sx, sy+10, 1.0, muted, false)
-
+		showingRecall := false
 		for i := range w.Stops {
 			st := &w.Stops[i]
 			if !st.Active || st.BusRushTriggered || st.Combo.Active {
@@ -1499,7 +1774,90 @@ func (r *Renderer) drawAimAndRange(screen *ebiten.Image, w *game.World, camX, ca
 				drawPillBadge(screen, badgeX, badgeY, bw, 17, Premul(18, 42, 54, 225), colGyaru)
 				r.drawMouseLMBIcon(screen, badgeX+3, badgeY+2, 0.80)
 				r.drawScaledText(screen, lbl, int(badgeX+18), int(badgeY+1), 1.0, colGyaru, colOutline)
+				showingRecall = true
 				break
+			}
+		}
+
+		// Inner precision dot/cross so aiming stays legible even while blocked
+		muted := PremulColor(ac, 150)
+		vector.StrokeLine(screen, sx-4, sy, sx+4, sy, 1.1, muted, false)
+		vector.StrokeLine(screen, sx, sy-4, sx, sy+4, 1.1, muted, false)
+
+		if w.Player.StopCooldownTimer > 0 {
+			effCD := w.Player.EffectiveStopCooldown()
+			if effCD < 0.5 {
+				effCD = 0.5
+			}
+			readyFrac := clampF(1.0-w.Player.StopCooldownTimer/effCD, 0, 1)
+			const ringR = float32(11.5)
+			const arcSteps = 24
+
+			// Backdrop & dark track circle
+			vector.StrokeCircle(screen, sx, sy, ringR, 3.0, Premul(14, 10, 24, 195), true)
+			vector.StrokeCircle(screen, sx, sy, ringR, 1.6, Premul(95, 90, 130, 185), true)
+
+			// Clockwise recharge progress arc
+			arcCol := colGold
+			if readyFrac >= 0.80 {
+				arcCol = colGyaru
+			}
+			filledSteps := int(float32(arcSteps) * readyFrac)
+			if filledSteps < 1 && readyFrac > 0.02 {
+				filledSteps = 1
+			}
+			startAng := float32(-math.Pi / 2)
+			stepAng := float32(2*math.Pi) / float32(arcSteps)
+			for s := 0; s < filledSteps; s++ {
+				a0 := startAng + float32(s)*stepAng
+				a1 := startAng + float32(s+1)*stepAng
+				if s == filledSteps-1 {
+					endAng := startAng + float32(2*math.Pi)*readyFrac
+					if endAng > a0 {
+						a1 = endAng
+					}
+				}
+				x0 := sx + float32(math.Cos(float64(a0)))*ringR
+				y0 := sy + float32(math.Sin(float64(a0)))*ringR
+				x1 := sx + float32(math.Cos(float64(a1)))*ringR
+				y1 := sy + float32(math.Sin(float64(a1)))*ringR
+				vector.StrokeLine(screen, x0, y0, x1, y1, 2.2, arcCol, true)
+			}
+			if readyFrac > 0.01 {
+				tipAng := startAng + float32(2*math.Pi)*readyFrac
+				tx := sx + float32(math.Cos(float64(tipAng)))*ringR
+				ty := sy + float32(math.Sin(float64(tipAng)))*ringR
+				vector.DrawFilledCircle(screen, tx, ty, 1.8, color.RGBA{255, 255, 255, 245}, true)
+			}
+
+			if !showingRecall {
+				cdText := fmt.Sprintf("%.1fs", w.Player.StopCooldownTimer)
+				bw := float32(len(cdText)*6 + 8)
+				bx := clampF(sx-bw/2, 4, game.ScreenWidth-bw-4)
+				by := clampF(sy+15, 28, game.ScreenHeight-22)
+				drawPillBadge(screen, bx, by, bw, 15, Premul(20, 14, 34, 215), arcCol)
+				r.drawTextColored(screen, cdText, int(bx+4), int(by+1), arcCol)
+			}
+		} else {
+			// Max active stops reached: draw locked ring + mini padlock + MAX X/Y badge
+			lockCol := colRedAlert
+			vector.StrokeCircle(screen, sx, sy, 10.5, 1.6, PremulColor(lockCol, 210), true)
+
+			// Mini padlock at upper-right of crosshair
+			lx, ly := sx+7, sy-11
+			vector.StrokeLine(screen, lx+1.5, ly-3, lx+1.5, ly, 1.2, lockCol, false)
+			vector.StrokeLine(screen, lx+1.5, ly-3, lx+4.5, ly-3, 1.2, lockCol, false)
+			vector.StrokeLine(screen, lx+4.5, ly-3, lx+4.5, ly, 1.2, lockCol, false)
+			vector.DrawFilledRect(screen, lx, ly, 6, 5, Premul(34, 12, 24, 235), false)
+			vector.StrokeRect(screen, lx, ly, 6, 5, 1.1, lockCol, false)
+
+			if !showingRecall {
+				maxText := fmt.Sprintf("MAX %d/%d", w.ActiveStopCount(), w.Player.EffectiveMaxStops())
+				bw := float32(len(maxText)*6 + 8)
+				bx := clampF(sx-bw/2, 4, game.ScreenWidth-bw-4)
+				by := clampF(sy+15, 28, game.ScreenHeight-22)
+				drawPillBadge(screen, bx, by, bw, 15, Premul(36, 12, 24, 220), lockCol)
+				r.drawTextColored(screen, maxText, int(bx+4), int(by+1), lockCol)
 			}
 		}
 		return
@@ -1545,26 +1903,26 @@ func (r *Renderer) drawAimAndRange(screen *ebiten.Image, w *game.World, camX, ca
 	}
 
 	retCol := ac
-	ringAlpha := uint8(200)
-	fillAlpha := uint8(18)
+	ringAlpha := uint8(148)
+	fillAlpha := uint8(10)
 	if fb.InBusBay {
 		retCol = colGreenNeon
-		fillAlpha = 24
+		fillAlpha = 14
 	}
 	if fb.InZTL {
-		retCol = color.RGBA{255, uint8(45 + 90*pulse), 95, 255}
-		ringAlpha = 230
-		fillAlpha = 26
+		retCol = actionCoral
+		ringAlpha = 184
+		fillAlpha = 16
 	}
 	if fb.IsPerfectDrop {
-		retCol = colGold
-		ringAlpha = 245
-		fillAlpha = uint8(26 + 14*pulse)
+		retCol = color.RGBA{255, 211, 131, 255}
+		ringAlpha = 198
+		fillAlpha = 14
 	}
 
 	strokeCol := PremulColor(retCol, ringAlpha)
 	vector.DrawFilledCircle(screen, sx, sy, fb.PreviewRadius, PremulColor(retCol, fillAlpha), true)
-	vector.StrokeCircle(screen, sx, sy, fb.PreviewRadius, 1.6, strokeCol, true)
+	vector.StrokeCircle(screen, sx, sy, fb.PreviewRadius, 1.25, strokeCol, true)
 	vector.StrokeCircle(screen, sx, sy, 8+1.5*pulse, 1.5, strokeCol, true)
 	vector.StrokeLine(screen, sx-12, sy, sx+12, sy, 1.2, strokeCol, false)
 	vector.StrokeLine(screen, sx, sy-12, sx, sy+12, 1.2, strokeCol, false)
@@ -1600,15 +1958,16 @@ func (r *Renderer) drawAimAndRange(screen *ebiten.Image, w *game.World, camX, ca
 		drawHeartIcon(screen, badgeX+8, badgeY+7.5, ac, true)
 		r.drawScaledText(screen, lbl, int(badgeX+15), int(badgeY+1), 1.0, ac, colOutline)
 	case fb.InZTL:
-		const lbl = "ZTL 3x +1*"
-		bw := float32(len(lbl)*6 + 20)
+		const lbl = "ZTL 3x +1"
+		bw := float32(len(lbl)*6 + 34)
 		zCol := colRedAlert
 		if pulse > 0.5 {
 			zCol = colGold
 		}
-		drawPillBadge(screen, badgeX, badgeY, bw, 15, Premul(48, 8, 22, 225), zCol)
-		drawWarningIcon(screen, badgeX+8, badgeY+7.5, zCol)
-		r.drawScaledText(screen, lbl, int(badgeX+15), int(badgeY+1), 1.0, zCol, colOutline)
+		drawPillBadge(screen, badgeX, badgeY, bw, 16, Premul(48, 8, 22, 225), zCol)
+		drawWarningIcon(screen, badgeX+8, badgeY+8, zCol)
+		r.drawScaledText(screen, lbl, int(badgeX+15), int(badgeY+2), 1.0, zCol, colOutline)
+		r.DrawSpriteIcon(screen, assets.SpriteIconStarWanted, badgeX+71, badgeY+2, 1.0)
 	case fb.InBusBay:
 		const lbl = "BUS +25%"
 		bw := float32(len(lbl)*6 + 12)
@@ -1630,7 +1989,7 @@ func (r *Renderer) resolveMouseHoverDir(originX, originY float32) int {
 	}
 	qdx := r.mouseScreenX - originX
 	qdy := r.mouseScreenY - originY
-	if qdx*qdx+qdy*qdy <= 165.0*165.0 && (qdx != 0 || qdy != 0) {
+	if qdx != 0 || qdy != 0 {
 		if math.Abs(float64(qdx)) >= math.Abs(float64(qdy)) {
 			if qdx >= 0 {
 				return game.ActionRight
@@ -1692,248 +2051,311 @@ func (r *Renderer) drawMouseCompass(screen *ebiten.Image, cx, cy, dist float32, 
 	}
 }
 
-func (r *Renderer) drawDiegeticStopUI(screen *ebiten.Image, w *game.World, camX, camY float32) {
-	pxScreen, pyScreen := w.Player.X-camX, w.Player.Y-camY
-	outsideWarningDrawn := false
-
+func focusedStop(w *game.World) *game.BusStop {
+	var focusStop *game.BusStop
+	bestFocusD2 := float32(1e12)
 	for i := range w.Stops {
 		st := &w.Stops[i]
 		if !st.Active || st.BusRushTriggered {
 			continue
 		}
-		sx, sy := st.X-camX, st.Y-camY
-		ac := archetypeColor(st.Arch)
+		d2 := (w.Player.X-st.X)*(w.Player.X-st.X) + (w.Player.Y-st.Y)*(w.Player.Y-st.Y)
 
-		if !st.PlayerInside && !outsideWarningDrawn {
-			outsideWarningDrawn = true
+		if st.PlayerInside || st.CoyoteTimer > 0 {
+			if focusStop == nil || (!focusStop.PlayerInside && focusStop.CoyoteTimer <= 0) || d2 < bestFocusD2 {
+				focusStop = st
+				bestFocusD2 = d2
+			}
+		} else if focusStop == nil {
+			focusStop = st
+			bestFocusD2 = d2
+		}
+	}
+	return focusStop
+}
+
+func (r *Renderer) stopPanelRect(st *game.BusStop) game.Rect {
+	x, y := st.UIAnchorX, st.UIAnchorY
+	if !st.UIAnchored {
+		x, y = 214, 232
+	}
+	var height float32
+	switch {
+	case st.Minigame.Completed && st.Combo.Active && !st.Combo.Completed:
+		y += 2
+		height = 70
+	case !st.Minigame.Completed && st.Arch == game.ArchStudent:
+		height = 76
+	case !st.Minigame.Completed:
+		return game.Rect{X: x + 32, Y: y, W: 148, H: 78}
+	default:
+		return game.Rect{}
+	}
+	if r.dirInputMode == 1 {
+		return game.Rect{X: x + 35, Y: y, W: 142, H: height}
+	}
+	return game.Rect{X: x, Y: y, W: game.StopPanelDirW, H: height}
+}
+
+func (r *Renderer) drawDiegeticStopUI(screen *ebiten.Image, w *game.World, camX, camY float32) {
+	pxScreen, pyScreen := w.Player.X-camX, w.Player.Y-camY
+	safeTopY := w.StopSafeTopY()
+
+	for i := range w.Stops {
+		st := &w.Stops[i]
+		if st.Active && !st.BusRushTriggered && !st.PlayerInside {
+			sx, sy := st.X-camX, st.Y-camY
 			dx, dy := sx-pxScreen, sy-pyScreen
 			dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
 			if dist > 1 {
 				nx, ny := dx/dist, dy/dist
 				ax1, ay1 := pxScreen+nx*20, pyScreen+ny*20
 				ax2, ay2 := pxScreen+nx*38, pyScreen+ny*38
-				blinkCol := colGold
-				if int(r.tick*10)%2 == 0 {
-					blinkCol = colRedAlert
-				}
+				blinkCol := actionCoral
 				vector.StrokeLine(screen, ax1, ay1, ax2, ay2, 3.0, blinkCol, true)
 				vector.DrawFilledCircle(screen, ax2, ay2, 3.5, blinkCol, true)
 
 				msg := "TORNA NEL CERCHIO!"
-				mw := float32(len(msg)*6 + 24)
+				mw := float32(textPixelWidth(msg, 1.0) + 24)
 				mx := clampF(pxScreen-mw*0.5, 8, game.ScreenWidth-mw-8)
-				my := clampF(pyScreen-46, 30, game.ScreenHeight-70)
+				my := clampF(pyScreen-46, safeTopY, game.ScreenHeight-70)
 				drawPillBadge(screen, mx, my, mw, 18, Premul(56, 10, 20, 220), blinkCol)
 				drawWarningIcon(screen, mx+10, my+9, blinkCol)
 				r.drawScaledText(screen, msg, int(mx+19), int(my+2), 1.0, blinkCol, colOutline)
 			}
+			break
+		}
+	}
+
+	st := focusedStop(w)
+	if st == nil {
+		return
+	}
+	ac := archetypeColor(st.Arch)
+	panel := r.stopPanelRect(st)
+	px, py, panelW, panelH := panel.X, panel.Y, panel.W, panel.H
+	aroundStop := r.dirInputMode == 1
+	padX, padY := st.PadCenter()
+	if aroundStop {
+		padX, padY = game.ClampCompassScreenPos(st.X-camX, st.Y-camY, safeTopY)
+	}
+
+	// FASE 2: Locked-in-Place Boarding Combo HUD (either integrated Pad or Compass around Bus Stop)
+	if st.Minigame.Completed && st.Combo.Active && !st.Combo.Completed {
+		hoverDir := r.resolveMouseHoverDir(padX, padY)
+		targetDir := game.ActionNone
+		if st.Combo.ComboIndex >= 0 && st.Combo.ComboIndex < len(st.Combo.Sequence) {
+			targetDir = st.Combo.Sequence[st.Combo.ComboIndex]
 		}
 
-		// FASE 2: Mouse-Only 4-Step Boarding Combo with live 4-Way Mouse Compass!
-		if st.Minigame.Completed && st.Combo.Active && !st.Combo.Completed {
-			hoverDir := r.resolveMouseHoverDir(sx, sy)
-			targetDir := game.ActionNone
-			if st.Combo.ComboIndex >= 0 && st.Combo.ComboIndex < len(st.Combo.Sequence) {
-				targetDir = st.Combo.Sequence[st.Combo.ComboIndex]
-			}
-			if st.PlayerInside {
-				r.drawMouseCompass(screen, sx, sy, 26, hoverDir, targetDir)
-			}
-
-			panelW := float32(138)
-			panelH := float32(54)
-			px := clampF(sx-panelW*0.5, 4, game.ScreenWidth-panelW-4)
-			py := clampF(sy-86, 28, game.ScreenHeight-panelH-48)
-
-			border := colGyaru
-			if st.Combo.LastErrorFlash > 0 || st.Combo.StrictMode {
-				border = colRedAlert
-			}
-			vector.DrawFilledRect(screen, px, py, panelW, panelH, colHoloTranslucent, false)
-			vector.StrokeRect(screen, px, py, panelW, panelH, 1.6, border, false)
-
-			r.drawMouseLMBIcon(screen, px+4, py+2, 0.80)
-			r.drawScaledText(screen, "CLICK SX DIREZIONE", int(px+19), int(py+2), 0.9, colGold, colOutline)
-
-			bounce := int(r.tick*10)%2 == 0
-			for step := 0; step < 4; step++ {
-				kx := px + 14 + float32(step)*29
-				ky := py + 19
-				stepDir := st.Combo.Sequence[step]
-				boxCol := Premul(36, 36, 62, 185)
-				bdrCol := Premul(125, 138, 175, 200)
-				arrowCol := color.RGBA{215, 222, 240, 235}
-
-				if step < st.Combo.ComboIndex {
-					boxCol = Premul(18, 125, 85, 215)
-					bdrCol = colGreenNeon
-					arrowCol = color.RGBA{210, 255, 230, 255}
-				} else if step == st.Combo.ComboIndex {
-					if hoverDir == stepDir {
-						// Live match glow: player's mouse is hovering the exact needed direction!
-						boxCol = Premul(0, 145, 148, 230)
-						bdrCol = colGold
-						arrowCol = color.RGBA{255, 248, 195, 255}
-					} else {
-						boxCol = Premul(140, 98, 16, 215)
-						bdrCol = colGold
-						arrowCol = color.RGBA{255, 255, 255, 255}
-					}
-					if bounce {
-						ky -= 2
-					}
-				}
-				vector.DrawFilledRect(screen, kx, ky, 22, 21, boxCol, false)
-				vector.StrokeRect(screen, kx, ky, 22, 21, 1.4, bdrCol, false)
-				drawArrowIcon(screen, kx+11, ky+10.5, stepDir, arrowCol)
-			}
-
-			frac := clampF(st.Combo.Timer/st.Combo.MaxTimer, 0, 1)
-			barCol := colGyaru
-			if frac < 0.35 {
-				barCol = colRedAlert
-			}
-			vector.DrawFilledRect(screen, px+8, py+45, (panelW-16)*frac, 4.5, barCol, false)
-			continue
+		if aroundStop && st.PlayerInside {
+			r.drawMouseCompass(screen, padX, padY, 26, hoverDir, targetDir)
 		}
 
-		// FASE 1: Sleek Translucent Mouse-Only Diegetic Minigame Hologram
-		if !st.Minigame.Completed {
-			panelW := float32(126)
-			panelH := float32(78)
-			px := clampF(sx+30, 4, game.ScreenWidth-panelW-4)
-			py := clampF(sy-42, 28, game.ScreenHeight-panelH-48)
+		border := actionTeal
+		if st.Combo.LastErrorFlash > 0 || st.Combo.StrictMode {
+			border = actionCoral
+		}
+		drawStopPanel(screen, px, py, panelW, panelH, border)
 
-			vector.DrawFilledRect(screen, px, py, panelW, panelH, colHoloTranslucent, false)
-			vector.StrokeRect(screen, px, py, panelW, panelH, 1.5, ac, false)
+		r.drawMouseLMBIcon(screen, px+8, py+4, 1.0)
+		r.drawTextColored(screen, "COMBO IMBARCO", int(px+26), int(py+4), actionCream)
 
-			pulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*8.0)))
+		for step := 0; step < 4; step++ {
+			kx := px + 10 + float32(step)*31
+			ky := py + 24
+			stepDir := st.Combo.Sequence[step]
+			boxCol := Premul(36, 36, 62, 185)
+			bdrCol := Premul(125, 138, 175, 200)
+			arrowCol := color.RGBA{215, 222, 240, 235}
 
-			switch st.Arch {
-			case game.ArchEmo:
-				r.drawMouseLMBIcon(screen, px+5, py+4, 0.85)
-				r.drawScaledText(screen, "CLICK SX A TEMPO", int(px+20), int(py+5), 0.9, colGold, colOutline)
-
-				barX, barY, barW, barH := px+8, py+26, panelW-16, float32(15)
-				vector.DrawFilledRect(screen, barX, barY, barW, barH, Premul(24, 14, 42, 190), false)
-				swW := barW * st.Minigame.BeatWindow * 2
-				vector.DrawFilledRect(screen, barX+barW*0.5-swW*0.5, barY, swW, barH, Premul(46, 235, 130, 165), false)
-				nx := barX + st.Minigame.BeatCursor*barW
-				vector.DrawFilledRect(screen, nx-1.5, barY-2, 3, barH+4, colGold, false)
-				vector.StrokeRect(screen, barX, barY, barW, barH, 1.0, PremulColor(ac, 180), false)
-
-				// Progress bar
-				inSweet := math.Abs(float64(st.Minigame.BeatCursor-0.5)) <= float64(st.Minigame.BeatWindow)
-				progY := py + 52
-				vector.DrawFilledRect(screen, px+8, progY, panelW-16, 10, Premul(20, 14, 34, 180), false)
-				vector.DrawFilledRect(screen, px+8, progY, (panelW-16)*st.Minigame.Progress, 10, colGreenNeon, false)
-				bdr := ac
-				if inSweet {
-					bdr = colGold
+			if step < st.Combo.ComboIndex {
+				boxCol = Premul(18, 125, 85, 215)
+				bdrCol = colGreenNeon
+				arrowCol = color.RGBA{210, 255, 230, 255}
+			} else if step == st.Combo.ComboIndex {
+				if hoverDir == stepDir {
+					boxCol = Premul(0, 145, 148, 230)
+					bdrCol = colGold
+					arrowCol = color.RGBA{255, 248, 195, 255}
+				} else {
+					boxCol = Premul(140, 98, 16, 215)
+					bdrCol = colGold
+					arrowCol = color.RGBA{255, 255, 255, 255}
 				}
-				vector.StrokeRect(screen, px+8, progY, panelW-16, 10, 1.2, bdr, false)
-
-			case game.ArchStudent:
-				hoverDir := r.resolveMouseHoverDir(sx, sy)
-				if st.PlayerInside {
-					r.drawMouseCompass(screen, sx, sy, 26, hoverDir, game.ActionNone)
-				}
-				r.drawMouseLMBIcon(screen, px+4, py+3, 0.80)
-				r.drawScaledText(screen, "CLICK SX DIREZIONE", int(px+18), int(py+4), 0.85, colGold, colOutline)
-
-				// 4x4 Pragmata Grid on left
-				gx0, gy0 := px+8, py+22
-				const cell = float32(11)
-				for gy := 0; gy < 4; gy++ {
-					for gx := 0; gx < 4; gx++ {
-						cx := gx0 + float32(gx)*(cell+1)
-						cy := gy0 + float32(gy)*(cell+1)
-						c := Premul(38, 46, 72, 200)
-						switch st.Minigame.GridNodes[gy][gx] {
-						case game.NodeBlue:
-							c = color.RGBA{40, 165, 255, 235}
-						case game.NodeYellow:
-							c = colGold
-						case game.NodeBoard:
-							c = colGreenNeon
-						case game.NodeVisited:
-							c = color.RGBA{0, 175, 155, 205}
-						}
-						vector.DrawFilledRect(screen, cx, cy, cell, cell, c, false)
-						if gx == st.Minigame.GridX && gy == st.Minigame.GridY {
-							vector.StrokeRect(screen, cx-1, cy-1, cell+2, cell+2, 1.5, color.White, false)
-						}
-					}
-				}
-				// Compact Mouse Compass inside right side of hologram
-				r.drawMouseCompass(screen, px+92, py+46, 15, hoverDir, game.ActionNone)
-
-			case game.ArchKawaii:
-				r.drawMouseLMBIcon(screen, px+4, py+4, 0.82)
-				r.drawScaledText(screen, "CLICK SX & SFIORA", int(px+19), int(py+5), 0.88, colGold, colOutline)
-
-				cx, cy := px+panelW*0.5, py+48
-				vector.StrokeCircle(screen, cx, cy, 17, 3.5, Premul(60, 28, 52, 195), true)
-				steps := int(st.Minigame.Progress * 20)
-				for s := 0; s < steps; s++ {
-					a1 := -math.Pi/2 + float64(s)*(2*math.Pi/20)
-					a2 := -math.Pi/2 + float64(s+1)*(2*math.Pi/20)
-					vector.StrokeLine(
-						screen,
-						cx+float32(math.Cos(a1)*17), cy+float32(math.Sin(a1)*17),
-						cx+float32(math.Cos(a2)*17), cy+float32(math.Sin(a2)*17),
-						3.5, colKawaii, true,
-					)
-				}
-				r.drawScaledText(screen, fmt.Sprintf("%d%%", int(st.Minigame.Progress*100)), int(cx)-10, int(cy)-7, 1.0, color.White, colOutline)
-
-			case game.ArchGyaru:
-				r.drawMouseLMBIcon(screen, px+6, py+4, 0.85)
-				r.drawScaledText(screen, "TIENI CLICK SX", int(px+22), int(py+5), 0.92, colGold, colOutline)
-
-				barX, barY, barW, barH := px+14, py+24, float32(16), float32(46)
-				vector.DrawFilledRect(screen, barX, barY, barW, barH, Premul(22, 28, 44, 195), false)
-				swH := barH * st.Minigame.SweetSpotSize
-				swCenterY := barY + (1.0-st.Minigame.SweetSpotPos)*barH
-				swTop := clampF(swCenterY-swH*0.5, barY, barY+barH-swH)
-				vector.DrawFilledRect(screen, barX+1, swTop, barW-2, swH, Premul(46, 235, 130, 195), false)
-				curY := barY + (1.0-st.Minigame.BarCursor)*barH
-				vector.DrawFilledRect(screen, barX-2, curY-2, barW+4, 4, colGold, false)
-				vector.StrokeRect(screen, barX, barY, barW, barH, 1.0, PremulColor(ac, 180), false)
-
-				pH := barH * st.Minigame.Progress
-				vector.DrawFilledRect(screen, px+40, barY, 10, barH, Premul(18, 24, 38, 185), false)
-				vector.DrawFilledRect(screen, px+40, barY+barH-pH, 10, pH, colGyaru, false)
-				vector.StrokeRect(screen, px+40, barY, 10, barH, 1, ac, false)
-
-				// Pulsing Mouse-LMB hold emblem on right
-				holdCX, holdCY := px+84, py+47
-				vector.StrokeCircle(screen, holdCX, holdCY, 12+2*pulse, 1.4, PremulColor(colGyaru, uint8(140+100*pulse)), true)
-				r.drawMouseLMBIcon(screen, holdCX-8, holdCY-8, 1.0)
+				ky--
 			}
+			vector.DrawFilledRect(screen, kx, ky, 22, 21, boxCol, false)
+			vector.StrokeRect(screen, kx+0.5, ky+0.5, 21, 20, 1.4, bdrCol, false)
+			drawArrowIcon(screen, kx+11, ky+10.5, stepDir, arrowCol)
+		}
+
+		frac := clampF(st.Combo.Timer/st.Combo.MaxTimer, 0, 1)
+		barCol := actionTeal
+		if frac < 0.35 {
+			barCol = actionCoral
+		}
+		vector.DrawFilledRect(screen, px+10, py+56, 122, 4, Premul(20, 14, 28, 200), false)
+		vector.DrawFilledRect(screen, px+10, py+56, snapPixel(122*frac), 4, barCol, false)
+
+		if !aroundStop {
+			vector.DrawFilledRect(screen, px+142, py+6, 1, panelH-12, Premul(255, 255, 255, 45), false)
+			r.drawMouseCompass(screen, padX, padY, 18, hoverDir, targetDir)
+		}
+		return
+	}
+
+	// FASE 1: Locked-in-Place Semi-Transparent Minigame Box
+	if !st.Minigame.Completed {
+		if st.Arch == game.ArchStudent {
+			hoverDir := r.resolveMouseHoverDir(padX, padY)
+			if aroundStop && st.PlayerInside {
+				r.drawMouseCompass(screen, padX, padY, 26, hoverDir, game.ActionNone)
+			}
+			drawStopPanel(screen, px, py, panelW, panelH, ac)
+			r.drawMouseLMBIcon(screen, px+8, py+3, 1.0)
+			r.drawTextColored(screen, "VAI ALL'ARRIVO", int(px+26), int(py+4), actionCream)
+			r.drawUniRoute(screen, px, py, &st.Minigame)
+			if !aroundStop {
+				vector.DrawFilledRect(screen, px+142, py+6, 1, panelH-12, Premul(255, 255, 255, 45), false)
+				r.drawMouseCompass(screen, padX, padY, 18, hoverDir, game.ActionNone)
+			}
+			return
+		}
+
+		drawStopPanel(screen, px, py, panelW, panelH, ac)
+
+		switch st.Arch {
+		case game.ArchEmo:
+			r.drawMouseLMBIcon(screen, px+8, py+3, 1.0)
+			r.drawTextColored(screen, "CLICK SX A TEMPO", int(px+28), int(py+4), actionCream)
+
+			barX, barY, barW, barH := px+10, py+26, panelW-20, float32(15)
+			innerX, innerY, innerW, innerH := barX+1, barY+1, barW-2, barH-2
+			vector.DrawFilledRect(screen, innerX, innerY, innerW, innerH, Premul(24, 14, 42, 190), false)
+			swW := float32(math.Round(float64(innerW * st.Minigame.BeatWindow * 2)))
+			swLeft := float32(math.Round(float64(innerX + (innerW-swW)*0.5)))
+			vector.DrawFilledRect(screen, swLeft, innerY, swW, innerH, Premul(46, 235, 130, 165), false)
+			vector.StrokeRect(screen, barX+0.5, barY+0.5, barW-1, barH-1, 1.0, PremulColor(ac, 180), false)
+			nx := float32(math.Round(float64(clampF(innerX+st.Minigame.BeatCursor*innerW-1.5, innerX, innerX+innerW-3))))
+			vector.DrawFilledRect(screen, nx, barY-2, 3, barH+4, actionCream, false)
+
+			inSweet := math.Abs(float64(st.Minigame.BeatCursor-0.5)) <= float64(st.Minigame.BeatWindow)
+			progX, progY, progW, progH := px+10, py+52, panelW-20, float32(10)
+			vector.DrawFilledRect(screen, progX+1, progY+1, progW-2, progH-2, Premul(20, 14, 34, 180), false)
+			pW := float32(math.Round(float64((progW - 2) * clampF(st.Minigame.Progress, 0, 1))))
+			vector.DrawFilledRect(screen, progX+1, progY+1, pW, progH-2, colGreenNeon, false)
+			bdr := ac
+			if inSweet {
+				bdr = colGold
+			}
+			vector.StrokeRect(screen, progX+0.5, progY+0.5, progW-1, progH-1, 1.2, bdr, false)
+
+		case game.ArchKawaii:
+			r.drawMouseLMBIcon(screen, px+7, py+3, 1.0)
+			r.drawTextColored(screen, "CLICK SX E SFIORA", int(px+26), int(py+4), actionCream)
+
+			cx, cy := px+panelW*0.5, py+48
+			vector.StrokeCircle(screen, cx, cy, 17, 3.5, Premul(60, 28, 52, 195), true)
+			steps := int(st.Minigame.Progress * 20)
+			for s := 0; s < steps; s++ {
+				a1 := -math.Pi/2 + float64(s)*(2*math.Pi/20)
+				a2 := -math.Pi/2 + float64(s+1)*(2*math.Pi/20)
+				vector.StrokeLine(
+					screen,
+					cx+float32(math.Cos(a1)*17), cy+float32(math.Sin(a1)*17),
+					cx+float32(math.Cos(a2)*17), cy+float32(math.Sin(a2)*17),
+					3.5, colKawaii, true,
+				)
+			}
+			value := fmt.Sprintf("%d%%", int(st.Minigame.Progress*100))
+			r.drawTextColored(screen, value, int(cx)-textPixelWidth(value, 1)/2, int(cy)-7, actionCream)
+
+		case game.ArchGyaru:
+			r.drawMouseLMBIcon(screen, px+10, py+3, 1.0)
+			r.drawTextColored(screen, "TIENI CLICK SX", int(px+30), int(py+4), actionCream)
+
+			barX, barY, barW, barH := px+18, py+24, float32(16), float32(46)
+			innerX, innerY, innerW, innerH := barX+1, barY+1, barW-2, barH-2
+			vector.DrawFilledRect(screen, innerX, innerY, innerW, innerH, Premul(22, 28, 44, 195), false)
+			swH := float32(math.Round(float64(innerH * st.Minigame.SweetSpotSize)))
+			swCenterY := innerY + (1.0-st.Minigame.SweetSpotPos)*innerH
+			swTop := float32(math.Round(float64(clampF(swCenterY-swH*0.5, innerY, innerY+innerH-swH))))
+			vector.DrawFilledRect(screen, innerX, swTop, innerW, swH, Premul(46, 235, 130, 210), false)
+			vector.StrokeRect(screen, barX+0.5, barY+0.5, barW-1, barH-1, 1.0, PremulColor(ac, 200), false)
+			curTop := float32(math.Round(float64(clampF(innerY+(1.0-st.Minigame.BarCursor)*innerH-2, innerY, innerY+innerH-4))))
+			vector.DrawFilledRect(screen, barX-2, curTop, barW+4, 4, colGold, false)
+
+			progX, progW := px+46, float32(10)
+			vector.DrawFilledRect(screen, progX+1, innerY, progW-2, innerH, Premul(18, 24, 38, 185), false)
+			pH := float32(math.Round(float64(innerH * clampF(st.Minigame.Progress, 0, 1))))
+			vector.DrawFilledRect(screen, progX+1, innerY+innerH-pH, progW-2, pH, colGyaru, false)
+			vector.StrokeRect(screen, progX+0.5, barY+0.5, progW-1, barH-1, 1.0, ac, false)
+
+			r.drawTextColored(screen, "CARICA", int(px+73), int(py+31), actionTeal)
+			r.drawScaledText(screen, fmt.Sprintf("%d%%", int(st.Minigame.Progress*100)), int(px+73), int(py+46), 1.5, actionCream, color.Transparent)
 		}
 	}
 }
 
 func (r *Renderer) drawPopups(screen *ebiten.Image, w *game.World, camX, camY float32) {
-	for _, p := range w.Popups {
+	var shown [32]image.Rectangle
+	count := 0
+	if st := focusedStop(w); st != nil {
+		bounds := r.stopPanelRect(st)
+		if bounds.W > 0 {
+			shown[0] = image.Rect(int(bounds.X)-2, int(bounds.Y)-2, int(bounds.X+bounds.W)+2, int(bounds.Y+bounds.H)+3)
+			count++
+		}
+	}
+	top := int(w.StopSafeTopY()) + 3
+	for i := len(w.Popups) - 1; i >= 0 && count < len(shown); i-- {
+		p := w.Popups[i]
+		x, y := int(p.X-camX), int(p.Y-camY)
+		if x < -16 || x > game.ScreenWidth+16 || y < top-12 || y >= game.ScreenHeight-53 {
+			continue
+		}
 		var c color.RGBA
 		switch p.Kind {
 		case 1:
-			c = colGyaru
+			c = actionTeal
+			if p.Text == "PERFECT DROP!" {
+				c = color.RGBA{255, 211, 131, 255}
+			}
 		case 2:
-			c = colRedAlert
+			c = actionCoral
 		case 3:
-			c = colGreenNeon
+			c = color.RGBA{172, 238, 145, 255}
 		case 4:
-			c = colKawaii
+			c = color.RGBA{255, 173, 195, 255}
 		default:
-			c = color.RGBA{245, 245, 255, 255}
+			c = actionCream
 		}
 		txt := sanitizePopupText(p.Text)
-		sx := int(p.X-camX) - len(txt)*3
-		sy := int(p.Y - camY)
-		r.drawScaledText(screen, txt, sx, sy, 1.0, c, colOutline)
+		width := textPixelWidth(txt, 1)
+		x = min(max(x-width/2, 5), game.ScreenWidth-width-5)
+		y = max(y, top)
+		var rect image.Rectangle
+		for y >= top {
+			rect = image.Rect(x-2, y, x+width+2, y+12)
+			nextY := y
+			for _, previous := range shown[:count] {
+				if rect.Overlaps(previous) {
+					nextY = min(nextY, previous.Min.Y-14)
+				}
+			}
+			if nextY == y {
+				break
+			}
+			y = nextY
+		}
+		if y < top {
+			continue
+		}
+		shown[count] = rect
+		count++
+		fade := uint8(255 * clampF(p.Life/0.22, 0, 1))
+		r.drawScaledText(screen, txt, x, rect.Min.Y, 1, PremulColor(c, fade), PremulColor(colOutline, fade))
 	}
 }
 

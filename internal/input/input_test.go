@@ -62,3 +62,35 @@ func TestResolveStopMouseInput(t *testing.T) {
 		t.Fatalf("phase 2 far left click: got dir=%d hover=%d suppress=%v, want ActionLeft/ActionLeft/true", dir, hover, suppress)
 	}
 }
+
+func TestResolveStopKeyboardFallback(t *testing.T) {
+	// Outside active stop: never triggers action or held
+	dir, held := ResolveStopKeyboardFallback(0, true, false, false, false, true)
+	if dir != game.ActionNone || held {
+		t.Fatalf("phase 0: got (%d, %v), want (-1, false)", dir, held)
+	}
+
+	// Inside active stop: Up/Right/Down/Left (Arrows / IJKL) map cleanly
+	cases := []struct {
+		name               string
+		up, rt, dn, lf, hd bool
+		wantDir            int
+		wantHeld           bool
+	}{
+		{"Up_I", true, false, false, false, true, game.ActionUp, true},
+		{"Right_L", false, true, false, false, true, game.ActionRight, true},
+		{"Down_K", false, false, true, false, true, game.ActionDown, true},
+		{"Left_J", false, false, false, true, true, game.ActionLeft, true},
+		{"HeldOnly", false, false, false, false, true, game.ActionNone, true},
+		{"None", false, false, false, false, false, game.ActionNone, false},
+	}
+
+	for _, phase := range []int{1, 2} {
+		for _, tc := range cases {
+			gotDir, gotHeld := ResolveStopKeyboardFallback(phase, tc.up, tc.rt, tc.dn, tc.lf, tc.hd)
+			if gotDir != tc.wantDir || gotHeld != tc.wantHeld {
+				t.Errorf("phase %d %s: got (%d, %v), want (%d, %v)", phase, tc.name, gotDir, gotHeld, tc.wantDir, tc.wantHeld)
+			}
+		}
+	}
+}

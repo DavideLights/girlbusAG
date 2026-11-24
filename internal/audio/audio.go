@@ -38,6 +38,8 @@ const (
 	SFXSlotBust
 	SFXUIClick
 	SFXChallengeUnlock
+	SFXShieldBlock
+	SFXShieldBreak
 	sfxCount
 )
 

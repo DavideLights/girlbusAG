@@ -1301,46 +1301,50 @@ def build_prop_canal_boat_48x24() -> Canvas:
 
 
 def build_prop_slot_machine_32x32() -> Canvas:
-    """prop_slot_machine.png (32x32) — Vibrant arcade neon '777' Slot Machine cabinet w/ lever."""
+    """Gold-trimmed plum cabinet with cream reels and a ruby pull lever."""
     c = Canvas(32, 32)
-    fill_ellipse(c, 16, 29.0, 11, 2.0, P["s"])
+    fill_ellipse(c, 16, 29, 12, 2, P["s"])
 
-    # Side pull lever on right (x=24..28, y=9..20)
-    c.fill_rect(24, 17, 4, 3, P["M"])
-    c.fill_rect(24, 17, 4, 1, P["O"])
-    c.fill_rect(26, 11, 2, 7, P["O"])
-    c.fill_rect(26, 11, 1, 6, P["W"])
-    draw_box(c, 25, 7, 4, 4, P["R"], P["O"], hi=P["F"], sh=P["r"])
-    c.set_pixel(26, 8, P["W"])
+    # Lever and base sit behind the stepped cabinet silhouette.
+    c.fill_rect(24, 16, 6, 4, P["O"])
+    c.fill_rect(28, 10, 2, 9, P["O"])
+    c.fill_rect(28, 11, 1, 7, P["M"])
+    draw_box(c, 26, 7, 5, 5, P["K"], P["O"], hi=P["Q"], sh=P["k"])
+    draw_box(c, 5, 8, 22, 21, P["u"], P["O"], hi=P["U"], sh=P["V"])
+    draw_box(c, 6, 24, 20, 6, P["V"], P["O"], hi=P["U"], sh=P["v"])
 
-    # Cabinet main body (x=6..24, y=3..29)
-    draw_box(c, 6, 3, 19, 26, P["U"], P["O"], hi=P["Z"], sh=P["u"])
-    # Neon gold crown marquee with '777'
-    draw_box(c, 7, 3, 17, 7, P["G"], P["O"], hi=P["W"], sh=P["D"])
-    c.fill_rect(8, 4, 15, 5, P["int_dark"])
-    draw_text(c, 10, 4, "777", P["K"], shadow=P["X"], spacing=1)
+    # An enamel marquee with narrow brass trim frames the luminous 777.
+    draw_box(c, 6, 2, 20, 9, P["D"], P["O"], hi=P["G"], sh=P["T"])
+    c.fill_rect(8, 4, 16, 5, P["int_dark"])
+    draw_text(c, 10, 4, "777", P["G"])
+    c.set_pixel(8, 6, P["F"])
+    c.set_pixel(23, 6, P["F"])
 
-    # Central dark glass reel window (x=8..22, y=11..18)
-    draw_box(c, 8, 11, 15, 7, P["g"], P["O"], hi=P["X"], sh=P["d"])
-    for rx in (9, 14, 19):
-        c.fill_rect(rx, 12, 3, 5, P["W"])
-        c.fill_rect(rx, 12, 3, 1, P["R"])
-        c.set_pixel(rx + 2, 13, P["R"])
-        c.set_pixel(rx + 1, 14, P["R"])
-        c.set_pixel(rx + 1, 15, P["R"])
+    # Three distinct symbols read as reels, even in a quick glance at native size.
+    c.fill_rect(6, 11, 20, 9, P["O"])
+    c.fill_rect(7, 11, 18, 1, P["Z"])
+    for x in (8, 14, 20):
+        c.fill_rect(x, 12, 5, 6, P["C"])
+        c.fill_rect(x, 12, 5, 1, P["W"])
+        c.fill_rect(x, 17, 5, 1, P["a"])
+    c.fill_rect(9, 15, 4, 2, P["R"])
+    c.fill_rect(11, 13, 1, 2, P["y"])
+    c.set_pixel(12, 14, P["Y"])
+    c.fill_rect(15, 14, 3, 3, P["D"])
+    c.set_pixel(16, 13, P["G"])
+    c.set_pixel(16, 15, P["G"])
+    c.fill_rect(21, 13, 3, 1, P["k"])
+    c.set_pixel(23, 14, P["k"])
+    c.fill_rect(22, 15, 1, 2, P["k"])
 
-    # Neon control button panel (y=19..21)
-    draw_box(c, 7, 19, 17, 3, P["N"], P["O"], hi=P["M"])
-    c.fill_rect(9, 20, 2, 1, P["X"])
-    c.fill_rect(13, 20, 2, 1, P["K"])
-    c.fill_rect(17, 20, 2, 1, P["G"])
-
-    # Lower front panel & coin payout tray
-    draw_box(c, 8, 22, 15, 6, P["K"], P["O"], hi=P["Q"], sh=P["k"])
-    draw_box(c, 10, 24, 11, 3, P["g"], P["O"], sh=P["M"])
-    c.fill_rect(12, 25, 3, 1, P["G"])  # coins!
-    c.set_pixel(17, 25, P["G"])
-
+    # Capped input rail and recessed coin tray.
+    draw_box(c, 6, 19, 20, 5, P["u"], P["O"], hi=P["Z"], sh=P["V"])
+    c.fill_rect(9, 21, 3, 1, P["Q"])
+    c.fill_rect(14, 21, 3, 1, P["G"])
+    c.fill_rect(19, 21, 3, 1, P["Q"])
+    c.fill_rect(10, 25, 12, 3, P["O"])
+    c.fill_rect(11, 25, 10, 1, P["T"])
+    c.fill_rect(14, 26, 4, 1, P["D"])
     return c
 
 
@@ -1796,8 +1800,11 @@ def build_tile_grass_park_32() -> Canvas:
 
 
 def build_tile_cobble_plaza_32() -> Canvas:
-    """tile_cobble_plaza.png (32x32) — Warm interlocking pedestrian plaza cobblestones."""
-    c = Canvas(32, 32, bg=P["cobble_sh"])
+    """Low-contrast taupe setts for the plaza and pocket park borders."""
+    stone = hex_to_rgba("#B4A99C")
+    grout = hex_to_rgba("#A3968C")
+    bevel = hex_to_rgba("#BFB3A6")
+    c = Canvas(32, 32, bg=grout)
     # 4 staggered rows of 8px tall cobblestones wrapping cleanly at 32x32
     rows = [
         (0, [(0, 10), (10, 12), (22, 10)]),
@@ -1807,14 +1814,9 @@ def build_tile_cobble_plaza_32() -> Canvas:
     ]
     for ry, stones in rows:
         for sx, sw in stones:
-            # Leave 1px grout gap between stones (seamlessly wraps on row edges)
-            c.fill_rect(sx, ry, sw - 1, 7, P["cobble_base"])
-            # Top-left bevel highlight (contained strictly within stone bounds)
-            c.fill_rect(sx, ry, sw - 1, 1, P["cobble_hi"])
-            c.fill_rect(sx, ry, 1, 6, P["cobble_hi"])
-            # Subtle stone texture speck
-            if sw >= 9:
-                c.set_pixel(sx + sw // 2, ry + 3, P["cobble_sh"])
+            c.fill_rect(sx, ry, sw - 1, 7, stone)
+            c.fill_rect(sx, ry, sw - 1, 1, bevel)
+            c.fill_rect(sx, ry, 1, 6, bevel)
     return c
 
 

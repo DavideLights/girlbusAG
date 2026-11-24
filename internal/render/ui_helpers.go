@@ -3,6 +3,8 @@ package render
 import (
 	"image/color"
 	"math"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -105,6 +107,44 @@ func TextPixelWidth(txt string, scale float64) int {
 	return textPixelWidth(txt, scale)
 }
 
+type accentMark struct {
+	cellIdx int
+	acute   bool
+	upper   bool
+	isI     bool
+}
+
+func mapItalianAccent(r rune) (base rune, hasAccent, acute, upper, isI bool) {
+	switch r {
+	case 'à':
+		return 'a', true, false, false, false
+	case 'è':
+		return 'e', true, false, false, false
+	case 'é':
+		return 'e', true, true, false, false
+	case 'ì':
+		return 'i', true, false, false, true
+	case 'ò':
+		return 'o', true, false, false, false
+	case 'ù':
+		return 'u', true, false, false, false
+	case 'À':
+		return 'A', true, false, true, false
+	case 'È':
+		return 'E', true, false, true, false
+	case 'É':
+		return 'E', true, true, true, false
+	case 'Ì':
+		return 'I', true, false, true, true
+	case 'Ò':
+		return 'O', true, false, true, false
+	case 'Ù':
+		return 'U', true, false, true, false
+	default:
+		return r, false, false, false, false
+	}
+}
+
 func (r *Renderer) getTextImage(txt string) *ebiten.Image {
 	img, ok := r.textCache[txt]
 	if ok {
@@ -116,12 +156,46 @@ func (r *Renderer) getTextImage(txt string) *ebiten.Image {
 			break
 		}
 	}
-	w := len(txt)*6 + 2
+
+	var sb strings.Builder
+	sb.Grow(len(txt))
+	var accents []accentMark
+	cellIdx := 0
+	for _, ch := range txt {
+		base, hasAcc, acute, upper, isI := mapItalianAccent(ch)
+		sb.WriteRune(base)
+		if hasAcc {
+			accents = append(accents, accentMark{
+				cellIdx: cellIdx,
+				acute:   acute,
+				upper:   upper,
+				isI:     isI,
+			})
+		}
+		cellIdx++
+	}
+
+	w := cellIdx*6 + 2
 	if w < 8 {
 		w = 8
 	}
 	img = ebiten.NewImage(w, 16)
-	ebitenutil.DebugPrintAt(img, txt, 0, 0)
+	ebitenutil.DebugPrintAt(img, sb.String(), 0, 0)
+	for _, acc := range accents {
+		// DebugPrintAt renders at ox+1=1 with 6px cell width.
+		cx := float32(acc.cellIdx*6 + 1)
+		topY := float32(2)
+		if acc.upper || acc.isI {
+			topY = 0
+		}
+		if acc.acute {
+			vector.DrawFilledRect(img, cx+3, topY, 1, 1, color.White, false)
+			vector.DrawFilledRect(img, cx+2, topY+1, 1, 1, color.White, false)
+		} else {
+			vector.DrawFilledRect(img, cx+1, topY, 1, 1, color.White, false)
+			vector.DrawFilledRect(img, cx+2, topY+1, 1, 1, color.White, false)
+		}
+	}
 	r.textCache[txt] = img
 	return img
 }
@@ -179,7 +253,7 @@ func textPixelWidth(txt string, scale float64) int {
 	if scale <= 0 {
 		scale = 1.0
 	}
-	return int(float64(len(txt)*6) * scale)
+	return int(float64(utf8.RuneCountInString(txt)*6) * scale)
 }
 
 // drawKeycap renders a tactile 3D pixel-art keyboard button with top highlight, bottom bevel, and press offset.
@@ -243,7 +317,7 @@ func (r *Renderer) drawKeycap(dst *ebiten.Image, label string, x, y, w, h float3
 	case "LEFT", "<":
 		drawArrowIcon(dst, cx, cy, game.ActionLeft, fg)
 	default:
-		tw := float32(len(label) * 6)
+		tw := float32(textPixelWidth(label, 1.0))
 		tx := int(cx - tw*0.5)
 		ty := int(cy - 8)
 		r.drawScaledText(dst, label, tx, ty, 1.0, fg, color.RGBA{12, 6, 18, 240})

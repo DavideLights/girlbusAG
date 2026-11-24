@@ -36,27 +36,33 @@ type World struct {
 	CrosswalkRows []int
 	CanalY        float32
 	BoardwalkY    float32
+	MapID         string
+	MapName       string
+	ChestSpots    [][2]float32
 
-	HitStopTimer      float32
-	ScreenShake       float32
-	BulletFreezeTimer float32
-	RunTime           float32
-	MusicBPM          float32
-	StreakCount       int
-	StreakTimer       float32
-	MaxStreak         int
-	Score             int
-	GirlsBoarded      int
-	DifficultyTier    int
-	BossRushMode      bool
-	BossSchedule      []BossKind
-	BossScheduleTimes []float32
-	BossScheduleIdx   int
-	NextBossRushTimer float32
-	BossesSpawned     [BossCount]bool
-	BossesDefeated    int
-	GameOver          bool
-	Victory           bool
+	HitStopTimer           float32
+	ScreenShake            float32
+	BulletFreezeTimer      float32
+	RunTime                float32
+	MusicBPM               float32
+	StreakCount            int
+	StreakTimer            float32
+	MaxStreak              int
+	Score                  int
+	GirlsBoarded           int
+	DifficultyTier         int
+	BossRushMode           bool
+	BossSchedule           []BossKind
+	BossScheduleTimes      []float32
+	BossScheduleIdx        int
+	NextBossRushTimer      float32
+	BossesSpawned          [BossCount]bool
+	BossesDefeated         int
+	OverdriveActive        bool
+	OverdriveWave          int
+	NextOverdriveBossTimer float32
+	GameOver               bool
+	Victory                bool
 
 	TutorialMode         bool
 	TutorialStep         int
@@ -67,6 +73,7 @@ type World struct {
 	TutUsedSlotOrShop    bool
 
 	PendingLevelUp bool
+	QueuedLevelUps int
 	UpgradeChoices [3]UpgradeCard
 	ShopMenu       ShopMenuState
 	SlotModal      SlotMachineState
@@ -95,7 +102,8 @@ func NewWorldWithSeed(seed int64) *World {
 
 // NewWorldWithOptions creates a deterministic game World for normal or Boss Rush mode.
 func NewWorldWithOptions(seed int64, bossRush bool) *World {
-	layout := BuildDistrictLayout()
+	mapDef := DefaultDistrictMap()
+	layout := mapDef.Layout
 	rng := rand.New(rand.NewSource(seed))
 
 	shops := make([]VendingShop, len(layout.Shops))
@@ -105,6 +113,10 @@ func NewWorldWithOptions(seed int64, bossRush bool) *World {
 	}
 	slots := make([]SlotMachine, len(layout.SlotMachines))
 	copy(slots, layout.SlotMachines)
+	ztlZones := make([]Rect, len(layout.ZTLZones))
+	copy(ztlZones, layout.ZTLZones)
+	chestSpots := make([][2]float32, len(mapDef.ChestSpots))
+	copy(chestSpots, mapDef.ChestSpots)
 
 	w := &World{
 		Player:         NewPlayer(),
@@ -112,7 +124,7 @@ func NewWorldWithOptions(seed int64, bossRush bool) *World {
 		Girls:          make([]Girl, 0, 48),
 		Police:         NewPoliceSystem(),
 		Buses:          make([]NeonBus, 0, 4),
-		ZTLZones:       layout.ZTLZones,
+		ZTLZones:       ztlZones,
 		Shops:          shops,
 		SlotMachines:   slots,
 		Props:          layout.Props,
@@ -123,6 +135,9 @@ func NewWorldWithOptions(seed int64, bossRush bool) *World {
 		CrosswalkRows:  layout.CrosswalkRows,
 		CanalY:         layout.CanalY,
 		BoardwalkY:     layout.BoardwalkY,
+		MapID:          mapDef.ID,
+		MapName:        mapDef.NameIT,
+		ChestSpots:     chestSpots,
 		Popups:         make([]FloatingText, 0, 24),
 		Telegraphs:     make([]TelegraphLine, 0, 12),
 		Express:        make([]ExpressLine, 0, 8),
@@ -308,6 +323,29 @@ func (w *World) ActiveStopCount() int {
 	return n
 }
 
+// StopSafeTopY returns the top screen-space safe margin below the active HUD banners.
+func (w *World) StopSafeTopY() float32 {
+	if w.TutorialMode {
+		return 68
+	}
+	if w.Boss.Active || w.BossRushMode || w.OverdriveActive || w.Police.Heli.Active || len(w.BossSchedule) > 0 {
+		return 52
+	}
+	return 30
+}
+
+// ClampCompassScreenPos clamps a screen-space compass/HUD indicator inside safe viewport bounds.
+func ClampCompassScreenPos(sx, sy, safeTopY float32) (float32, float32) {
+	return clamp32(sx, 36, ScreenWidth-36), clamp32(sy, safeTopY+14, ScreenHeight-64)
+}
+
+// EnterOverdrive activates the endless post-victory Overdrive loop with cyclic boss waves.
+func (w *World) EnterOverdrive() {
+	w.OverdriveActive = true
+	w.NextOverdriveBossTimer = 30.0
+	w.addPopup(w.Player.X, w.Player.Y-38, "MODALITA OVERDRIVE!", 4)
+}
+
 // ForceSpawnBoss immediately spawns a Boss of the requested kind.
 func (w *World) ForceSpawnBoss(kind BossKind) {
 	if w.Boss.Active {
@@ -484,6 +522,12 @@ func (w *World) Update(in InputState, dt float32) {
 	// Update Neon Buses
 	w.updateBuses(dt)
 
+	// Flush any Level-Up that was queued while finishing a minigame/combo
+	if !w.PendingLevelUp && !w.ShopMenu.Active && !w.SlotModal.Active && w.QueuedLevelUps > 0 && !w.isPlayerInActiveStop() {
+		w.QueuedLevelUps--
+		w.openLevelUpModal()
+	}
+
 	// Boss Gatekeeper schedule (disabled in TutorialMode)
 	if !w.TutorialMode {
 		w.checkTimedBossSpawns(dt)
@@ -505,10 +549,30 @@ func (w *World) Update(in InputState, dt float32) {
 	if !w.TutorialMode {
 		w.Police.Update(dt, enemyTimeScale, w.Player.X, w.Player.Y, w.Stops, &w.Bullets, &w.Telegraphs, w.rng)
 		w.Boss.Update(dt, enemyTimeScale, w.Player.X, w.Player.Y, w.Stops, w.Girls, &w.Bullets, &w.Telegraphs)
+		if w.Boss.PendingKnockback {
+			w.Boss.PendingKnockback = false
+			w.addWaveRing(w.Boss.X, w.Boss.Y, 165, 2)
+			if w.Player.DashTimer <= 0 && distSq(w.Player.X, w.Player.Y, w.Boss.X, w.Boss.Y) <= 165.0*165.0 {
+				dx, dy, l := normalize2D(w.Player.X-w.Boss.X, w.Player.Y-w.Boss.Y)
+				if l <= 0.001 {
+					dx, dy = 1, 0
+				}
+				w.Player.X += dx * 28.0
+				w.Player.Y += dy * 28.0
+				w.constrainPlayerPos()
+				w.addPopup(w.Player.X, w.Player.Y-28, "LASCIALA STARE!", 4)
+			}
+		}
 	}
 
 	// Update BulletPool & resolve solid prop cover collisions
 	w.Bullets.Update(dt, bulletTimeScale, w.Player.X, w.Player.Y, w.Stops)
+	for _, sh := range w.Bullets.DrainShieldHits() {
+		w.emitEvent(EventStopShieldHit, 0, sh.Broken)
+		if sh.TimerShaved {
+			w.addPopup(sh.StopX, sh.StopY-34, "SWAT ATTACCA FERMATA!", 2)
+		}
+	}
 	w.resolveBulletPropCollisions()
 
 	// Check Tear-Graze & Bullet-Player collisions
@@ -740,6 +804,15 @@ func (w *World) isPointInZTL(x, y float32) bool {
 	return false
 }
 
+func (w *World) hasZTLRect(r Rect) bool {
+	for _, z := range w.ZTLZones {
+		if z == r {
+			return true
+		}
+	}
+	return false
+}
+
 func (w *World) isPointInBusBay(x, y float32) bool {
 	for _, bay := range w.BusBays {
 		if bay.Contains(x, y) {
@@ -965,12 +1038,17 @@ func (w *World) tryThrowBusStop(aimX, aimY float32) {
 		return
 	}
 
-	spec := GetArchetypeSpec(w.Player.SelectedStopArch)
 	fb := w.EvaluateAim(aimX, aimY)
 	tx, ty := fb.ClampedX, fb.ClampedY
 	inZTL := fb.InZTL
 	inBusBay := fb.InBusBay
 	perfectDrop := fb.IsPerfectDrop
+	w.Player.ThrowFacingX = w.Player.FacingX
+	if tx < w.Player.X-2 {
+		w.Player.ThrowFacingX = -1
+	} else if tx > w.Player.X+2 {
+		w.Player.ThrowFacingX = 1
+	}
 
 	// Check L'Amante holographic clone decoy trap!
 	if w.Boss.Active && w.Boss.Kind == BossLover && w.Boss.HookedByStop == -1 {
@@ -1007,6 +1085,10 @@ func (w *World) tryThrowBusStop(aimX, aimY float32) {
 	}
 
 	stop := NewBusStop(w.allocID(), tx, ty, w.Player.SelectedStopArch, w.Player.EffectiveRangeMult(), inZTL, inBusBay, perfectDrop, w.rng)
+	ax, ay := ComputeStopUIAnchor(tx-w.CameraX, ty-w.CameraY, w.StopSafeTopY())
+	stop.UIAnchorX = ax
+	stop.UIAnchorY = ay
+	stop.UIAnchored = true
 	shieldBonus := w.Player.ShieldBonus()
 	stop.ShieldHP += shieldBonus
 	stop.MaxShieldHP += shieldBonus
@@ -1119,7 +1201,18 @@ func (w *World) tryThrowBusStop(aimX, aimY float32) {
 	}
 
 	if stop.SynergyActive {
-		w.addPopup(tx, ty-16, spec.SynergyName+"!", 1)
+		synPopup := "SYNERGY!"
+		switch stop.Arch {
+		case ArchEmo:
+			synPopup = "SOULMATE! +1 SCUDO & CUORE"
+		case ArchStudent:
+			synPopup = "HONOR ROLL! +XP & FREEZE"
+		case ArchKawaii:
+			synPopup = "MOE CRIT! GRAZE x2"
+		case ArchGyaru:
+			synPopup = "VIRAL #1! BARRA +35%"
+		}
+		w.addPopup(tx, ty-16, synPopup, 1)
 		w.emitEvent(EventSynergy, int(stop.Arch), false)
 		switch stop.Arch {
 		case ArchEmo:
@@ -1190,6 +1283,14 @@ func (w *World) updateStops(dt float32, actionDir int, actionHeld bool) {
 			w.Stops[i] = w.Stops[len(w.Stops)-1]
 			w.Stops = w.Stops[:len(w.Stops)-1]
 			continue
+		}
+
+		st.DeployAge = min(st.DeployAge+dt, 1)
+		if st.ShieldFlashTimer > 0 {
+			st.ShieldFlashTimer -= dt
+			if st.ShieldFlashTimer < 0 {
+				st.ShieldFlashTimer = 0
+			}
 		}
 
 		// Archetype passive stop perks
@@ -1315,7 +1416,7 @@ func (w *World) updateStops(dt float32, actionDir int, actionHeld bool) {
 			if st.Minigame.FreezeTriggered {
 				st.Minigame.FreezeTriggered = false
 				w.BulletFreezeTimer = 1.5
-				w.addPopup(st.X, st.Y-38, "PROIETTILI CONGELATI!", 1)
+				w.addPopup(st.X, st.Y-38, "PROIETTILI RALLENTATI!", 1)
 			}
 		}
 
@@ -1515,6 +1616,11 @@ func (w *World) completeStopBoarding(st *BusStop) {
 		}
 	}
 
+	if st.Arch == ArchEmo && st.SynergyActive {
+		w.spawnBlackHeartNear(st.X, st.Y)
+		w.addPopup(st.X, st.Y-36, "BLACK HEART! (+1 HP)", 1)
+	}
+
 	// Boss 3-Stop Break!
 	bossBroken := false
 	if st.HookedBoss && w.Boss.Active && w.Boss.HookedByStop == st.ID {
@@ -1546,6 +1652,7 @@ func (w *World) completeStopBoarding(st *BusStop) {
 			w.HitStopTimer = 0.140 // 140ms Boss Break Hit-Stop
 			w.ScreenShake = 11.5
 			w.Bullets.ClearRadius(bossX, bossY, 240)
+			w.addWaveRing(bossX, bossY, 116, WaveBossBreak)
 			bossKind := w.Boss.Kind
 			defeated := w.Boss.BreakShield()
 
@@ -1564,16 +1671,35 @@ func (w *World) completeStopBoarding(st *BusStop) {
 				w.emitEvent(EventBossBreak, int(bossKind), true)
 				w.emitEvent(EventBossDefeated, int(bossKind), starsAtKill >= 3)
 
-				if w.BossRushMode {
-					if w.BossesDefeated >= len(w.BossSchedule) {
-						w.Victory = true
-						w.addPopup(st.X, st.Y-66, "BOSS RUSH COMPLETATA!", 4)
-					} else {
-						w.NextBossRushTimer = 12.0
+				if bossKind == BossLover {
+					extraZTLs := [2]Rect{
+						{X: 296, Y: 186, W: 112, H: 76},
+						{X: 872, Y: 448, W: 112, H: 76},
 					}
-				} else if bossKind == BossMom || bossKind == BossRector || w.BossesDefeated >= len(w.BossSchedule) {
-					w.Victory = true
-					w.addPopup(st.X, st.Y-66, "VITTORIA! CORSA COMPLETATA!", 4)
+					addedZTL := false
+					for _, zr := range extraZTLs {
+						if !w.hasZTLRect(zr) {
+							w.ZTLZones = append(w.ZTLZones, zr)
+							addedZTL = true
+						}
+					}
+					if addedZTL {
+						w.addPopup(st.X, st.Y-64, "ZTL RADDOPPIATE!", 2)
+					}
+				}
+
+				if !w.OverdriveActive {
+					if w.BossRushMode {
+						if w.BossesDefeated >= len(w.BossSchedule) {
+							w.Victory = true
+							w.addPopup(st.X, st.Y-66, "BOSS RUSH COMPLETATA!", 4)
+						} else {
+							w.NextBossRushTimer = 12.0
+						}
+					} else if bossKind == BossMom || bossKind == BossRector || w.BossesDefeated >= len(w.BossSchedule) {
+						w.Victory = true
+						w.addPopup(st.X, st.Y-66, "VITTORIA! CORSA COMPLETATA!", 4)
+					}
 				}
 			} else {
 				totalXP += int(80 * xpMult)
@@ -1612,7 +1738,20 @@ func (w *World) completeStopBoarding(st *BusStop) {
 }
 
 func (w *World) checkTimedBossSpawns(dt float32) {
-	if w.Boss.Active || w.BossScheduleIdx >= len(w.BossSchedule) {
+	if w.Boss.Active {
+		return
+	}
+	if w.OverdriveActive {
+		w.NextOverdriveBossTimer -= dt
+		if w.NextOverdriveBossTimer <= 0 {
+			w.OverdriveWave++
+			kind := BossKind((w.OverdriveWave - 1) % int(BossCount))
+			w.ForceSpawnBoss(kind)
+			w.NextOverdriveBossTimer = 55.0
+		}
+		return
+	}
+	if w.BossScheduleIdx >= len(w.BossSchedule) {
 		return
 	}
 	if w.BossRushMode {
@@ -1799,6 +1938,19 @@ func (w *World) handleBulletInteractions() {
 		w.Bullets.RemoveAt(bestIdx)
 		cancelBudget--
 	}
+
+	// Police 3★+ Laser/Spike Road Hazard collisions
+	if !w.Player.IsInvulnerable() {
+		for i := range w.Police.Hazards {
+			h := &w.Police.Hazards[i]
+			if h.Active && h.TelegraphTimer <= 0 {
+				if pointToSegmentDistSq(w.Player.X, w.Player.Y, h.X1, h.Y1, h.X2, h.Y2) <= 10.0*10.0 {
+					w.damagePlayer(1, BulletPolice)
+					break
+				}
+			}
+		}
+	}
 }
 
 func (w *World) damagePlayer(dmg int, kind BulletKind) {
@@ -1863,6 +2015,23 @@ func (w *World) tryMouseClickInteract(in InputState) bool {
 	if clickX == 0 && clickY == 0 && (in.MouseScreenX != 0 || in.MouseScreenY != 0) {
 		clickX = w.CameraX + in.MouseScreenX
 		clickY = w.CameraY + in.MouseScreenY
+	}
+
+	// Priority: if the player is aiming at an unhooked girl or Boss (or can hook targets here),
+	// throwing the Bus Stop takes precedence over opening a Shop or Slot Machine!
+	for i := range w.Girls {
+		g := &w.Girls[i]
+		if g.HookedByStop == -1 && distSq(clickX, clickY, g.X, g.Y) <= 30.0*30.0 {
+			return false
+		}
+	}
+	if w.Boss.Active && w.Boss.HookedByStop == -1 && distSq(clickX, clickY, w.Boss.X, w.Boss.Y) <= 38.0*38.0 {
+		return false
+	}
+	if w.Player.StopCooldownTimer <= 0 && w.ActiveStopCount() < w.Player.EffectiveMaxStops() {
+		if fb := w.EvaluateAim(clickX, clickY); fb.HookCandidateCount > 0 {
+			return false
+		}
 	}
 
 	const (
@@ -1980,6 +2149,19 @@ func (w *World) spawnHealPickupNear(x, y float32, amount int, chronos float64, b
 		LifeTimer: 45.0,
 		BobPhase:  w.rng.Float64() * 6.283,
 		Big:       big,
+	})
+}
+
+func (w *World) spawnBlackHeartNear(x, y float32) {
+	px, py := w.findSafePickupSpot(x, y, true)
+	w.HealPickups = append(w.HealPickups, HealPickup{
+		X:          px,
+		Y:          py,
+		Amount:     1,
+		Chronos:    25.0,
+		LifeTimer:  45.0,
+		BobPhase:   w.rng.Float64() * 6.283,
+		BlackHeart: true,
 	})
 }
 
@@ -2105,8 +2287,17 @@ var allUpgradeCards = []UpgradeCard{
 }
 
 func (w *World) triggerLevelUp() {
-	w.PendingLevelUp = true
 	w.emitEvent(EventLevelUp, w.Player.Level, false)
+	if w.isPlayerInActiveStop() {
+		w.QueuedLevelUps++
+		w.addPopup(w.Player.X, w.Player.Y-34, "LEVEL UP IN CODA!", 1)
+		return
+	}
+	w.openLevelUpModal()
+}
+
+func (w *World) openLevelUpModal() {
+	w.PendingLevelUp = true
 	pool := [6]UpgradeCard{}
 	copy(pool[:], allUpgradeCards)
 	for i := len(pool) - 1; i > 0; i-- {

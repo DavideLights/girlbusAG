@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -81,37 +82,33 @@ func (r *Renderer) drawHUD(screen *ebiten.Image, w *game.World) {
 	r.DrawHUDAndOverlays(screen, w)
 }
 
-// DrawHUDAndOverlays renders the clean top HUD bar, pixel-art relic tray, segmented boss shield bar,
-// streak/rush badge, tutorial sandbox bar, bottom mouse-friendly hotbar, challenge toast, and active modals.
+// DrawHUDAndOverlays renders the HUD, diegetic controls, and active modal.
 func (r *Renderer) DrawHUDAndOverlays(screen *ebiten.Image, w *game.World) {
-	// 1. Sleek Top Dark-Glass HUD Bar (640x24px, ZERO HP bar — HP lives diegetically beneath Alfredo)
 	r.drawTopHUDBar(screen, w)
 
-	// 2. Tutorial Sandbox Bar (when in interactive tutorial)
 	subBarY := float32(29)
 	if w.TutorialMode {
 		r.drawTutorialSandboxBar(screen, w)
 		subBarY = 70
-	}
-
-	// 3. Intuitive Pixel-Art Relic Tray (top-left below HUD bar)
-	r.drawRelicTray(screen, w, subBarY)
-
-	// 4. Centered Boss 3-Shield Bar / Boss Rush Countdown / 5* Chopper Alert
-	if !w.TutorialMode {
+	} else {
 		r.drawCenterStatusBanner(screen, w)
 	}
-
-	// 5. Streak / Rush Hour Badge (top-right below HUD bar)
 	r.drawStreakBadge(screen, w, subBarY)
 
-	// 6. Challenge Unlocked Toast Banner
-	r.drawChallengeToast(screen, w)
+	toastY := subBarY + 26
+	if r.drawChallengeToast(screen, toastY) {
+		toastY += 39
+	}
+	r.drawRelicToast(screen, w, toastY)
+	r.drawRelicTray(screen, w, subBarY)
 
-	// 7. Clean Bottom Bus-Stop Hotbar Dock
 	r.drawBottomHotbarDock(screen, w)
 
-	// 8. Active Modals (Level-Up / Vending Shop / Rizz-Slots 777)
+	if r.playingActive && !w.PendingLevelUp && !w.ShopMenu.Active && !w.SlotModal.Active {
+		r.drawDiegeticStopUI(screen, w, r.lastCamX, r.lastCamY)
+		r.drawCriticalOffscreenArrows(screen, w)
+	}
+
 	if w.PendingLevelUp {
 		r.drawLevelUpModal(screen, w)
 	} else if w.ShopMenu.Active {
@@ -121,138 +118,137 @@ func (r *Renderer) DrawHUDAndOverlays(screen *ebiten.Image, w *game.World) {
 	}
 }
 
+var (
+	runCream = color.RGBA{255, 240, 216, 255}
+	runMuted = color.RGBA{200, 181, 190, 255}
+	runInk   = color.RGBA{28, 19, 34, 255}
+	runPlum  = color.RGBA{37, 28, 45, 255}
+	runFace  = color.RGBA{48, 36, 56, 255}
+	runLine  = color.RGBA{102, 76, 104, 255}
+	runTeal  = color.RGBA{114, 226, 197, 255}
+	runCoral = color.RGBA{255, 136, 122, 255}
+	runGold  = color.RGBA{255, 209, 133, 255}
+	runLilac = color.RGBA{190, 143, 213, 255}
+	runSky   = color.RGBA{136, 194, 237, 255}
+	runPink  = color.RGBA{255, 153, 188, 255}
+)
+
+func drawRunPanel(screen *ebiten.Image, box game.Rect, face, border color.Color) {
+	x, y, w, h := box.X, box.Y, box.W, box.H
+	vector.DrawFilledRect(screen, x+2, y+3, w, h, Premul(20, 12, 27, 182), false)
+	vector.DrawFilledRect(screen, x+1, y, w-2, h, border, false)
+	vector.DrawFilledRect(screen, x, y+1, w, h-2, border, false)
+	vector.DrawFilledRect(screen, x+1, y+1, w-2, h-2, face, false)
+}
+
+func drawRunMeter(screen *ebiten.Image, x, y, width, height, fraction float32, accent color.RGBA) {
+	vector.DrawFilledRect(screen, x, y, width, height, runInk, false)
+	vector.DrawFilledRect(screen, x, y+height-1, width, 1, runLine, false)
+	fill := float32(math.Round(float64((width - 2) * clampF(fraction, 0, 1))))
+	if fill > 0 {
+		vector.DrawFilledRect(screen, x+1, y+1, fill, height-2, accent, false)
+	}
+}
+
+func (r *Renderer) drawRunCentered(screen *ebiten.Image, label string, centerX float32, y int, tint color.Color) {
+	r.drawTextColored(screen, label, int(centerX-float32(textPixelWidth(label, 1))*0.5), y, tint)
+}
+
 func (r *Renderer) drawTopHUDBar(screen *ebiten.Image, w *game.World) {
-	// Sleek translucent dark-glass backdrop + subtle top sheen + thin neon bottom trim
-	vector.DrawFilledRect(screen, 0, 0, game.ScreenWidth, 24, Premul(14, 9, 26, 224), false)
-	vector.DrawFilledRect(screen, 0, 0, game.ScreenWidth, 1, Premul(255, 255, 255, 18), false)
-	vector.DrawFilledRect(screen, 0, 24, game.ScreenWidth, 1.5, PremulColor(colGyaru, 165), false)
+	const cashX = 395
+	cash := fmt.Sprintf("$%d", w.Player.Cash)
+	hp := fmt.Sprintf("%d/%d", w.Player.HP, w.Player.MaxHP)
+	hpX := max(466, cashX+textPixelWidth(cash, 1)+27)
+	hpDivider := float32(hpX - 23)
+	hpWidth := max(textPixelWidth(hp, 1), textPixelWidth("SALUTE", 1))
+	xpDivider := float32(hpX + hpWidth + 8)
+	hpTint := runPink
+	if w.Player.HP <= 2 {
+		hpTint = runCoral
+	}
+	vector.DrawFilledRect(screen, 0, 0, game.ScreenWidth, 24, Premul(37, 28, 45, 248), false)
+	vector.DrawFilledRect(screen, 0, 24, game.ScreenWidth, 2, runInk, false)
+	vector.DrawFilledRect(screen, 0, 24, game.ScreenWidth, 1, runLine, false)
+	for _, segment := range [...]struct {
+		left, right float32
+		accent      color.RGBA
+	}{
+		{0, 136, runTeal}, {136, 270, runCoral}, {270, 378, runSky},
+		{378, hpDivider, runGold}, {hpDivider, xpDivider, hpTint}, {xpDivider, game.ScreenWidth, runLilac},
+	} {
+		width := segment.right - segment.left
+		vector.DrawFilledRect(screen, segment.left+1, 0, width-1, 23, PremulColor(segment.accent, 21), false)
+		vector.DrawFilledRect(screen, segment.left+1, 23, width-1, 1, PremulColor(segment.accent, 118), false)
+		vector.DrawFilledRect(screen, segment.left, 4, 1, 16, runLine, false)
+	}
 
-	// --- LEFT (x=10): Bolt Icon + Sleek Chronos Bar (74x9px) + Tiny SH cue ---
-	r.DrawSpriteIcon(screen, assets.SpriteIconBolt, 10, 6, 1.0)
-
-	const (
-		chrBarX = float32(25)
-		chrBarY = float32(7)
-		chrBarW = float32(74)
-		chrBarH = float32(9)
-	)
-	chrFrac := float32(0)
+	chronos := float32(0)
 	if w.Player.ChronosMax > 0 {
-		chrFrac = clampF(w.Player.ChronosMeter/w.Player.ChronosMax, 0, 1)
+		chronos = w.Player.ChronosMeter / w.Player.ChronosMax
 	}
-	vector.DrawFilledRect(screen, chrBarX, chrBarY, chrBarW, chrBarH, Premul(16, 22, 42, 235), false)
-	fillW := chrBarW * chrFrac
-	if fillW > 0 {
-		fillCol := colGyaru
-		if w.Player.ChronosActive {
-			pulse := uint8(195 + 60*math.Sin(float64(r.tick*14.0)))
-			fillCol = color.RGBA{pulse, 255, 245, 255}
-		}
-		vector.DrawFilledRect(screen, chrBarX, chrBarY, fillW, chrBarH, fillCol, false)
-		vector.DrawFilledRect(screen, chrBarX, chrBarY+1, fillW, 2, Premul(255, 255, 255, 95), false)
-	}
-	chrBorder := PremulColor(colGyaru, 185)
+	chronosColor := runTeal
+	chronosHint := "SHIFT/Q"
 	if w.Player.ChronosActive {
-		chrBorder = colGold
+		chronosColor = runGold
+		chronosHint = "ATTIVO"
 	}
-	vector.StrokeRect(screen, chrBarX, chrBarY, chrBarW, chrBarH, 1.0, chrBorder, false)
+	r.DrawSpriteIcon(screen, assets.SpriteIconBolt, 12, 5, 1)
+	r.drawTextColored(screen, "CHRONOS", 27, -2, chronosColor)
+	r.drawTextColored(screen, chronosHint, 87, -2, runMuted)
+	drawRunMeter(screen, 28, 15, 96, 6, chronos, chronosColor)
 
-	// Tiny SH cue pill
-	shBg := Premul(20, 42, 56, 220)
-	shBorder := PremulColor(colGyaru, 150)
-	shTxt := color.RGBA{185, 245, 245, 255}
-	if w.Player.ChronosActive {
-		shBg = Premul(18, 92, 102, 245)
-		shBorder = colGold
-		shTxt = colGold
-	}
-	drawPillBadge(screen, 102, 5, 16, 13, shBg, shBorder)
-	r.drawTextColored(screen, "SH", 104, 4, shTxt)
-
-	// --- CENTER-LEFT (x=122): 5 Wanted Stars + Compact Multiplier Pill when Stars > 0 ---
-	const starStartX = float32(122)
-	const starStep = float32(13)
-	for s := 0; s < 5; s++ {
-		sx := starStartX + float32(s)*starStep
-		if s < w.Police.Stars {
-			if w.Police.Stars >= 4 && int(r.tick*10)%2 == 0 {
-				r.drawSpriteIconTinted(screen, assets.SpriteIconStarWanted, sx, 6, 1.0, colRedAlert)
-			} else {
-				r.DrawSpriteIcon(screen, assets.SpriteIconStarWanted, sx, 6, 1.0)
-			}
+	r.drawTextColored(screen, "RICERCATO", 146, -2, runCoral)
+	for i := 0; i < 5; i++ {
+		x := 148 + float32(i)*14
+		if i < w.Police.Stars {
+			r.DrawSpriteIcon(screen, assets.SpriteIconStarWanted, x, 11, 1)
 		} else {
-			r.drawSpriteIconTinted(screen, assets.SpriteIconStarWanted, sx, 6, 1.0, color.RGBA{46, 38, 66, 135})
+			r.drawSpriteIconTinted(screen, assets.SpriteIconStarWanted, x, 11, 1, Premul(201, 181, 199, 135))
 		}
 	}
+	r.drawTextColored(screen, fmt.Sprintf("%d/5", w.Police.Stars), 225, 10, runCream)
 	if w.Police.Stars > 0 {
-		xpMult, _ := w.Police.XPAndCashMultiplier()
-		multTxt := fmt.Sprintf("%.1fx", xpMult)
-		mw := float32(textPixelWidth(multTxt, 1.0) + 10)
-		mx := starStartX + 5*starStep + 3
-		multBorder := colGold
-		multBg := Premul(58, 40, 8, 232)
-		if w.Police.Stars >= 4 && int(r.tick*8)%2 == 0 {
-			multBorder = colRedAlert
-			multBg = Premul(68, 14, 26, 235)
+		multiplier, _ := w.Police.XPAndCashMultiplier()
+		tint := runGold
+		if w.Police.Stars >= 4 {
+			tint = runCoral
 		}
-		drawPillBadge(screen, mx, 5, mw, 14, multBg, multBorder)
-		r.drawTextColored(screen, multTxt, int(mx+5), 4, colGold)
+		r.drawTextColored(screen, fmt.Sprintf("%.1fx", multiplier), 225, -2, tint)
 	}
 
-	// --- CENTER (x=276): Clean Centered Timer + Difficulty Tier Pill (01:24 • T1) ---
-	const (
-		centerPillX = float32(276)
-		centerPillY = float32(4)
-		centerPillW = float32(88)
-		centerPillH = float32(16)
-	)
-	drawPillBadge(screen, centerPillX, centerPillY, centerPillW, centerPillH, Premul(22, 15, 38, 238), PremulColor(colGyaru, 155))
-	mins := int(w.RunTime) / 60
-	secs := int(w.RunTime) % 60
-	timeStr := fmt.Sprintf("%02d:%02d", mins, secs)
-	tierStr := fmt.Sprintf("T%d", w.DifficultyTier)
-	r.drawScaledText(screen, timeStr, int(centerPillX+10), 4, 1.0, color.White, colOutline)
-	vector.DrawFilledCircle(screen, centerPillX+48, 12, 1.7, colGyaru, true)
-	r.drawScaledText(screen, tierStr, int(centerPillX+56), 4, 1.0, colGold, colOutline)
-
-	// --- RIGHT (x=426): Coin Icon + Gold Cash, followed at x=500 by LV + Violet-Cyan XP Bar ---
-	r.DrawSpriteIcon(screen, assets.SpriteIconCoin, 426, 6, 1.0)
-	r.drawScaledText(screen, fmt.Sprintf("$%d", w.Player.Cash), 441, 4, 1.0, colGold, colOutline)
-
-	lvStr := fmt.Sprintf("LV %d", w.Player.Level)
-	r.drawScaledText(screen, lvStr, 500, 4, 1.0, color.RGBA{235, 228, 255, 255}, colOutline)
-
-	const (
-		xpBarX = float32(534)
-		xpBarY = float32(9)
-		xpBarW = float32(76)
-		xpBarH = float32(7)
-	)
-	xpFrac := float32(0)
-	if w.Player.NextLevelXP > 0 {
-		xpFrac = clampF(float32(w.Player.XP)/float32(w.Player.NextLevelXP), 0, 1)
+	elapsed := int(w.RunTime)
+	runTime := fmt.Sprintf("%02d:%02d", elapsed/60, elapsed%60)
+	tier := fmt.Sprintf("FASE %d", w.DifficultyTier)
+	timerWidth := textPixelWidth(runTime, 2)
+	if timerWidth+5+textPixelWidth(tier, 1) > 102 {
+		tier = fmt.Sprintf("F%d", w.DifficultyTier)
 	}
-	vector.DrawFilledRect(screen, xpBarX, xpBarY, xpBarW, xpBarH, Premul(24, 16, 44, 238), false)
-	xpFillW := xpBarW * xpFrac
-	if xpFillW > 0 {
-		// Violet base with electric cyan leading sheen
-		vector.DrawFilledRect(screen, xpBarX, xpBarY, xpFillW, xpBarH, colEmo, false)
-		tipW := xpFillW * 0.35
-		if tipW > 14 {
-			tipW = 14
-		}
-		vector.DrawFilledRect(screen, xpBarX+xpFillW-tipW, xpBarY, tipW, xpBarH, colGyaru, false)
-		vector.DrawFilledRect(screen, xpBarX, xpBarY+1, xpFillW, 1.5, Premul(255, 255, 255, 95), false)
-	}
-	vector.StrokeRect(screen, xpBarX, xpBarY, xpBarW, xpBarH, 1.0, Premul(165, 130, 235, 210), false)
+	timerX := 323 - (timerWidth+5+textPixelWidth(tier, 1))/2
+	r.drawScaledText(screen, runTime, timerX, -3, 2, runCream, runInk)
+	r.drawTextColored(screen, tier, timerX+timerWidth+5, 4, runSky)
 
-	// Optional tiny FPS badge at far right corner only when enabled
+	r.DrawSpriteIcon(screen, assets.SpriteIconCoin, cashX-15, 6, 1)
+	r.drawTextColored(screen, "CASSA", cashX, -2, runGold)
+	r.drawTextColored(screen, cash, cashX, 10, runCream)
+
+	r.DrawSpriteIcon(screen, assets.SpriteIconHeartFull, float32(hpX-15), 6, 1)
+	r.drawTextColored(screen, "SALUTE", hpX, -2, hpTint)
+	r.drawTextColored(screen, hp, hpX, 10, hpTint)
+
+	xpX := xpDivider + 12
+	xpRight := float32(626)
 	if r.showFPS {
-		fpsTxt := fmt.Sprintf("%.0f", ebiten.ActualFPS())
-		drawPillBadge(screen, 613, 5, 24, 13, Premul(14, 18, 32, 230), PremulColor(colGyaru, 150))
-		tw := textPixelWidth(fpsTxt, 1.0)
-		r.drawTextColored(screen, fpsTxt, 613+(24-tw)/2, 4, colGyaru)
+		xpRight = 602
+		r.drawRunCentered(screen, fmt.Sprintf("%.0f", ebiten.ActualFPS()), 621, 4, runMuted)
 	}
+	level := fmt.Sprintf("LIV %d", w.Player.Level)
+	r.drawTextColored(screen, level, int(xpX), -1, runCream)
+	r.drawTextColored(screen, "XP", int(xpRight)-12, -1, runLilac)
+	xp := float32(0)
+	if w.Player.NextLevelXP > 0 {
+		xp = float32(w.Player.XP) / float32(w.Player.NextLevelXP)
+	}
+	drawRunMeter(screen, xpX, 15, xpRight-xpX, 6, xp, runLilac)
 }
 
 func relicIconKey(rk game.RelicKind) string {
@@ -274,248 +270,334 @@ func relicIconKey(rk game.RelicKind) string {
 	}
 }
 
-func (r *Renderer) drawRelicTray(screen *ebiten.Image, w *game.World, startY float32) {
-	const (
-		badgeSize = float32(20)
-		step      = float32(23)
-	)
-	rx := float32(8)
-	hoveredIdx := -1
+func (r *Renderer) drawRelicTray(screen *ebiten.Image, w *game.World, y float32) {
+	const badgeSize = float32(20)
+	x := float32(8)
+	hovered := -1
 	hoveredX := float32(0)
 
-	for rk := 0; rk < int(game.RelicCount); rk++ {
-		if !w.Player.Relics[rk] {
+	for i, owned := range w.Player.Relics {
+		if !owned {
 			continue
 		}
-		rect := game.Rect{X: rx, Y: startY, W: badgeSize, H: badgeSize}
-		hovered := rect.Contains(r.mouseScreenX, r.mouseScreenY)
-		bg := Premul(22, 14, 40, 224)
-		border := PremulColor(colGold, 175)
-		if hovered {
-			bg = Premul(42, 26, 70, 242)
-			border = color.RGBA{255, 255, 255, 255}
-			hoveredIdx = rk
-			hoveredX = rx
+		box := game.Rect{X: x, Y: y, W: badgeSize, H: badgeSize}
+		edge := runLine
+		if box.Contains(r.mouseScreenX, r.mouseScreenY) {
+			edge = runGold
+			hovered, hoveredX = i, x
 		}
-		drawPillBadge(screen, rx, startY, badgeSize, badgeSize, bg, border)
-		r.DrawSpriteIcon(screen, relicIconKey(game.RelicKind(rk)), rx+2, startY+2, 1.0)
-		rx += step
+		drawRunPanel(screen, box, runPlum, edge)
+		r.DrawSpriteIcon(screen, relicIconKey(game.RelicKind(i)), x+2, y+2, 1)
+		x += badgeSize + 3
 	}
 
-	// Tidy 1-line tooltip pill on hover
-	if hoveredIdx >= 0 {
-		spec := game.GetRelicSpec(game.RelicKind(hoveredIdx))
-		tipW := float32(textPixelWidth(spec.Name, 1.0) + 12)
-		tipX := clampF(hoveredX, 6, game.ScreenWidth-tipW-6)
-		tipY := startY + badgeSize + 3
-		drawPillBadge(screen, tipX, tipY, tipW, 16, Premul(16, 10, 30, 244), colGold)
-		r.drawTextColored(screen, spec.Name, int(tipX+6), int(tipY+1), colGold)
+	if hovered >= 0 {
+		spec := game.GetRelicSpec(game.RelicKind(hovered))
+		width := float32(max(textPixelWidth(spec.Name, 1), textPixelWidth(spec.Desc, 1)) + 20)
+		tip := game.Rect{X: hoveredX, Y: y + 25, W: width, H: 32}
+		drawRunPanel(screen, tip, runPlum, runGold)
+		r.drawTextColored(screen, spec.Name, int(tip.X+10), int(tip.Y+1), runGold)
+		r.drawTextColored(screen, spec.Desc, int(tip.X+10), int(tip.Y+16), runCream)
 	}
 }
 
+func (r *Renderer) drawRunNotice(screen *ebiten.Image, label string, centerX, y float32, edge color.RGBA) {
+	width := float32(textPixelWidth(label, 1) + 24)
+	x := float32(math.Floor(float64(centerX - width/2)))
+	drawRunPanel(screen, game.Rect{X: x, Y: y, W: width, H: 18}, runPlum, runLine)
+	vector.DrawFilledRect(screen, x+1, y+2, 3, 14, edge, false)
+	r.drawRunCentered(screen, label, centerX+1, int(y+1), runCream)
+}
+
 func (r *Renderer) drawCenterStatusBanner(screen *ebiten.Image, w *game.World) {
+	const centerX = float32(game.ScreenWidth / 2)
 	if w.Boss.Active {
-		const (
-			barW = float32(268)
-			barH = float32(22)
-			barX = (game.ScreenWidth - barW) * 0.5
-			barY = float32(29)
-		)
-		drawPillBadge(screen, barX, barY, barW, barH, Premul(26, 10, 30, 236), colKawaii)
-		vector.DrawFilledRect(screen, barX+1, barY+1, barW-2, 2, PremulColor(colKawaii, 85), false)
-
-		nameTxt := w.Boss.Name
+		box := game.Rect{X: centerX - 150, Y: 28, W: 300, H: 21}
+		drawRunPanel(screen, box, runPlum, runLine)
+		r.drawTextColored(screen, "BOSS", int(box.X+8), int(box.Y+3), runCoral)
+		name := w.Boss.Name
 		if w.BossRushMode {
-			nameTxt = fmt.Sprintf("R%d/6 %s", w.BossesDefeated+1, w.Boss.Name)
+			name = fmt.Sprintf("%s  %d/6", name, w.BossesDefeated+1)
 		}
-		r.drawScaledText(screen, nameTxt, int(barX+10), int(barY+4), 1.0, colKawaii, colOutline)
-
-		// Segmented glowing shield blocks (typically 3) on right half of bar
-		maxS := w.Boss.MaxShields
-		if maxS < 1 {
-			maxS = 3
+		r.drawTextColored(screen, name, int(box.X+42), int(box.Y+3), runCream)
+		shieldCount := w.Boss.MaxShields
+		if shieldCount < 1 {
+			shieldCount = 3
 		}
-		const (
-			blkW = float32(18)
-			blkH = float32(10)
-			gap  = float32(4)
-		)
-		totalS := float32(maxS)*blkW + float32(maxS-1)*gap
-		startX := barX + barW - totalS - 10
-		blkY := barY + (barH-blkH)*0.5
-
-		pulse := uint8(215 + 40*math.Sin(float64(r.tick*8.0)))
-		for s := 0; s < maxS; s++ {
-			bx := startX + float32(s)*(blkW+gap)
-			if s < w.Boss.Shields {
-				// Active glowing crimson-gold shield block
-				vector.DrawFilledRect(screen, bx, blkY, blkW, blkH, color.RGBA{235, 42, 92, 255}, false)
-				vector.DrawFilledRect(screen, bx+1, blkY+1, blkW-2, 3, color.RGBA{255, pulse, 96, 255}, false)
-				vector.StrokeRect(screen, bx, blkY, blkW, blkH, 1.2, colGold, false)
+		r.drawTextColored(screen, "SCUDI", int(box.X+188), int(box.Y+3), runMuted)
+		for i := 0; i < shieldCount; i++ {
+			x := box.X + box.W - 8 - float32(shieldCount-i)*20
+			y := box.Y + 7
+			vector.DrawFilledRect(screen, x, y, 17, 8, runInk, false)
+			if i < w.Boss.Shields {
+				vector.DrawFilledRect(screen, x+1, y, 15, 7, runCoral, false)
+				vector.DrawFilledRect(screen, x+2, y, 13, 1, runGold, false)
 			} else {
-				// Broken shield block: dark recessed shell + cracked diagonal
-				vector.DrawFilledRect(screen, bx, blkY, blkW, blkH, Premul(18, 12, 26, 220), false)
-				vector.StrokeRect(screen, bx, blkY, blkW, blkH, 1.0, Premul(110, 62, 88, 180), false)
-				vector.StrokeLine(screen, bx+4, blkY+2, bx+blkW-5, blkY+blkH-2, 1.0, Premul(140, 70, 95, 190), true)
+				vector.DrawFilledRect(screen, x+1, y+3, 15, 1, runLine, false)
 			}
 		}
 		return
 	}
 
 	if w.BossRushMode && w.BossScheduleIdx < len(w.BossSchedule) {
-		lbl := fmt.Sprintf("BOSS RUSH %d/6 TRA %.0fs", w.BossesDefeated+1, w.NextBossRushTimer)
-		bw := float32(textPixelWidth(lbl, 1.0) + 18)
-		bx := (game.ScreenWidth - bw) * 0.5
-		drawPillBadge(screen, bx, 29, bw, 17, Premul(24, 16, 36, 232), colGold)
-		r.drawTextColored(screen, lbl, int(bx+9), 30, colGold)
+		lbl := fmt.Sprintf("BOSS RUSH %d/6  /  TRA %.0fs", w.BossesDefeated+1, w.NextBossRushTimer)
+		r.drawRunNotice(screen, lbl, centerX, 28, runGold)
+		return
+	}
+	if w.Police.Heli.Active {
+		r.drawRunNotice(screen, "5/5 WANTED  /  ELICOTTERO IN ZONA", centerX, 28, runCoral)
+		return
+	}
+	if w.OverdriveActive {
+		rem := max(0, int(math.Ceil(float64(w.NextOverdriveBossTimer))))
+		label := fmt.Sprintf("OVERDRIVE ONDA %d  /  BOSS TRA %02d:%02d", w.OverdriveWave, rem/60, rem%60)
+		r.drawRunNotice(screen, label, centerX, 28, runGold)
 		return
 	}
 
-	if w.Police.Heli.Active {
-		lbl := "5* ELICOTTERO IN ZONA"
-		bw := float32(textPixelWidth(lbl, 1.0) + 26)
-		bx := (game.ScreenWidth - bw) * 0.5
-		border := colRedAlert
-		if int(r.tick*8)%2 == 0 {
-			border = colGold
+	totalBosses := len(w.BossSchedule)
+	if totalBosses == 0 {
+		return
+	}
+	if w.BossScheduleIdx < len(w.BossScheduleTimes) {
+		rem := max(0, int(w.BossScheduleTimes[w.BossScheduleIdx]-w.RunTime))
+		label := fmt.Sprintf("BOSS %d/%d  /  PROSSIMO %02d:%02d", w.BossesDefeated, totalBosses, rem/60, rem%60)
+		accent := runTeal
+		if w.RunTime < 6.5 && w.BossesDefeated == 0 {
+			label = fmt.Sprintf("BATTI %d BOSS  /  PRIMO BOSS TRA %02d:%02d", totalBosses, rem/60, rem%60)
+			accent = runGold
 		}
-		drawPillBadge(screen, bx, 29, bw, 17, Premul(44, 10, 20, 234), border)
-		vector.DrawFilledCircle(screen, bx+10, 37.5, 3, border, true)
-		r.drawTextColored(screen, lbl, int(bx+18), 30, color.White)
+		r.drawRunNotice(screen, label, centerX, 28, accent)
+	} else if w.Victory {
+		label := fmt.Sprintf("OVERDRIVE  /  BOSS BATTUTI %d", w.BossesDefeated)
+		r.drawRunNotice(screen, label, centerX, 28, runGold)
 	}
 }
 
-func (r *Renderer) drawStreakBadge(screen *ebiten.Image, w *game.World, sy float32) {
+func (r *Renderer) drawStreakBadge(screen *ebiten.Image, w *game.World, y float32) {
 	if w.StreakCount < 2 {
 		return
 	}
-	const bw = float32(96)
-	bx := float32(game.ScreenWidth) - bw - 8
-	txtCol := colGyaru
-	lbl := fmt.Sprintf("STREAK x%d", w.StreakCount)
-	bgCol := Premul(16, 12, 32, 228)
+	label := fmt.Sprintf("STREAK x%d", w.StreakCount)
+	accent := runTeal
 	if w.StreakCount >= 5 {
-		lbl = fmt.Sprintf("RUSH x%d!", w.StreakCount)
-		txtCol = colGold
-		if int(r.tick*8)%2 == 0 {
-			txtCol = colKawaii
-		}
-		bgCol = Premul(52, 16, 54, 238)
+		label = fmt.Sprintf("RUSH x%d", w.StreakCount)
+		accent = runGold
 	}
-	drawPillBadge(screen, bx, sy, bw, 19, bgCol, txtCol)
-	tw := textPixelWidth(lbl, 1.0)
-	r.drawTextColored(screen, lbl, int(bx+(bw-float32(tw))*0.5), int(sy+1), txtCol)
-	frac := clampF(w.StreakTimer/game.StreakWindowDuration, 0, 1)
-	vector.DrawFilledRect(screen, bx+6, sy+15, (bw-12)*frac, 2.5, txtCol, false)
+	width := float32(textPixelWidth(label, 1) + 20)
+	box := game.Rect{X: game.ScreenWidth - width - 8, Y: y, W: width, H: 20}
+	drawRunPanel(screen, box, runPlum, runLine)
+	r.drawRunCentered(screen, label, box.X+box.W/2, int(box.Y), accent)
+	drawRunMeter(screen, box.X+9, box.Y+14, box.W-18, 4, w.StreakTimer/game.StreakWindowDuration, accent)
 }
 
-func (r *Renderer) drawChallengeToast(screen *ebiten.Image, w *game.World) {
+func (r *Renderer) drawChallengeToast(screen *ebiten.Image, y float32) bool {
 	if r.toastTimer <= 0 || r.activeChallengeToast == "" {
+		return false
+	}
+	label := "SFIDA SBLOCCATA"
+	width := max(textPixelWidth(label, 1), textPixelWidth(r.activeChallengeToast, 1))
+	box := game.Rect{X: 8, Y: y, W: float32(width + 40), H: 33}
+	drawRunPanel(screen, box, runPlum, runLine)
+	vector.DrawFilledRect(screen, box.X+1, box.Y+1, 3, box.H-2, runGold, false)
+	r.DrawSpriteIcon(screen, assets.SpriteIconStarWanted, box.X+11, box.Y+10, 1)
+	r.drawTextColored(screen, label, int(box.X+30), int(y+1), runGold)
+	r.drawTextColored(screen, r.activeChallengeToast, int(box.X+30), int(y+15), runCream)
+	return true
+}
+
+func (r *Renderer) drawRelicToast(screen *ebiten.Image, w *game.World, y float32) {
+	if r.relicToastTimer <= 0 || r.relicToastName == "" || w.PendingLevelUp || w.ShopMenu.Active || w.SlotModal.Active {
 		return
 	}
-	msg := "SFIDA: " + r.activeChallengeToast
-	mw := float32(textPixelWidth(msg, 1.0) + 28)
-	mx := (game.ScreenWidth - mw) * 0.5
-	my := float32(55)
-	if w.TutorialMode {
-		my = 70
-	}
-	drawPillBadge(screen, mx, my, mw, 20, Premul(40, 24, 6, 242), colGold)
-	r.DrawSpriteIcon(screen, assets.SpriteIconStarWanted, mx+6, my+4, 1.0)
-	r.drawScaledText(screen, msg, int(mx+22), int(my+3), 1.0, colGold, colOutline)
+	label := "RELIQUIA / " + r.relicToastName
+	width := max(textPixelWidth(label, 1), textPixelWidth(r.relicToastDesc, 1))
+	box := game.Rect{X: 8, Y: y, W: float32(width + 42), H: 33}
+	drawRunPanel(screen, box, runPlum, runLine)
+	vector.DrawFilledRect(screen, box.X+1, box.Y+1, 3, box.H-2, runTeal, false)
+	r.DrawSpriteIcon(screen, relicIconKey(r.relicToastKind), box.X+10, box.Y+8, 1)
+	r.drawTextColored(screen, label, int(box.X+31), int(y+1), runTeal)
+	r.drawTextColored(screen, r.relicToastDesc, int(box.X+31), int(y+15), runCream)
 }
 
 func (r *Renderer) drawTutorialSandboxBar(screen *ebiten.Image, w *game.World) {
-	const (
-		barX = float32(8)
-		barY = float32(28)
-		barW = float32(624)
-		barH = float32(36)
-	)
-	drawPillBadge(screen, barX, barY, barW, barH, Premul(16, 12, 32, 232), PremulColor(colGyaru, 185))
-	vector.DrawFilledRect(screen, barX+1, barY+1, barW-2, 2, PremulColor(colGyaru, 55), false)
+	box := game.Rect{X: 8, Y: 28, W: 624, H: 36}
+	drawRunPanel(screen, box, runPlum, runLine)
+	vector.DrawFilledRect(screen, box.X+1, box.Y+1, 3, box.H-2, runTeal, false)
 
-	// Concise 1-line mouse-first tip advancing with TutorialStep
 	var tip string
 	switch w.TutorialStep {
 	case 0:
-		tip = "1/4  MUOVI [WASD] + [CLICK SX] LANCIA FERMATA"
+		tip = "1/4  BATTI 4 BOSS IN PARTITA  /  WASD + CLICK SX PER LANCIARE"
 	case 1:
-		tip = "2/4  RESTA NEL CERCHIO & [CLICK SX] PER MINIGIOCO + COMBO BUS"
+		tip = "2/4  ENTRA NEL CERCHIO, COMPLETA MINIGIOCO E COMBO BUS"
 	case 2:
-		tip = "3/4  AVVICINATI & [CLICK SX] SU SLOT 777 O DISTRIBUTORE"
+		tip = "3/4  AVVICINATI E CLICCA SU SLOT 777 O DISTRIBUTORE"
 	default:
-		tip = "4/4  PERFETTO! CONTINUA A PROVARE O TORNA AL MENU!"
+		tip = "4/4  IN PARTITA BATTI 4 BOSS PER VINCERE"
 	}
-	r.DrawSpriteIcon(screen, assets.SpriteIconMouseLMB, barX+6, barY+2, 0.9)
-	r.drawScaledText(screen, tip, int(barX+24), int(barY+2), 1.0, colGold, colOutline)
+	r.drawTextColored(screen, tip, 19, 28, runCream)
 
-	// 4 tiny live status pills with crisp green checkmarks
-	type tutPill struct {
+	checkpoints := [...]struct {
 		label string
 		done  bool
-		w     float32
+	}{
+		{"MOVIMENTO", w.TutMoved},
+		{"FERMATA", w.TutThrewStop},
+		{"COMBO BUS", w.TutBoardedBus},
+		{"SHOP/SLOT", w.TutUsedSlotOrShop},
 	}
-	pills := [4]tutPill{
-		{"MOVIMENTO", w.TutMoved, 84},
-		{"FERMATA", w.TutThrewStop, 74},
-		{"BUS COMBO", w.TutBoardedBus, 84},
-		{"SHOP/SLOT", w.TutUsedSlotOrShop, 84},
-	}
-	px := barX + 10
-	py := barY + 19
-	for _, p := range pills {
-		bg := Premul(24, 18, 42, 220)
-		border := Premul(115, 110, 145, 175)
-		txtCol := color.RGBA{180, 185, 210, 230}
-		if p.done {
-			bg = Premul(16, 54, 34, 236)
-			border = colGreenNeon
-			txtCol = colGreenNeon
-		}
-		drawPillBadge(screen, px, py, p.w, 13, bg, border)
-		if p.done {
-			// Crisp vector green checkmark
-			cx, cy := px+6, py+6.5
-			vector.StrokeLine(screen, cx-2.5, cy, cx-0.5, cy+2.5, 1.6, colGreenNeon, true)
-			vector.StrokeLine(screen, cx-0.5, cy+2.5, cx+3.5, cy-2.5, 1.6, colGreenNeon, true)
+	x := float32(20)
+	for _, checkpoint := range checkpoints {
+		tint := runMuted
+		if checkpoint.done {
+			tint = runTeal
+			vector.DrawFilledRect(screen, x, 51, 1, 2, runTeal, false)
+			vector.DrawFilledRect(screen, x+1, 53, 1, 1, runTeal, false)
+			vector.DrawFilledRect(screen, x+2, 52, 1, 1, runTeal, false)
+			vector.DrawFilledRect(screen, x+3, 50, 1, 2, runTeal, false)
+			vector.DrawFilledRect(screen, x+4, 49, 1, 1, runTeal, false)
 		} else {
-			vector.StrokeCircle(screen, px+6, py+6.5, 2.5, 1.0, border, true)
+			vector.StrokeRect(screen, x+0.5, 49.5, 4, 4, 1, runLine, false)
 		}
-		r.drawTextColored(screen, p.label, int(px+13), int(py-1), txtCol)
-		px += p.w + 6
+		r.drawTextColored(screen, checkpoint.label, int(x+10), 44, tint)
+		x += 91
 	}
 
-	// Compact clickable [GUIDA] and [MENU] buttons on right side
-	guideRect := TutorialGuideRect()
-	r.drawTutorialActionButton(screen, guideRect, "GUIDA", colGyaru, guideRect.Contains(r.mouseScreenX, r.mouseScreenY))
-
-	exitRect := TutorialExitRect()
-	r.drawTutorialActionButton(screen, exitRect, "MENU", colKawaii, exitRect.Contains(r.mouseScreenX, r.mouseScreenY))
+	r.drawRunButton(screen, TutorialGuideRect(), "GUIDA", runTeal, true, false)
+	r.drawRunButton(screen, TutorialExitRect(), "MENU", runCoral, true, false)
 }
 
-func (r *Renderer) drawTutorialActionButton(screen *ebiten.Image, rect game.Rect, label string, accent color.RGBA, hovered bool) {
-	bg := Premul(28, 20, 48, 238)
-	border := accent
-	txtCol := color.RGBA{255, 255, 255, 255}
-	if hovered {
-		bg = PremulColor(accent, 95)
-		border = colGold
-		txtCol = colGold
+func (r *Renderer) drawRunButton(screen *ebiten.Image, box game.Rect, label string, accent color.RGBA, enabled, primary bool) {
+	face, edge, tint := runFace, runLine, runCream
+	hovered := box.Contains(r.mouseScreenX, r.mouseScreenY)
+	if !enabled {
+		face, tint = runPlum, runMuted
+	} else if primary || hovered {
+		face, edge, tint = accent, accent, runInk
 	}
-	drawPillBadge(screen, rect.X, rect.Y, rect.W, rect.H, bg, border)
-	tw := textPixelWidth(label, 1.0)
-	tx := int(rect.X + (rect.W-float32(tw))*0.5)
-	ty := int(rect.Y + (rect.H-14)*0.5)
-	r.drawScaledText(screen, label, tx, ty, 1.0, txtCol, colOutline)
+	drawRunPanel(screen, box, face, edge)
+	x := int(box.X + (box.W-float32(textPixelWidth(label, 1)))/2)
+	y := int(box.Y + (box.H-16)/2)
+	if tint == runInk {
+		vector.DrawFilledRect(screen, box.X+1, box.Y+box.H-3, box.W-2, 2, Premul(28, 19, 34, 48), false)
+		if hovered {
+			vector.DrawFilledRect(screen, box.X+1, box.Y+1, box.W-2, 1, PremulColor(runCream, 140), false)
+		}
+		r.drawScaledText(screen, label, x, y, 1, tint, color.Transparent)
+		return
+	}
+	r.drawTextColored(screen, label, x, y, tint)
+}
+
+func (r *Renderer) drawCriticalOffscreenArrows(screen *ebiten.Image, w *game.World) {
+	safeTop := w.StopSafeTopY()
+	if w.Boss.Active {
+		r.drawOffscreenEdgeArrow(screen, w.Boss.X, w.Boss.Y, safeTop, "BOSS", runCoral)
+	}
+	if w.Player.HP <= 2 && len(w.HealPickups) > 0 {
+		bestIdx := -1
+		bestD2 := float32(1e12)
+		for i := range w.HealPickups {
+			hx, hy := float32(w.HealPickups[i].X), float32(w.HealPickups[i].Y)
+			d2 := (hx-w.Player.X)*(hx-w.Player.X) + (hy-w.Player.Y)*(hy-w.Player.Y)
+			if d2 < bestD2 {
+				bestD2 = d2
+				bestIdx = i
+			}
+		}
+		if bestIdx >= 0 {
+			hp := &w.HealPickups[bestIdx]
+			r.drawOffscreenEdgeArrow(screen, float32(hp.X), float32(hp.Y), safeTop, "CURA", runTeal)
+		}
+	}
+}
+
+func (r *Renderer) drawOffscreenEdgeArrow(screen *ebiten.Image, wx, wy, safeTop float32, label string, accent color.RGBA) {
+	if wx >= r.lastCamX+12 && wx <= r.lastCamX+game.ScreenWidth-12 &&
+		wy >= r.lastCamY+26 && wy <= r.lastCamY+game.ScreenHeight-48 {
+		return
+	}
+
+	sx := wx - r.lastCamX
+	sy := wy - r.lastCamY
+	cx := float32(game.ScreenWidth * 0.5)
+	cy := float32(game.ScreenHeight * 0.5)
+	dx := sx - cx
+	dy := sy - cy
+	if dx == 0 && dy == 0 {
+		return
+	}
+
+	const marginX = float32(18)
+	minY := safeTop + 11
+	const maxY = float32(game.ScreenHeight - 58)
+
+	tX := float32(1e9)
+	if dx > 0 {
+		tX = (game.ScreenWidth - marginX - cx) / dx
+	} else if dx < 0 {
+		tX = (marginX - cx) / dx
+	}
+	tY := float32(1e9)
+	if dy > 0 {
+		tY = (maxY - cy) / dy
+	} else if dy < 0 {
+		tY = (minY - cy) / dy
+	}
+	t := tX
+	if tY < t {
+		t = tY
+	}
+	if t > 1 {
+		t = 1
+	}
+
+	mx := clampF(cx+dx*t, marginX, game.ScreenWidth-marginX)
+	my := clampF(cy+dy*t, minY, maxY)
+	ang := math.Atan2(float64(dy), float64(dx))
+
+	pulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*10.0)))
+	scale := float32(1.0 + 0.16*pulse)
+
+	tipX := mx + float32(math.Cos(ang))*9*scale
+	tipY := my + float32(math.Sin(ang))*9*scale
+	leftX := mx + float32(math.Cos(ang+2.45))*7*scale
+	leftY := my + float32(math.Sin(ang+2.45))*7*scale
+	rightX := mx + float32(math.Cos(ang-2.45))*7*scale
+	rightY := my + float32(math.Sin(ang-2.45))*7*scale
+
+	r.drawFilledTriangle(screen, tipX, tipY, leftX, leftY, rightX, rightY, accent)
+	vector.StrokeLine(screen, leftX, leftY, tipX, tipY, 1.4, runInk, true)
+	vector.StrokeLine(screen, rightX, rightY, tipX, tipY, 1.4, runInk, true)
+	vector.StrokeLine(screen, leftX, leftY, rightX, rightY, 1.4, runInk, true)
+
+	bw := float32(textPixelWidth(label, 1.0) + 10)
+	px := clampF(mx-float32(math.Cos(ang))*16-bw*0.5, 4, game.ScreenWidth-bw-4)
+	py := clampF(my-float32(math.Sin(ang))*14-7, safeTop, game.ScreenHeight-62)
+	box := game.Rect{X: float32(math.Round(float64(px))), Y: float32(math.Round(float64(py))), W: bw, H: 14}
+	drawRunPanel(screen, box, runPlum, accent)
+	r.drawTextColored(screen, label, int(box.X+5), int(box.Y-1), runCream)
+}
+
+func (r *Renderer) drawFilledTriangle(screen *ebiten.Image, x1, y1, x2, y2, x3, y3 float32, clr color.RGBA) {
+	if r.whitePixel == nil {
+		return
+	}
+	rf := float32(clr.R) / 255.0
+	gf := float32(clr.G) / 255.0
+	bf := float32(clr.B) / 255.0
+	af := float32(clr.A) / 255.0
+	verts := [3]ebiten.Vertex{
+		{DstX: x1, DstY: y1, SrcX: 0, SrcY: 0, ColorR: rf, ColorG: gf, ColorB: bf, ColorA: af},
+		{DstX: x2, DstY: y2, SrcX: 0, SrcY: 0, ColorR: rf, ColorG: gf, ColorB: bf, ColorA: af},
+		{DstX: x3, DstY: y3, SrcX: 0, SrcY: 0, ColorR: rf, ColorG: gf, ColorB: bf, ColorA: af},
+	}
+	screen.DrawTriangles(verts[:], []uint16{0, 1, 2}, r.whitePixel, nil)
 }
 
 func (r *Renderer) drawOffscreenIndicators(screen *ebiten.Image, w *game.World, camX, camY float32) {
-	// Boss offscreen pointer
-	if w.Boss.Active {
-		r.drawEdgeMarker(screen, w.Boss.X, w.Boss.Y, camX, camY, "BOSS", colKawaii)
-	}
-	// Active BusStops offscreen pointers
+	// Active BusStops offscreen pointers (Boss & low-HP Heal arrows render in DrawHUDAndOverlays)
 	for i := range w.Stops {
 		st := &w.Stops[i]
 		if st.Active && !st.BusRushTriggered {
@@ -608,7 +690,7 @@ func (r *Renderer) drawEdgeMarker(screen *ebiten.Image, wx, wy, camX, camY float
 	vector.StrokeLine(screen, leftX, leftY, tipX, tipY, 2.2, col, true)
 	vector.StrokeLine(screen, rightX, rightY, tipX, tipY, 2.2, col, true)
 
-	bw := float32(len(label)*6 + 8)
+	bw := float32(textPixelWidth(label, 1.0) + 8)
 	bx := clampF(mx-bw*0.5, 4, game.ScreenWidth-bw-4)
 	by := clampF(my-7, 30, game.ScreenHeight-64)
 	drawPillBadge(screen, bx, by, bw, 13, colHudBg, col)
@@ -616,567 +698,367 @@ func (r *Renderer) drawEdgeMarker(screen *ebiten.Image, wx, wy, camX, camY float
 }
 
 func (r *Renderer) drawBottomHotbarDock(screen *ebiten.Image, w *game.World) {
-	r0 := HotbarSlotRect(0)
-	dockX := r0.X
-	dockY := r0.Y
-	cardW := r0.W
-	cardH := r0.H
-	const gap = float32(6)
-	totalCardsW := 4*cardW + 3*gap
-	dockW := totalCardsW + 76
+	first := HotbarSlotRect(0)
+	last := HotbarSlotRect(int(game.ArchCount) - 1)
+	dock := game.Rect{X: 94, Y: first.Y - 4, W: 452, H: first.H + 8}
+	drawRunPanel(screen, dock, runPlum, runLine)
+	vector.DrawFilledRect(screen, dock.X+7, dock.Y+dock.H-2, dock.W-14, 1, runInk, false)
 
-	// Outer dark-glass dock frame extends slightly left for the mouse-wheel cue while preserving HotbarSlotRect(0..3)
-	const wheelPad = float32(26)
-	frameX := dockX - wheelPad - 4
-	frameY := dockY - 4
-	frameW := dockW + wheelPad + 8
-	frameH := cardH + 8
-	vector.DrawFilledRect(screen, frameX, frameY, frameW, frameH, Premul(14, 9, 26, 224), false)
-	vector.DrawFilledRect(screen, frameX+1, frameY+1, frameW-2, 1.5, Premul(255, 255, 255, 22), false)
-	vector.StrokeRect(screen, frameX, frameY, frameW, frameH, 1.2, PremulColor(colGyaru, 145), false)
+	r.DrawSpriteIcon(screen, assets.SpriteIconMouseWheel, first.X-26, first.Y+2, 1)
+	r.drawTextColored(screen, "1-4", int(first.X-27), int(first.Y+19), runMuted)
 
-	// Left Mouse-Wheel Cue (swap stop archetype)
-	r.DrawSpriteIcon(screen, assets.SpriteIconMouseWheel, dockX-wheelPad+3, dockY+3, 1.0)
-	r.drawTextColored(screen, "1-4", int(dockX-wheelPad+2), int(dockY+22), color.RGBA{185, 200, 228, 225})
-
-	type slotInfo struct {
-		key     string
-		name    string
-		stopSpr string
-		girlSpr string
-		arch    game.Archetype
-	}
-	slots := [4]slotInfo{
-		{"1", "EMO", assets.SpriteStopEmo, assets.SpriteGirlEmo0, game.ArchEmo},
-		{"2", "UNI", assets.SpriteStopStudent, assets.SpriteGirlStudent0, game.ArchStudent},
-		{"3", "KAW", assets.SpriteStopKawaii, assets.SpriteGirlKawaii0, game.ArchKawaii},
-		{"4", "GYA", assets.SpriteStopGyaru, assets.SpriteGirlGyaru0, game.ArchGyaru},
+	routes := [...]struct {
+		label, stop, rider string
+		accent             color.RGBA
+	}{
+		{"EMO", assets.SpriteStopEmo, assets.SpriteGirlEmo0, runLilac},
+		{"UNI", assets.SpriteStopStudent, assets.SpriteGirlStudent0, runSky},
+		{"KAWAII", assets.SpriteStopKawaii, assets.SpriteGirlKawaii0, runPink},
+		{"GYARU", assets.SpriteStopGyaru, assets.SpriteGirlGyaru0, runTeal},
 	}
 
-	effCD := w.Player.EffectiveStopCooldown()
-	cdFrac := float32(0)
-	if effCD > 0 && w.Player.StopCooldownTimer > 0 {
-		cdFrac = clampF(w.Player.StopCooldownTimer/effCD, 0, 1)
-	}
-
-	op := &ebiten.DrawImageOptions{Filter: ebiten.FilterNearest}
-	for i, s := range slots {
-		rect := HotbarSlotRect(i)
-		cx, cy := rect.X, rect.Y
-		ac := archetypeColor(s.arch)
-		selected := w.Player.SelectedStopArch == s.arch
-		hovered := rect.Contains(r.mouseScreenX, r.mouseScreenY)
-
-		cardBg := Premul(24, 16, 40, 236)
-		borderCol := PremulColor(ac, 145)
-		if hovered && !selected {
-			cardBg = Premul(38, 26, 60, 244)
-			borderCol = color.RGBA{255, 255, 255, 255}
-		}
+	for i, route := range routes {
+		box := HotbarSlotRect(i)
+		x, y := box.X, box.Y
+		accent := route.accent
+		selected := w.Player.SelectedStopArch == game.Archetype(i)
+		face, edge := runPlum, runLine
 		if selected {
-			cy -= 3
-			cardBg = Premul(44, 28, 72, 248)
-			borderCol = colGold
-			vector.StrokeRect(screen, cx-2, cy-2, cardW+4, cardH+4, 2.0, PremulColor(ac, 235), false)
+			face, edge = runFace, accent
+		} else if box.Contains(r.mouseScreenX, r.mouseScreenY) {
+			face, edge = runFace, runMuted
 		}
-
-		vector.DrawFilledRect(screen, cx, cy, cardW, cardH, cardBg, false)
-		vector.DrawFilledRect(screen, cx+1, cy+1, cardW-2, 2, PremulColor(ac, 140), false)
-		vector.StrokeRect(screen, cx, cy, cardW, cardH, 1.3, borderCol, false)
-
-		// Compact slot number pill + short archetype tag
-		numCol := color.RGBA{185, 190, 215, 230}
+		drawRunPanel(screen, box, face, edge)
+		labelTint := runCream
 		if selected {
-			numCol = colGold
+			vector.DrawFilledRect(screen, x+1, y+1, box.W-2, box.H-2, PremulColor(accent, 38), false)
+			labelTint = accent
 		}
-		r.drawTextColored(screen, s.key, int(cx+5), int(cy+2), numCol)
-		r.drawTextColored(screen, s.name, int(cx+18), int(cy+2), ac)
+		vector.DrawFilledRect(screen, x+2, y+2, 14, 12, accent, false)
+		r.drawScaledText(screen, fmt.Sprint(i+1), int(x+6), int(y), 1, runInk, color.Transparent)
+		r.drawTextColored(screen, route.label, int(x+21), int(y), labelTint)
 
-		// Crisp stop shelter sprite + matching girl sprite
-		stopImg := r.sprites.Get(s.stopSpr)
-		girlImg := r.sprites.Get(s.girlSpr)
-
-		op.GeoM.Reset()
-		op.GeoM.Scale(20.0/float64(stopImg.Bounds().Dx()), 20.0/float64(stopImg.Bounds().Dy()))
-		op.GeoM.Translate(math.Round(float64(cx+7)), math.Round(float64(cy+16)))
-		op.ColorScale.Reset()
-		screen.DrawImage(stopImg, op)
-
-		vector.DrawFilledCircle(screen, cx+36, cy+26, 1.6, PremulColor(ac, 210), true)
-
-		op.GeoM.Reset()
-		op.GeoM.Scale(18.0/float64(girlImg.Bounds().Dx()), 18.0/float64(girlImg.Bounds().Dy()))
-		op.GeoM.Translate(math.Round(float64(cx+44)), math.Round(float64(cy+17)))
-		screen.DrawImage(girlImg, op)
-
-		// Smooth cooldown progress sweep
-		if cdFrac > 0 {
-			ovH := cardH * cdFrac
-			vector.DrawFilledRect(screen, cx+1, cy+cardH-ovH, cardW-2, ovH, Premul(8, 5, 18, 155), false)
-			vector.DrawFilledRect(screen, cx+1, cy+cardH-ovH, cardW-2, 1.5, PremulColor(colGold, 200), false)
+		vector.DrawFilledRect(screen, x+12, y+27, 47, 1, accent, false)
+		vector.DrawFilledRect(screen, x+33, y+25, 5, 5, accent, false)
+		vector.DrawFilledRect(screen, x+34, y+26, 3, 3, face, false)
+		if selected {
+			vector.DrawFilledRect(screen, x+26, y+35, 20, 2, accent, false)
 		}
+		r.drawHotbarSprite(screen, route.stop, x+8, y+16, 20)
+		r.drawHotbarSprite(screen, route.rider, x+43, y+16, 20)
 	}
 
-	// Right Mouse-LMB Launch Cue + Active Stop Counter + Readiness Gauge
-	statusX := dockX + totalCardsW + 5
-	r.DrawSpriteIcon(screen, assets.SpriteIconMouseLMB, statusX+1, dockY+1, 1.0)
-	r.drawTextColored(screen, "LANCIA", int(statusX+20), int(dockY+2), color.White)
-
-	slotStr := fmt.Sprintf("%d/%d", w.ActiveStopCount(), w.Player.EffectiveMaxStops())
-	r.drawScaledText(screen, slotStr, int(statusX+2), int(dockY+21), 1.0, colGyaru, colOutline)
-
-	barX := statusX + 28
-	barW := float32(39)
-	readyFrac := 1.0 - cdFrac
-	barCol := colGreenNeon
-	if cdFrac > 0 {
-		barCol = colGold
+	active, capacity := w.ActiveStopCount(), w.Player.EffectiveMaxStops()
+	statusX := last.X + last.W + 10
+	label, accent := "LANCIA", runTeal
+	cooldown := w.Player.EffectiveStopCooldown()
+	ready := float32(1)
+	if cooldown > 0 && w.Player.StopCooldownTimer > 0 {
+		ready -= clampF(w.Player.StopCooldownTimer/cooldown, 0, 1)
+		label, accent = "RICARICA", runGold
 	}
-	vector.DrawFilledRect(screen, barX, dockY+24, barW, 8, Premul(20, 16, 36, 232), false)
-	vector.DrawFilledRect(screen, barX, dockY+24, barW*readyFrac, 8, barCol, false)
-	vector.StrokeRect(screen, barX, dockY+24, barW, 8, 1.0, barCol, false)
+	if active >= capacity {
+		label, accent = "FERMATE MAX", runCoral
+	}
 
-	// Grounded / Punizione warning pill cleanly above the dock
+	r.DrawSpriteIcon(screen, assets.SpriteIconMouseLMB, statusX, first.Y+1, 1)
+	r.drawTextColored(screen, label, int(statusX+18), int(first.Y), accent)
+	usage := fmt.Sprintf("%d/%d", active, capacity)
+	r.drawTextColored(screen, usage, int(statusX+2), int(first.Y+19), runCream)
+	meterX := statusX + float32(textPixelWidth(usage, 1)) + 9
+	drawRunMeter(screen, meterX, first.Y+24, dock.X+dock.W-meterX-12, 7, ready, accent)
+
 	if w.Player.GroundedTimer > 0 {
-		warnTxt := fmt.Sprintf("PUNIZIONE %.0fs!", w.Player.GroundedTimer)
-		ww := float32(textPixelWidth(warnTxt, 1.0) + 18)
-		wx := (game.ScreenWidth - ww) * 0.5
-		drawPillBadge(screen, wx, dockY-24, ww, 16, Premul(58, 12, 22, 240), colRedAlert)
-		r.drawScaledText(screen, warnTxt, int(wx+9), int(dockY-23), 1.0, colRedAlert, colOutline)
+		label := fmt.Sprintf("PUNIZIONE  /  %.0fs", w.Player.GroundedTimer)
+		r.drawRunNotice(screen, label, game.ScreenWidth/2, first.Y-24, runCoral)
 	}
+}
+
+func (r *Renderer) drawHotbarSprite(screen *ebiten.Image, key string, x, y, size float32) {
+	if r.sprites == nil {
+		return
+	}
+	sprite := r.sprites.Get(key)
+	if sprite == nil {
+		return
+	}
+	op := ebiten.DrawImageOptions{Filter: ebiten.FilterNearest}
+	op.GeoM.Scale(float64(size)/float64(sprite.Bounds().Dx()), float64(size)/float64(sprite.Bounds().Dy()))
+	op.GeoM.Translate(float64(x), float64(y))
+	screen.DrawImage(sprite, &op)
 }
 
 func upgradeTheme(kind game.UpgradeKind) (iconKey string, accent color.RGBA) {
 	switch kind {
 	case game.UpgradeCooldown:
-		return assets.SpriteIconUpgCooldown, colGyaru
+		return assets.SpriteIconUpgCooldown, runTeal
 	case game.UpgradeMultiHook:
-		return assets.SpriteIconUpgMultiHook, colKawaii
+		return assets.SpriteIconUpgMultiHook, runPink
 	case game.UpgradeMaxStops:
-		return assets.SpriteIconUpgMaxStops, colGold
+		return assets.SpriteIconUpgMaxStops, runGold
 	case game.UpgradeRange:
-		return assets.SpriteIconUpgRange, color.RGBA{64, 224, 208, 255}
+		return assets.SpriteIconUpgRange, runSky
 	case game.UpgradeChronos:
-		return assets.SpriteIconUpgChronos, color.RGBA{176, 108, 255, 255}
+		return assets.SpriteIconUpgChronos, runLilac
 	case game.UpgradeVitality:
-		return assets.SpriteIconUpgVitality, color.RGBA{255, 76, 118, 255}
+		return assets.SpriteIconUpgVitality, runCoral
 	default:
-		return assets.SpriteIconUpgCooldown, colGyaru
+		return assets.SpriteIconUpgCooldown, runTeal
 	}
+}
+
+func drawRunScrim(screen *ebiten.Image) {
+	vector.DrawFilledRect(screen, 0, 0, game.ScreenWidth, game.ScreenHeight, Premul(23, 15, 30, 194), false)
 }
 
 func (r *Renderer) drawLevelUpModal(screen *ebiten.Image, w *game.World) {
-	vector.DrawFilledRect(screen, 0, 0, game.ScreenWidth, game.ScreenHeight, Premul(10, 6, 20, 204), false)
+	drawRunScrim(screen)
+	marquee := game.Rect{X: 44, Y: 33, W: 550, H: 40}
+	drawRunPanel(screen, marquee, runPlum, runLine)
+	vector.DrawFilledRect(screen, marquee.X+1, marquee.Y+1, 4, marquee.H-2, runTeal, false)
+	r.drawScaledText(screen, "SCEGLI UN UPGRADE", 60, 37, 2, runCream, runInk)
 
-	title := fmt.Sprintf("LIVELLO %d - SCEGLI UPGRADE", w.Player.Level)
-	tw := textPixelWidth(title, 1.35)
-	r.drawScaledText(screen, title, (game.ScreenWidth-tw)/2, 38, 1.35, colGold, colOutline)
+	level := fmt.Sprintf("LIVELLO %02d", w.Player.Level)
+	r.drawTextColored(screen, level, 579-textPixelWidth(level, 1), 45, runTeal)
+	r.drawRunCentered(screen, "CLICK SX O TASTI 1-3", game.ScreenWidth/2, 75, runCream)
 
-	sub := "CLICCA UNA CARTA O PREMI [1 / 2 / 3]"
-	sw := textPixelWidth(sub, 1.0)
-	subX := (game.ScreenWidth-sw)/2 + 8
-	r.DrawSpriteIcon(screen, assets.SpriteIconMouseLMB, float32(subX-20), 63, 1.0)
-	r.drawTextColored(screen, sub, subX, 64, color.RGBA{205, 225, 248, 232})
-
-	for i := 0; i < 3; i++ {
-		card := w.UpgradeChoices[i]
-		rect := LevelUpCardRect(i)
-		hovered := rect.Contains(r.mouseScreenX, r.mouseScreenY)
-		iconKey, accent := upgradeTheme(card.Kind)
-
-		drawY := rect.Y
-		bg := Premul(20, 13, 36, 240)
-		border := accent
+	for i, card := range w.UpgradeChoices {
+		ticket := LevelUpCardRect(i)
+		hovered := ticket.Contains(r.mouseScreenX, r.mouseScreenY)
+		icon, accent := upgradeTheme(card.Kind)
+		face, edge := runPlum, runLine
 		if hovered {
-			drawY -= 3
-			bg = Premul(34, 22, 58, 248)
-			border = colGold
-			// Subtle outer neon halo on hover
-			vector.StrokeRect(screen, rect.X-2, drawY-2, rect.W+4, rect.H+4, 2.2, PremulColor(accent, 195), false)
+			face, edge = runFace, accent
 		}
+		drawRunPanel(screen, ticket, face, edge)
+		x, y := ticket.X, ticket.Y
+		center := x + ticket.W/2
+		vector.DrawFilledRect(screen, x+1, y+1, ticket.W-2, 3, accent, false)
 
-		// Card dark-glass frame + top theme trim
-		vector.DrawFilledRect(screen, rect.X, drawY, rect.W, rect.H, bg, false)
-		vector.DrawFilledRect(screen, rect.X, drawY, rect.W, 4, accent, false)
-		vector.StrokeRect(screen, rect.X, drawY, rect.W, rect.H, 1.8, border, false)
-
-		// Glowing 2x Icon Medallion (20x20 sprite * 2.0 = 40x40!)
-		medCX := rect.X + rect.W*0.5
-		medCY := drawY + 40
-		vector.DrawFilledCircle(screen, medCX, medCY, 27, PremulColor(accent, 42), true)
-		vector.DrawFilledCircle(screen, medCX, medCY, 23, Premul(14, 10, 28, 242), true)
-		vector.StrokeCircle(screen, medCX, medCY, 23.5, 1.6, border, true)
-		r.DrawSpriteIcon(screen, iconKey, medCX-20, medCY-20, 2.0)
-
-		// Bold Clear Centered Title
-		titleW := textPixelWidth(card.Title, 1.0)
-		r.drawScaledText(screen, card.Title, int(rect.X+(rect.W-float32(titleW))*0.5), int(drawY+73), 1.0, accent, colOutline)
-
-		// Subtle Divider
-		vector.DrawFilledRect(screen, rect.X+16, drawY+91, rect.W-32, 1, PremulColor(accent, 110), false)
-
-		// Concise Centered 1-2 Lines Effect Text
-		drawWrappedTextCentered(r, screen, card.Desc, rect.X+rect.W*0.5, int(drawY+98), 24, color.RGBA{240, 244, 255, 255})
-
-		// Single Clean Footer Button: CLICK / [1]
-		btnX := rect.X + 18
-		btnY := drawY + rect.H - 32
-		btnW := rect.W - 36
-		btnH := float32(22)
-		btnBg := Premul(30, 22, 54, 236)
-		btnBorder := PremulColor(accent, 190)
-		btnTxtCol := color.RGBA{235, 240, 255, 255}
-		if hovered {
-			btnBg = PremulColor(accent, 95)
-			btnBorder = colGold
-			btnTxtCol = colGold
+		art := game.Rect{X: x + 12, Y: y + 13, W: ticket.W - 24, H: 61}
+		drawRunPanel(screen, art, runInk, runLine)
+		rail := PremulColor(accent, 96)
+		vector.DrawFilledRect(screen, art.X+11, art.Y+40, art.W-22, 1, rail, false)
+		for _, sx := range [...]float32{art.X + 20, art.X + 40, art.X + art.W - 44, art.X + art.W - 24} {
+			vector.DrawFilledRect(screen, sx, art.Y+38, 5, 5, rail, false)
+			vector.DrawFilledRect(screen, sx+1, art.Y+39, 3, 3, runInk, false)
 		}
-		drawPillBadge(screen, btnX, btnY, btnW, btnH, btnBg, btnBorder)
-		btnLbl := fmt.Sprintf("CLICK / [%d]", i+1)
-		bw := textPixelWidth(btnLbl, 1.0)
-		r.drawScaledText(screen, btnLbl, int(btnX+(btnW-float32(bw))*0.5), int(btnY+4), 1.0, btnTxtCol, colOutline)
+		drawRunPanel(screen, game.Rect{X: center - 24, Y: art.Y + 6, W: 48, H: 48}, runFace, accent)
+		r.DrawSpriteIcon(screen, icon, center-20, art.Y+10, 2)
+
+		r.drawRunCentered(screen, card.Title, center, int(y+80), runCream)
+		drawRunWrappedText(r, screen, card.Desc, center, int(y+101), 25, runMuted)
+		for dash := x + 9; dash < x+ticket.W-9; dash += 6 {
+			vector.DrawFilledRect(screen, dash, y+135, 3, 1, runLine, false)
+		}
+		action := game.Rect{X: x + 12, Y: y + 144, W: ticket.W - 24, H: 22}
+		r.drawRunButton(screen, action, fmt.Sprintf("[%d] SCEGLI", i+1), accent, true, hovered)
 	}
 }
 
+func (r *Renderer) drawRunCounter(screen *ebiten.Image, box game.Rect, sprite, label string, tint color.RGBA) {
+	drawRunPanel(screen, box, runInk, runLine)
+	r.DrawSpriteIcon(screen, sprite, box.X+5, box.Y+(box.H-12)/2, 1)
+	r.drawTextColored(screen, label, int(box.X+20), int(box.Y+(box.H-16)/2), tint)
+}
+
 func (r *Renderer) drawShopModal(screen *ebiten.Image, w *game.World) {
-	vector.DrawFilledRect(screen, 0, 0, game.ScreenWidth, game.ScreenHeight, Premul(10, 6, 18, 200), false)
-	const (
-		boxX = float32(124)
-		boxY = float32(40)
-		boxW = float32(392)
-		boxH = float32(268)
-	)
-	vector.DrawFilledRect(screen, boxX, boxY, boxW, boxH, Premul(16, 10, 30, 242), false)
-	vector.DrawFilledRect(screen, boxX, boxY, boxW, 3, colGyaru, false)
-	vector.StrokeRect(screen, boxX, boxY, boxW, boxH, 1.8, colGyaru, false)
+	drawRunScrim(screen)
+	box := game.Rect{X: 124, Y: 38, W: 392, H: 270}
+	drawRunPanel(screen, box, runPlum, runTeal)
+	vector.DrawFilledRect(screen, box.X+1, box.Y+1, box.W-2, 2, runTeal, false)
 
-	// Top Header + Live Alfredo Status Strip (HP, Cash, Wanted Stars)
-	r.drawScaledText(screen, "DISTRIBUTORE NEON", int(boxX+14), int(boxY+10), 1.15, colGyaru, colOutline)
+	r.drawTextColored(screen, "DISTRIBUTORE", 144, 45, runCream)
+	r.drawScaledText(screen, "NEON", 224, 39, 2, runTeal, runInk)
+	r.drawRunCounter(screen, game.Rect{X: 282, Y: 44, W: 64, H: 18}, assets.SpriteIconHeartFull, fmt.Sprintf("%d/%d", w.Player.HP, w.Player.MaxHP), runCream)
+	r.drawRunCounter(screen, game.Rect{X: 352, Y: 44, W: 98, H: 18}, assets.SpriteIconCoin, fmt.Sprintf("$%d", w.Player.Cash), runGold)
+	r.drawRunCounter(screen, game.Rect{X: 456, Y: 44, W: 40, H: 18}, assets.SpriteIconStarWanted, fmt.Sprint(w.Police.Stars), runCoral)
 
-	// HP status pill
-	hpTxt := fmt.Sprintf("%d/%d", w.Player.HP, w.Player.MaxHP)
-	drawPillBadge(screen, boxX+206, boxY+8, 54, 18, Premul(36, 14, 28, 232), colKawaii)
-	r.DrawSpriteIcon(screen, assets.SpriteIconHeartFull, boxX+211, boxY+11, 1.0)
-	r.drawScaledText(screen, hpTxt, int(boxX+226), int(boxY+10), 1.0, color.White, colOutline)
-
-	// Cash status pill
-	cashTxt := fmt.Sprintf("$%d", w.Player.Cash)
-	drawPillBadge(screen, boxX+264, boxY+8, 66, 18, Premul(36, 26, 8, 232), colGold)
-	r.DrawSpriteIcon(screen, assets.SpriteIconCoin, boxX+269, boxY+11, 1.0)
-	r.drawScaledText(screen, cashTxt, int(boxX+284), int(boxY+10), 1.0, colGold, colOutline)
-
-	// Wanted stars status pill
-	starTxt := fmt.Sprintf("%d*", w.Police.Stars)
-	starBorder := Premul(115, 110, 145, 180)
-	if w.Police.Stars > 0 {
-		starBorder = colGold
-	}
-	drawPillBadge(screen, boxX+334, boxY+8, 44, 18, Premul(28, 20, 42, 232), starBorder)
-	if w.Police.Stars > 0 {
-		r.DrawSpriteIcon(screen, assets.SpriteIconStarWanted, boxX+339, boxY+11, 1.0)
+	message := game.Rect{X: 144, Y: 69, W: 352, H: 29}
+	drawRunPanel(screen, message, runInk, runLine)
+	msg := w.ShopMenu.Message
+	if textPixelWidth(msg, 1) <= 332 {
+		r.drawRunCentered(screen, msg, 320, 76, runCream)
+	} else if title, desc, ok := strings.Cut(msg, ": "); ok && textPixelWidth(desc, 1) <= 332 {
+		r.drawRunCentered(screen, title, 320, 69, runTeal)
+		r.drawRunCentered(screen, desc, 320, 82, runCream)
 	} else {
-		r.drawSpriteIconTinted(screen, assets.SpriteIconStarWanted, boxX+339, boxY+11, 1.0, color.RGBA{75, 65, 95, 180})
-	}
-	r.drawScaledText(screen, starTxt, int(boxX+354), int(boxY+10), 1.0, colGold, colOutline)
-
-	// Recessed Feedback Message Strip
-	drawPillBadge(screen, 144, 74, 352, 22, Premul(12, 8, 24, 230), PremulColor(colGold, 130))
-	msgW := textPixelWidth(w.ShopMenu.Message, 1.0)
-	r.drawTextColored(screen, w.ShopMenu.Message, 144+(352-msgW)/2, 77, colGold)
-
-	healCost := w.CurrentHealCost()
-	bribeCost := w.CurrentBribeCost()
-
-	type shopOption struct {
-		icon   string
-		title  string
-		effect string
-		cost   int
-		col    color.RGBA
-	}
-	opts := [4]shopOption{
-		{assets.SpriteIconShopEspresso, "Caffe Espresso", "(+2 HP & Chronos)", healCost, colKawaii},
-		{assets.SpriteIconShopBribe, "Tangente Polizia", "(-2* Wanted)", bribeCost, colGold},
-		{assets.SpriteIconShopRelic, "Reliquia Casuale", "(Bonus Passivo)", 120, colGyaru},
-		{assets.SpriteIconShopCrate, "Cassa Upgrade", "(Scegli 3 Carte)", 140, colGreenNeon},
+		drawRunWrappedText(r, screen, msg, 320, 69, 55, runCream)
 	}
 
-	for i, opt := range opts {
-		rect := ShopChoiceRect(i)
-		hovered := rect.Contains(r.mouseScreenX, r.mouseScreenY)
-		affordable := w.Player.Cash >= opt.cost
-		if i == 1 && w.Police.Stars == 0 {
-			affordable = false
+	relicEffect := fmt.Sprintf("%d/%d raccolte", w.Player.RelicCountOwned(), game.RelicCount)
+	if w.Player.RelicCountOwned() == int(game.RelicCount) {
+		relicEffect = "+1 Max HP, +2 HP"
+	}
+	stock := [...]struct {
+		sprite, label, effect string
+		price                 int
+		accent                color.RGBA
+	}{
+		{assets.SpriteIconShopEspresso, "Caffè Espresso", "+2 HP e Chronos", w.CurrentHealCost(), runCoral},
+		{assets.SpriteIconShopBribe, "Tangente Polizia", "-2 stelle Wanted", w.CurrentBribeCost(), runGold},
+		{assets.SpriteIconShopRelic, "Reliquia Casuale", relicEffect, 120, runTeal},
+		{assets.SpriteIconShopCrate, "Cassa Upgrade", "Scegli fra 3 carte", 140, runTeal},
+	}
+	for i, item := range stock {
+		row := ShopChoiceRect(i)
+		x, y := row.X, row.Y
+		hasCash := w.Player.Cash >= item.price
+		available := hasCash && (i != 1 || w.Police.Stars > 0)
+		hovered := row.Contains(r.mouseScreenX, r.mouseScreenY)
+		face, edge, title := runPlum, runLine, runMuted
+		if available {
+			face, title = runFace, runCream
 		}
-
-		bg := Premul(24, 16, 42, 236)
-		border := PremulColor(opt.col, 175)
-		if hovered && affordable {
-			bg = Premul(44, 28, 72, 248)
-			border = colGold
+		if available && hovered {
+			edge = item.accent
 		}
-		if !affordable {
-			bg = Premul(20, 16, 30, 215)
-			border = Premul(85, 80, 102, 185)
-		}
-
-		vector.DrawFilledRect(screen, rect.X, rect.Y, rect.W, rect.H, bg, false)
-		vector.StrokeRect(screen, rect.X, rect.Y, rect.W, rect.H, 1.4, border, false)
-
-		// Crisp 16x16 pixel icon inside dark-glass icon box
-		iconBoxBg := Premul(14, 10, 28, 235)
-		drawPillBadge(screen, rect.X+4, rect.Y+3, 24, 24, iconBoxBg, border)
-		if affordable {
-			r.DrawSpriteIcon(screen, opt.icon, rect.X+8, rect.Y+7, 1.0)
+		drawRunPanel(screen, row, face, edge)
+		vector.DrawFilledRect(screen, x+4, y+4, 14, 22, runInk, false)
+		r.drawTextColored(screen, fmt.Sprint(i+1), int(x+8), int(y+7), item.accent)
+		if available {
+			r.DrawSpriteIcon(screen, item.sprite, x+25, y+7, 1)
 		} else {
-			r.drawSpriteIconTinted(screen, opt.icon, rect.X+8, rect.Y+7, 1.0, color.RGBA{130, 130, 145, 190})
+			r.drawSpriteIconTinted(screen, item.sprite, x+25, y+7, 1, Premul(228, 210, 228, 153))
 		}
+		r.drawTextColored(screen, item.label, int(x+48), int(y+7), title)
+		r.drawTextColored(screen, item.effect, int(x+162), int(y+7), runMuted)
 
-		// Clean Title + Effect
-		titleCol := color.RGBA{255, 255, 255, 255}
-		effCol := opt.col
-		if !affordable {
-			titleCol = color.RGBA{135, 135, 155, 220}
-			effCol = color.RGBA{105, 105, 125, 210}
+		priceBox := game.Rect{X: x + row.W - 58, Y: y + 5, W: 52, H: 20}
+		priceAccent := runMuted
+		if available {
+			priceAccent = runTeal
+		} else if !hasCash {
+			priceAccent = runCoral
 		}
-		tx := int(rect.X + 35)
-		ty := int(rect.Y + 8)
-		r.drawTextColored(screen, opt.title, tx, ty, titleCol)
-		effX := tx + textPixelWidth(opt.title, 1.0) + 6
-		r.drawTextColored(screen, opt.effect, effX, ty, effCol)
-
-		// Bright Price Pill on right
-		priceStr := fmt.Sprintf("$%d", opt.cost)
-		const (
-			pillW = float32(48)
-			pillH = float32(20)
-		)
-		pillX := rect.X + rect.W - pillW - 6
-		pillY := rect.Y + 5
-		priceBg := Premul(16, 62, 36, 238)
-		priceBorder := colGreenNeon
-		priceCol := colGreenNeon
-		if w.Player.Cash < opt.cost {
-			priceBg = Premul(62, 16, 26, 232)
-			priceBorder = colRedAlert
-			priceCol = colRedAlert
-		} else if i == 1 && w.Police.Stars == 0 {
-			priceBg = Premul(32, 30, 44, 225)
-			priceBorder = Premul(110, 105, 130, 190)
-			priceCol = color.RGBA{150, 150, 170, 220}
-		}
-		drawPillBadge(screen, pillX, pillY, pillW, pillH, priceBg, priceBorder)
-		pw := textPixelWidth(priceStr, 1.0)
-		r.drawScaledText(screen, priceStr, int(pillX+(pillW-float32(pw))*0.5), int(pillY+3), 1.0, priceCol, colOutline)
+		drawRunPanel(screen, priceBox, runInk, runLine)
+		r.drawRunCentered(screen, fmt.Sprintf("$%d", item.price), priceBox.X+priceBox.W/2, int(y+7), priceAccent)
 	}
 
-	// Clean Mouse Hint
-	hint := "CLICK SX O [1-4] ACQUISTA"
-	hw := textPixelWidth(hint, 1.0)
-	hx := (game.ScreenWidth-hw)/2 + 8
-	r.DrawSpriteIcon(screen, assets.SpriteIconMouseLMB, float32(hx-19), 251, 0.9)
-	r.drawTextColored(screen, hint, hx, 252, color.RGBA{185, 200, 228, 220})
-
-	// Close Button at exact ShopCloseRect()
-	closeRect := ShopCloseRect()
-	closeHover := closeRect.Contains(r.mouseScreenX, r.mouseScreenY)
-	cBg := Premul(58, 20, 36, 238)
-	cBorder := colKawaii
-	if closeHover {
-		cBg = Premul(98, 32, 56, 248)
-		cBorder = colGold
-	}
-	drawPillBadge(screen, closeRect.X, closeRect.Y, closeRect.W, closeRect.H, cBg, cBorder)
-	closeLbl := "[X] CHIUDI"
-	cw := textPixelWidth(closeLbl, 1.0)
-	r.drawScaledText(screen, closeLbl, int(closeRect.X+(closeRect.W-float32(cw))*0.5), int(closeRect.Y+5), 1.0, color.White, colOutline)
+	r.drawRunCentered(screen, "CLICK SX O TASTI 1-4 PER ACQUISTARE", 320, 252, runMuted)
+	r.drawRunButton(screen, ShopCloseRect(), "[ESC] CHIUDI", runCoral, true, false)
 }
 
 func slotSymbolMeta(sym int) (iconKey string, label string, clr color.RGBA) {
 	switch sym % game.SymCount {
 	case game.SymCherry:
-		return assets.SpriteIconSlotCherry, "CILIEGIA", colKawaii
+		return assets.SpriteIconSlotCherry, "CILIEGIA", runPink
 	case game.SymCash:
-		return assets.SpriteIconSlotCash, "CASH", colGreenNeon
+		return assets.SpriteIconSlotCash, "CASH", runTeal
 	case game.SymXP:
-		return assets.SpriteIconSlotXP, "XP+", colStudent
+		return assets.SpriteIconSlotXP, "XP+", runSky
 	case game.SymHeart:
-		return assets.SpriteIconSlotHeart, "CUORE", color.RGBA{255, 90, 145, 255}
+		return assets.SpriteIconSlotHeart, "CUORE", runPink
 	case game.SymGoldBus:
-		return assets.SpriteIconSlot777, "777", colGold
+		return assets.SpriteIconSlot777, "777", runGold
 	case game.SymSiren:
-		return assets.SpriteIconSlotSiren, "SIRENA", colRedAlert
+		return assets.SpriteIconSlotSiren, "SIRENA", runCoral
 	default:
-		return assets.SpriteIconSlot777, "777", colGold
+		return assets.SpriteIconSlot777, "777", runGold
 	}
 }
 
 func (r *Renderer) drawSlotModal(screen *ebiten.Image, w *game.World) {
-	vector.DrawFilledRect(screen, 0, 0, game.ScreenWidth, game.ScreenHeight, Premul(10, 6, 18, 204), false)
-	const (
-		boxX = float32(132)
-		boxY = float32(32)
-		boxW = float32(376)
-		boxH = float32(274)
-	)
-	vector.DrawFilledRect(screen, boxX, boxY, boxW, boxH, Premul(18, 10, 32, 244), false)
-	vector.DrawFilledRect(screen, boxX, boxY, boxW, 3, colGold, false)
-	vector.StrokeRect(screen, boxX, boxY, boxW, boxH, 2.0, colGold, false)
+	const cabinetTitle = "RIZZ-SLOTS 777"
+	drawRunScrim(screen)
+	cabinet := game.Rect{X: 132, Y: 31, W: 376, H: 270}
+	drawRunPanel(screen, cabinet, runPlum, runGold)
+	vector.DrawFilledRect(screen, cabinet.X+1, cabinet.Y+1, cabinet.W-2, 2, runGold, false)
+	r.drawScaledText(screen, cabinetTitle, 151, 34, 2, runCream, runInk)
+	r.drawRunCounter(screen, game.Rect{X: 394, Y: 40, W: 95, H: 19}, assets.SpriteIconCoin, fmt.Sprintf("$%d", w.Player.Cash), runGold)
 
-	// Cabinet Header
-	r.drawScaledText(screen, "RIZZ-SLOTS 777", int(boxX+18), int(boxY+10), 1.3, colGold, colOutline)
-	cashTxt := fmt.Sprintf("$%d", w.Player.Cash)
-	drawPillBadge(screen, boxX+boxW-84, boxY+9, 68, 19, Premul(36, 26, 8, 236), colGold)
-	r.DrawSpriteIcon(screen, assets.SpriteIconCoin, boxX+boxW-78, boxY+12, 1.0)
-	r.drawScaledText(screen, cashTxt, int(boxX+boxW-63), int(boxY+11), 1.0, colGold, colOutline)
-
-	// 3 Animated Icon-Driven Reels (2x 20x20 = 40x40 pixel-art sprites!)
-	lockTimes := [3]float32{0.40, 0.75, 1.10}
-	for i := 0; i < 3; i++ {
-		const (
-			rw  = float32(92)
-			rh  = float32(76)
-			gap = float32(14)
-		)
-		rx := boxX + 36 + float32(i)*(rw+gap)
-		ry := boxY + 34
-		sym := w.SlotModal.Reels[i]
-		iconKey, lbl, sc := slotSymbolMeta(sym)
-
-		// Reel cylinder housing
-		vector.DrawFilledRect(screen, rx, ry, rw, rh, Premul(20, 13, 36, 248), false)
-		vector.DrawFilledRect(screen, rx+2, ry+2, rw-4, 8, Premul(0, 0, 0, 65), false)
-		vector.DrawFilledRect(screen, rx+2, ry+rh-10, rw-4, 8, Premul(0, 0, 0, 75), false)
-
-		borderCol := sc
-		jitterY := float32(0)
-		if w.SlotModal.Spinning && w.SlotModal.SpinTimer < lockTimes[i] {
-			jitterY = float32(math.Sin(float64(r.tick*48.0+float32(i)*2.1))) * 2.5
-			borderCol = PremulColor(colGold, 190)
-		} else if w.SlotModal.ResultKind == 2 && int(r.tick*8)%2 == 0 {
-			borderCol = color.RGBA{255, 255, 255, 255}
+	lockTimes := [...]float32{0.40, 0.75, 1.10}
+	for i, symbol := range w.SlotModal.Reels {
+		icon, label, tint := slotSymbolMeta(symbol)
+		reel := game.Rect{X: 153 + float32(i)*114, Y: 66, W: 106, H: 76}
+		rolling := w.SlotModal.Spinning && w.SlotModal.SpinTimer < lockTimes[i]
+		edge := runLine
+		if rolling || w.SlotModal.ResultKind == 2 {
+			edge = runGold
 		}
-		vector.StrokeRect(screen, rx, ry, rw, rh, 2.0, borderCol, false)
+		drawRunPanel(screen, reel, runInk, edge)
 
-		// Centered 40x40 pixel-art icon
-		r.DrawSpriteIcon(screen, iconKey, rx+(rw-40)*0.5, ry+9+jitterY, 2.0)
+		// The light insert sits inside a recessed cabinet opening.
+		vector.DrawFilledRect(screen, reel.X+4, reel.Y+4, reel.W-8, 46, runFace, false)
+		vector.DrawFilledRect(screen, reel.X+4, reel.Y+4, reel.W-8, 1, runLine, false)
+		vector.DrawFilledRect(screen, reel.X+4, reel.Y+49, reel.W-8, 1, tint, false)
 
-		// Tiny crisp label beneath icon
-		lw := textPixelWidth(lbl, 1.0)
-		r.drawTextColored(screen, lbl, int(rx+(rw-float32(lw))*0.5), int(ry+55), sc)
+		jitter := float32(0)
+		if rolling {
+			jitter = float32(math.Round(math.Sin(float64(r.tick*40+float32(i)*2.1)) * 2))
+		}
+		r.DrawSpriteIcon(screen, icon, reel.X+(reel.W-40)/2, reel.Y+7+jitter, 2)
+		r.drawRunCentered(screen, label, reel.X+reel.W/2, int(reel.Y+54), runCream)
 	}
 
-	// Compact Visual Prize Legend Strip using tiny pixel icons
-	const (
-		legX = boxX + 18
-		legY = boxY + 116
-		legW = boxW - 36
-		legH = float32(24)
-	)
-	drawPillBadge(screen, legX, legY, legW, legH, Premul(14, 9, 26, 232), PremulColor(colGold, 125))
-	type legendEntry struct {
-		icon string
-		text string
-		col  color.RGBA
-		ox   float32
+	payouts := [...]struct {
+		symbol int
+		text   string
+	}{
+		{game.SymGoldBus, "$250 + XP"},
+		{game.SymCash, "$140"},
+		{game.SymHeart, "+3 HP"},
+		{game.SymCherry, "$90"},
+		{game.SymXP, "+110 XP"},
+		{game.SymSiren, "$110 +1*"},
 	}
-	legend := [4]legendEntry{
-		{assets.SpriteIconSlot777, "3x $250", colGold, 6},
-		{assets.SpriteIconSlotCash, "3x $140", colGreenNeon, 92},
-		{assets.SpriteIconSlotHeart, "3x +3HP", colKawaii, 178},
-		{assets.SpriteIconSlotSiren, "3x +1*", colRedAlert, 264},
-	}
-	for _, le := range legend {
-		r.DrawSpriteIcon(screen, le.icon, legX+le.ox, legY+4, 0.8)
-		r.drawTextColored(screen, le.text, int(legX+le.ox+18), int(legY+5), le.col)
+	legend := game.Rect{X: 151, Y: 148, W: 338, H: 43}
+	drawRunPanel(screen, legend, runInk, runLine)
+	vector.DrawFilledRect(screen, legend.X+36, legend.Y+6, 1, legend.H-12, runLine, false)
+	r.drawTextColored(screen, "TRIS", int(legend.X+6), int(legend.Y+14), runGold)
+	for i, payout := range payouts {
+		x, y := legend.X+43+float32(i%3)*97, legend.Y+2+float32(i/3)*19
+		icon, _, _ := slotSymbolMeta(payout.symbol)
+		r.DrawSpriteIcon(screen, icon, x, y, 1)
+		r.drawTextColored(screen, payout.text, int(x+23), int(y+2), runMuted)
 	}
 
-	// Result Readout Box
-	resCol := colGyaru
+	accent := runTeal
 	switch w.SlotModal.ResultKind {
-	case 1:
-		resCol = colGreenNeon
 	case 2:
-		resCol = colGold
+		accent = runGold
 	case 3:
-		resCol = colRedAlert
+		accent = runCoral
 	}
-	const (
-		resX = boxX + 18
-		resY = boxY + 146
-		resW = boxW - 36
-		resH = float32(64)
-	)
-	drawPillBadge(screen, resX, resY, resW, resH, Premul(14, 10, 28, 236), resCol)
-	rtW := textPixelWidth(w.SlotModal.ResultTitle, 1.05)
-	r.drawScaledText(screen, w.SlotModal.ResultTitle, int(resX+(resW-float32(rtW))*0.5), int(resY+10), 1.05, resCol, colOutline)
-	drawWrappedTextCentered(r, screen, w.SlotModal.ResultDesc, resX+resW*0.5, int(resY+31), 50, color.White)
+	result := game.Rect{X: 151, Y: 197, W: 338, H: 50}
+	drawRunPanel(screen, result, runFace, runLine)
+	vector.DrawFilledRect(screen, result.X+1, result.Y+1, 3, result.H-2, accent, false)
+	title, description := w.SlotModal.ResultTitle, w.SlotModal.ResultDesc
+	if title == cabinetTitle {
+		title, description = "COMBINA I SIMBOLI", "VINCI CON UNA COPPIA O UN TRIS"
+	}
+	r.drawRunCentered(screen, title, result.X+result.W/2, int(result.Y+5), accent)
+	drawRunWrappedText(r, screen, description, result.X+result.W/2, int(result.Y+21), 51, runCream)
 
-	// SPIN Button at exact SlotSpinRect()
-	spinCost := w.CurrentSlotCost()
-	spinRect := SlotSpinRect()
-	spinHover := spinRect.Contains(r.mouseScreenX, r.mouseScreenY)
-	canSpin := !w.SlotModal.Spinning && w.Player.Cash >= spinCost
-	sBg := Premul(24, 82, 46, 242)
-	sBorder := colGreenNeon
-	if !canSpin {
-		sBg = Premul(36, 32, 50, 224)
-		sBorder = Premul(105, 100, 122, 210)
-	} else if spinHover {
-		sBg = Premul(38, 118, 66, 248)
-		sBorder = colGold
+	cost := w.CurrentSlotCost()
+	label := fmt.Sprintf("[SPAZIO] GIRA  $%d", cost)
+	spinning := w.SlotModal.Spinning
+	canSpin := !spinning && w.Player.Cash >= cost
+	if spinning {
+		label = "GIRANDO..."
 	}
-	drawPillBadge(screen, spinRect.X, spinRect.Y, spinRect.W, spinRect.H, sBg, sBorder)
-	spinTxt := fmt.Sprintf("GIRA ($%d)", spinCost)
-	if w.SlotModal.Spinning {
-		spinTxt = "GIRANDO..."
-	}
-	stw := textPixelWidth(spinTxt, 1.1)
-	iconOffset := float32(0)
-	if !w.SlotModal.Spinning {
-		iconOffset = 10
-		r.DrawSpriteIcon(screen, assets.SpriteIconMouseLMB, spinRect.X+(spinRect.W-float32(stw))*0.5-14, spinRect.Y+7, 1.0)
-	}
-	r.drawScaledText(screen, spinTxt, int(spinRect.X+(spinRect.W-float32(stw))*0.5+iconOffset), int(spinRect.Y+7), 1.1, color.White, colOutline)
-
-	// EXIT Button at exact SlotCloseRect()
-	closeRect := SlotCloseRect()
-	closeHover := closeRect.Contains(r.mouseScreenX, r.mouseScreenY)
-	cBg := Premul(58, 20, 36, 238)
-	cBorder := colKawaii
-	if closeHover {
-		cBg = Premul(98, 32, 56, 248)
-		cBorder = colGold
-	}
-	drawPillBadge(screen, closeRect.X, closeRect.Y, closeRect.W, closeRect.H, cBg, cBorder)
-	closeTxt := "ESCI"
-	ctw := textPixelWidth(closeTxt, 1.1)
-	r.drawScaledText(screen, closeTxt, int(closeRect.X+(closeRect.W-float32(ctw))*0.5), int(closeRect.Y+7), 1.1, color.White, colOutline)
+	r.drawRunButton(screen, SlotSpinRect(), label, runGold, canSpin, true)
+	r.drawRunButton(screen, SlotCloseRect(), "[ESC] ESCI", runCoral, !spinning, false)
 }
 
-func drawWrappedTextCentered(r *Renderer, screen *ebiten.Image, desc string, centerX float32, startY, cut int, clr color.Color) {
-	lineY := startY
-	for len(desc) > 0 {
-		var line string
-		if len(desc) <= cut {
-			line = desc
-			desc = ""
-		} else {
-			sp := cut
-			for sp > 8 && desc[sp] != ' ' {
-				sp--
-			}
-			if desc[sp] != ' ' {
-				sp = cut
-			}
-			line = desc[:sp]
-			desc = desc[sp:]
-			if len(desc) > 0 && desc[0] == ' ' {
-				desc = desc[1:]
-			}
+func drawRunWrappedText(r *Renderer, screen *ebiten.Image, text string, centerX float32, y, columns int, tint color.Color) {
+	line := ""
+	limit := columns * textPixelWidth(" ", 1)
+	for _, word := range strings.Fields(text) {
+		if line == "" {
+			line = word
+			continue
 		}
-		lw := textPixelWidth(line, 1.0)
-		r.drawTextColored(screen, line, int(centerX-float32(lw)*0.5), lineY, clr)
-		lineY += 15
+		next := line + " " + word
+		if textPixelWidth(next, 1) > limit {
+			r.drawRunCentered(screen, line, centerX, y, tint)
+			y += 13
+			line = word
+		} else {
+			line = next
+		}
+	}
+	if line != "" {
+		r.drawRunCentered(screen, line, centerX, y, tint)
 	}
 }

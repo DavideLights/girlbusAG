@@ -56,19 +56,19 @@ TILE_COLORS: Dict[str, RGBA] = {
     "trav_hi": hex_to_rgba("#E6DEC9"),
     "trav_sh": hex_to_rgba("#B8AD99"),
     "trav_grout": hex_to_rgba("#9E9482"),
-    # Muted plaza teal inlay
-    "mteal_base": hex_to_rgba("#52858A"),
-    "mteal_hi": hex_to_rgba("#6BA0A5"),
-    "mteal_sh": hex_to_rgba("#3D696E"),
-    "trav_gold": hex_to_rgba("#C7A97B"),
+    # Mid-tone plaza travertine and oxidized copper inlay
+    "mosaic_stone": hex_to_rgba("#ADA299"),
+    "mosaic_edge": hex_to_rgba("#B7ACA2"),
+    "mosaic_grout": hex_to_rgba("#998F88"),
+    "mosaic_copper": hex_to_rgba("#8C9390"),
+    "mosaic_stud": hex_to_rgba("#B3A58F"),
     # Evening wet asphalt (matches tile_asphalt #524E61 seamlessly)
-    "wet_base": hex_to_rgba("#4E4A60"),
-    "wet_dark": hex_to_rgba("#413D52"),
-    "wet_deep": hex_to_rgba("#363347"),
-    "wet_grain": hex_to_rgba("#5B576E"),
-    "wet_sheen_c": hex_to_rgba("#637491"),
-    "wet_sheen_hi": hex_to_rgba("#7C91B0"),
-    "wet_sheen_p": hex_to_rgba("#6E5978"),
+    "wet_base": hex_to_rgba("#514D60"),
+    "wet_dark": hex_to_rgba("#4A465B"),
+    "wet_grain": hex_to_rgba("#5B566A"),
+    "wet_sheen_c": hex_to_rgba("#5B6078"),
+    "wet_sheen_hi": hex_to_rgba("#636E86"),
+    "wet_sheen_p": hex_to_rgba("#60566C"),
     # Park grass (matches tile_grass_park.png exactly)
     "grass_base": hex_to_rgba("#58A854"),
     "grass_sh": hex_to_rgba("#448E42"),
@@ -165,123 +165,57 @@ UI_PALETTE: Dict[str, RGBA] = {
 # ==============================================================================
 
 def build_tile_plaza_mosaic_32() -> Canvas:
-    """
-    tile_plaza_mosaic.png (32x32) — Ornamental warm travertine & muted teal
-    geometric plaza mosaic tile for the Central Fountain Plaza.
-    Clean, low visual noise so high-luminance bullets pop effortlessly.
-    """
+    """Broad stone slabs with a small oxidized-copper setting."""
     T = TILE_COLORS
-    c = Canvas(32, 32, bg=T["trav_base"])
+    c = Canvas(32, 32, bg=T["mosaic_stone"])
+    c.fill_rect(0, 0, 32, 1, T["mosaic_grout"])
+    c.fill_rect(0, 0, 1, 32, T["mosaic_grout"])
+    c.fill_rect(1, 1, 31, 1, T["mosaic_edge"])
+    c.fill_rect(1, 1, 1, 31, T["mosaic_edge"])
 
-    # Outer 1px seamless grout frame (top & left edge -> wraps cleanly at 32px)
-    for i in range(32):
-        c.set_pixel(i, 0, T["trav_grout"])
-        c.set_pixel(0, i, T["trav_grout"])
-        c.set_pixel(i, 1, T["trav_hi"])
-        c.set_pixel(1, i, T["trav_hi"])
-        c.set_pixel(i, 31, T["trav_sh"])
-        c.set_pixel(31, i, T["trav_sh"])
+    for delta in range(-6, 7):
+        inset = 6 - abs(delta)
+        y = 16 + delta
+        c.fill_rect(16 - inset, y, 2 * inset + 1, 1, T["mosaic_copper"])
+        if inset >= 2:
+            c.fill_rect(17 - inset, y, 2 * inset - 1, 1, T["mosaic_stone"])
 
-    # Corner travertine bevel blocks & muted teal corner diamond inlays (wrap across corners)
-    for cx, cy in ((0, 0), (31, 0), (0, 31), (31, 31)):
-        for dy in range(-4, 5):
-            for dx in range(-4, 5):
-                dist = abs(dx) + abs(dy)
-                px = (cx + dx) % 32
-                py = (cy + dy) % 32
-                if dist <= 2:
-                    c.set_pixel(px, py, T["mteal_base"])
-                elif dist == 3:
-                    c.set_pixel(px, py, T["trav_grout"])
-
-    # Subtle geometric travertine border frame at inset 4px
-    for i in range(5, 28):
-        c.set_pixel(i, 4, T["trav_sh"])
-        c.set_pixel(i, 27, T["trav_hi"])
-        c.set_pixel(4, i, T["trav_sh"])
-        c.set_pixel(27, i, T["trav_hi"])
-
-    # Central octagonal / diamond muted-teal mosaic medallion (centered around 15.5, 15.5)
-    for y in range(6, 26):
-        for x in range(6, 26):
-            dx = abs(x - 15.5)
-            dy = abs(y - 15.5)
-            manh = dx + dy
-            if manh <= 9.5:
-                if manh >= 8.5:
-                    # Crisp recessed mortar ring
-                    c.set_pixel(x, y, T["trav_grout"])
-                elif manh >= 6.5:
-                    # Muted teal mosaic border ring
-                    col = T["mteal_hi"] if (x + y < 31) else T["mteal_sh"]
-                    if abs(x - 15.5) <= 1.0 or abs(y - 15.5) <= 1.0:
-                        col = T["mteal_base"]
-                    c.set_pixel(x, y, col)
-                elif manh >= 5.5:
-                    # Inner travertine rim
-                    c.set_pixel(x, y, T["trav_hi"] if (x + y < 31) else T["trav_sh"])
-                elif manh >= 2.5:
-                    # Clean warm travertine center slab
-                    c.set_pixel(x, y, T["trav_base"])
-                else:
-                    # Subtle warm gold-travertine rosette center stud
-                    c.set_pixel(x, y, T["trav_hi"] if (x <= 15 and y <= 15) else T["trav_gold"])
-
-    # Clean diagonal joint grooves connecting medallion to tile midpoints
-    for k in range(2, 6):
-        c.set_pixel(15, k, T["trav_grout"])
-        c.set_pixel(16, k, T["trav_hi"])
-        c.set_pixel(15, 31 - k, T["trav_grout"])
-        c.set_pixel(16, 31 - k, T["trav_hi"])
-        c.set_pixel(k, 15, T["trav_grout"])
-        c.set_pixel(k, 16, T["trav_hi"])
-        c.set_pixel(31 - k, 15, T["trav_grout"])
-        c.set_pixel(31 - k, 16, T["trav_hi"])
-
-    # Delicate corner highlight dots inside the corner teal diamonds
-    c.set_pixel(1, 1, T["mteal_hi"])
-    c.set_pixel(30, 30, T["mteal_sh"])
+    c.fill_rect(15, 16, 3, 1, T["mosaic_stud"])
+    c.set_pixel(16, 15, T["mosaic_edge"])
+    c.set_pixel(16, 17, T["mosaic_stud"])
     return c
 
 
 def build_tile_wet_asphalt_32() -> Canvas:
-    """
-    tile_wet_asphalt.png (32x32) — Rich evening asphalt (#4E4A60 base) with
-    subtle glossy specular reflection streaks and fine aggregate grain,
-    harmonizing seamlessly with tile_asphalt.png (#524E61).
-    """
+    """Muted slate pavement with sparse, low-contrast rain sheen."""
     T = TILE_COLORS
     c = Canvas(32, 32, bg=T["wet_base"])
 
-    # Soft seamless evening rain-sheen bands (subtle darkened wet zones, zero harsh ovals)
+    # Broken wet areas wrap across the tile edges.
     wet_bands = [
-        (3, 1, 14), (4, 3, 15), (5, 6, 12),
-        (13, 16, 13), (14, 14, 16), (15, 17, 11),
-        (23, 5, 13), (24, 3, 15), (25, 7, 10),
-        (29, 20, 10), (30, 18, 12),
+        (3, 4, 13), (4, 3, 16), (5, 6, 9),
+        (11, 24, 9), (12, 22, 13), (13, 26, 7),
+        (23, 8, 11), (24, 5, 14), (25, 7, 8),
     ]
     for py, sx, length in wet_bands:
         for dx in range(length):
             c.set_pixel((sx + dx) % 32, py % 32, T["wet_dark"])
 
-    # Elongated glossy specular reflection streaks (subtle evening neon sheen on wet road)
+    # Reflections from fixtures are animated by the renderer. This tile supplies the underlying sheen.
     cyan_streaks = [
-        (4, 5, 7), (4, 7, 3),
-        (14, 18, 8), (15, 20, 4),
-        (24, 6, 6), (30, 21, 5),
+        (4, 6, 6), (4, 14, 2),
+        (12, 26, 5), (13, 30, 3),
+        (24, 9, 5),
     ]
     for idx, (py, sx, length) in enumerate(cyan_streaks):
         for dx in range(length):
-            is_core = (idx in (0, 2, 4)) and (length // 2 - 1 <= dx <= length // 2)
+            is_core = idx in (0, 2) and dx == length // 2
             col = T["wet_sheen_hi"] if is_core else T["wet_sheen_c"]
             c.set_pixel((sx + dx) % 32, py % 32, col)
 
-    # Subtle dusk rose-mauve reflection glints (low contrast so bullets always dominate)
     mauve_streaks = [
-        (5, 9, 5),
-        (15, 22, 4),
-        (25, 9, 4),
-        (10, 2, 5),
+        (5, 9, 3),
+        (25, 10, 4),
     ]
     for py, sx, length in mauve_streaks:
         for dx in range(length):

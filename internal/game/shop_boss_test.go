@@ -85,6 +85,28 @@ func TestShopRelicsAndSlotMachine(t *testing.T) {
 	if w.Player.RelicCountOwned() != 1 || w.Player.Cash != 380 {
 		t.Fatalf("expected 1 relic owned and cash=380, got relics=%d cash=%d", w.Player.RelicCountOwned(), w.Player.Cash)
 	}
+	var ownedRelic RelicKind = -1
+	for rk := 0; rk < int(RelicCount); rk++ {
+		if w.Player.Relics[rk] {
+			ownedRelic = RelicKind(rk)
+			break
+		}
+	}
+	spec := GetRelicSpec(ownedRelic)
+	if w.ShopMenu.Message != spec.Name+": "+spec.Desc {
+		t.Fatalf("expected ShopMenu.Message to explain relic %q, got %q", spec.Name+": "+spec.Desc, w.ShopMenu.Message)
+	}
+	events := w.DrainEvents()
+	sawRelicEvent := false
+	for _, ev := range events {
+		if ev.Kind == EventRelicAcquired && ev.Value == int(ownedRelic) {
+			sawRelicEvent = true
+			break
+		}
+	}
+	if !sawRelicEvent {
+		t.Fatalf("expected EventRelicAcquired for relic %d (%s)", ownedRelic, spec.Name)
+	}
 	w.Update(InputState{CancelJustPressed: true, SelectArchetype: -1, ActionDir: -1, ChooseUpgrade: -1}, 0.016)
 
 	// Walk to Slot Machine, open, and spin until completion

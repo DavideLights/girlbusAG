@@ -28,6 +28,7 @@ type Boss struct {
 	HookedByStop     int
 	EnrageFlashTimer float32
 	PatternStep      int
+	PendingKnockback bool
 
 	// Boss-specific gimmick entities
 	Clones           [2]BossClone
@@ -51,6 +52,7 @@ func (b *Boss) Spawn(kind BossKind, spawnX, spawnY float32) {
 	b.HookedByStop = -1
 	b.EnrageFlashTimer = 0.8
 	b.PatternStep = 0
+	b.PendingKnockback = false
 
 	b.Clones = [2]BossClone{}
 	b.Escorts = [4]BossEscort{}
@@ -264,6 +266,9 @@ func (b *Boss) firePattern(playerX, playerY float32, bullets *BulletPool, telegr
 	switch b.Kind {
 	case BossBestFriend:
 		b.ShootTimer = 1.65
+		if b.PatternStep%2 == 0 {
+			b.PendingKnockback = true
+		}
 		count := 10
 		offset := float32(b.PatternStep) * 0.31
 		for i := 0; i < count; i++ {

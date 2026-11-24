@@ -42,8 +42,23 @@ func TestDefaultSaveData(t *testing.T) {
 	if save.Profile.IsPlayerSkinUnlocked(SkinNeonDrip) {
 		t.Fatalf("SkinNeonDrip should be locked by default")
 	}
+	if save.Profile.IsPlayerSkinUnlocked(SkinBanana) {
+		t.Fatalf("SkinBanana should be locked by default")
+	}
+	if save.Profile.IsPlayerSkinUnlocked(SkinChickenWing) {
+		t.Fatalf("SkinChickenWing should be locked by default")
+	}
 	if save.Profile.IsPlayerSkinUnlocked(SkinCyberSamurai) {
 		t.Fatalf("SkinCyberSamurai should be locked by default")
+	}
+	if PlayerSkinCount != 5 {
+		t.Fatalf("PlayerSkinCount = %d, want 5", PlayerSkinCount)
+	}
+	if got := save.Profile.UnlockedTitles(); len(got) != 1 || got[0] != "" {
+		t.Fatalf("default UnlockedTitles() = %v, want [\"\"]", got)
+	}
+	if !save.Profile.IsTitleUnlocked("") || save.Profile.IsTitleUnlocked("Veterano") {
+		t.Fatalf("unexpected default IsTitleUnlocked behavior")
 	}
 	if !save.Profile.IsBusSkinUnlocked(BusNeonClassic) {
 		t.Fatalf("BusNeonClassic should be unlocked by default")
@@ -117,11 +132,31 @@ func TestChallengesAndSkinUnlocks(t *testing.T) {
 	}
 
 	// Verify skins unlocked so far
+	if !p.IsPlayerSkinUnlocked(SkinBanana) {
+		t.Fatalf("SkinBanana should be unlocked after full_bus")
+	}
+	if !p.IsPlayerSkinUnlocked(SkinChickenWing) {
+		t.Fatalf("SkinChickenWing should be unlocked after all_synergies")
+	}
 	if !p.IsPlayerSkinUnlocked(SkinCyberSamurai) {
 		t.Fatalf("SkinCyberSamurai should be unlocked after chaos_king_5star")
 	}
 	if !p.IsBusSkinUnlocked(BusGoldDrift) {
 		t.Fatalf("BusGoldDrift should be unlocked after rizz_jackpot")
+	}
+
+	// Verify skin display names
+	wantNames := map[int]string{
+		SkinAlfredoBase:  "Alfredo Base",
+		SkinNeonDrip:     "Neon Drip",
+		SkinBanana:       "Alfredo Banana",
+		SkinChickenWing:  "Aletta di Pollo",
+		SkinCyberSamurai: "Cyber-Samurai Zero",
+	}
+	for skinID, want := range wantNames {
+		if got := p.PlayerSkinName(skinID); got != want {
+			t.Fatalf("PlayerSkinName(%d) = %q, want %q", skinID, got, want)
+		}
 	}
 
 	// Clean run for Mom + remaining bosses (0, 1, 2, 3) -> beat_mom_clean & all_6_bosses -> Boss Rush
@@ -147,6 +182,47 @@ func TestChallengesAndSkinUnlocks(t *testing.T) {
 	if p.BestScore != 12500 || p.BestTimeSec != 180 || p.TotalRuns != 1 || p.TotalGirlsBoarded != 14 {
 		t.Fatalf("unexpected finalized profile stats: %+v", *p)
 	}
+
+	wantTitles := []string{"", "Veterano", "Gloria Criminale", "Onore della Strada", "Figlio Modello"}
+	gotTitles := p.UnlockedTitles()
+	if len(gotTitles) != len(wantTitles) {
+		t.Fatalf("UnlockedTitles() = %v, want %v", gotTitles, wantTitles)
+	}
+	for i := range wantTitles {
+		if gotTitles[i] != wantTitles[i] {
+			t.Fatalf("UnlockedTitles()[%d] = %q, want %q", i, gotTitles[i], wantTitles[i])
+		}
+		if !p.IsTitleUnlocked(wantTitles[i]) {
+			t.Fatalf("IsTitleUnlocked(%q) = false, want true", wantTitles[i])
+		}
+	}
+	if p.IsTitleUnlocked("Titolo Inesistente") {
+		t.Fatalf("IsTitleUnlocked(\"Titolo Inesistente\") = true, want false")
+	}
+}
+
+func TestFinalizeRunVictoryThenOverdriveNoDoubleCount(t *testing.T) {
+	save := DefaultSaveData()
+	p := &save.Profile
+	rt := NewRunTracker()
+
+	// Victory at 14 girls
+	rt.FinalizeRun(10000, 150, 14, p)
+	if p.TotalRuns != 1 || p.TotalGirlsBoarded != 14 || p.BestScore != 10000 || p.BestTimeSec != 150 {
+		t.Fatalf("after victory FinalizeRun: got %+v", *p)
+	}
+
+	// Continue in Overdrive, then Game Over at 22 girls
+	rt.FinalizeRun(18500, 210, 22, p)
+	if p.TotalRuns != 1 {
+		t.Fatalf("TotalRuns = %d, want 1 (no double-count)", p.TotalRuns)
+	}
+	if p.TotalGirlsBoarded != 22 {
+		t.Fatalf("TotalGirlsBoarded = %d, want 22", p.TotalGirlsBoarded)
+	}
+	if p.BestScore != 18500 || p.BestTimeSec != 210 {
+		t.Fatalf("BestScore/BestTimeSec not updated after overdrive: %+v", *p)
+	}
 }
 
 func TestJSONRoundTripAndNormalize(t *testing.T) {
@@ -155,14 +231,19 @@ func TestJSONRoundTripAndNormalize(t *testing.T) {
 	orig.Settings.MasterVol = -0.5
 	orig.Settings.MusicVol = 1.75
 	orig.Settings.SFXVol = math.NaN()
+	orig.Settings.DirInputMode = 7
 	orig.Profile.UnlockedChallenges = nil
 	orig.Profile.SelectedPlayerSkin = SkinCyberSamurai // locked -> must fall back to 0
 	orig.Profile.SelectedBusSkin = BusGoldDrift        // locked -> must fall back to 0
+	orig.Profile.SelectedTitle = "Veterano"            // locked -> must fall back to ""
 
 	orig.Normalize()
 
 	if orig.Settings.FilterMode != FilterVHS {
 		t.Fatalf("FilterMode = %d, want %d", orig.Settings.FilterMode, FilterVHS)
+	}
+	if orig.Settings.DirInputMode != DirModeAroundStop {
+		t.Fatalf("DirInputMode = %d, want %d", orig.Settings.DirInputMode, DirModeAroundStop)
 	}
 	if orig.Settings.MasterVol != 0 {
 		t.Fatalf("MasterVol = %v, want 0", orig.Settings.MasterVol)
@@ -182,17 +263,25 @@ func TestJSONRoundTripAndNormalize(t *testing.T) {
 	if orig.Profile.SelectedBusSkin != BusNeonClassic {
 		t.Fatalf("SelectedBusSkin = %d, want %d", orig.Profile.SelectedBusSkin, BusNeonClassic)
 	}
+	if orig.Profile.SelectedTitle != "" {
+		t.Fatalf("SelectedTitle = %q, want \"\"", orig.Profile.SelectedTitle)
+	}
 
-	// Unlock skins and test full JSON round-trip
+	// Unlock skins/title and test full JSON round-trip
 	orig.Settings.FilterMode = FilterOff
 	orig.Settings.MasterVol = 0.42
 	orig.Settings.Fullscreen = true
 	orig.Settings.ShowFPS = true
 	orig.Settings.ChronosToggle = true
+	orig.Settings.DirInputMode = DirModeAroundStop
+	orig.Profile.UnlockedChallenges["full_bus"] = true
+	orig.Profile.UnlockedChallenges["all_synergies"] = true
 	orig.Profile.UnlockedChallenges["chaos_king_5star"] = true
 	orig.Profile.UnlockedChallenges["rizz_jackpot"] = true
-	orig.Profile.SelectedPlayerSkin = SkinCyberSamurai
+	orig.Profile.UnlockedChallenges["perfect_surgeon"] = true
+	orig.Profile.SelectedPlayerSkin = SkinChickenWing
 	orig.Profile.SelectedBusSkin = BusGoldDrift
+	orig.Profile.SelectedTitle = "Veterano"
 	orig.Profile.MarkBossDefeated(2)
 
 	raw, err := json.Marshal(orig)
@@ -206,17 +295,20 @@ func TestJSONRoundTripAndNormalize(t *testing.T) {
 	}
 	loaded.Normalize()
 
-	if loaded.Settings.FilterMode != FilterOff || !loaded.Settings.Fullscreen || !loaded.Settings.ShowFPS || !loaded.Settings.ChronosToggle {
+	if loaded.Settings.FilterMode != FilterOff || !loaded.Settings.Fullscreen || !loaded.Settings.ShowFPS || !loaded.Settings.ChronosToggle || loaded.Settings.DirInputMode != DirModeAroundStop {
 		t.Fatalf("unexpected loaded settings: %+v", loaded.Settings)
 	}
 	if loaded.Settings.MasterVol != 0.42 {
 		t.Fatalf("loaded MasterVol = %v, want 0.42", loaded.Settings.MasterVol)
 	}
-	if loaded.Profile.SelectedPlayerSkin != SkinCyberSamurai {
-		t.Fatalf("loaded SelectedPlayerSkin = %d, want %d", loaded.Profile.SelectedPlayerSkin, SkinCyberSamurai)
+	if loaded.Profile.SelectedPlayerSkin != SkinChickenWing {
+		t.Fatalf("loaded SelectedPlayerSkin = %d, want %d", loaded.Profile.SelectedPlayerSkin, SkinChickenWing)
 	}
 	if loaded.Profile.SelectedBusSkin != BusGoldDrift {
 		t.Fatalf("loaded SelectedBusSkin = %d, want %d", loaded.Profile.SelectedBusSkin, BusGoldDrift)
+	}
+	if loaded.Profile.SelectedTitle != "Veterano" {
+		t.Fatalf("loaded SelectedTitle = %q, want \"Veterano\"", loaded.Profile.SelectedTitle)
 	}
 	if !loaded.Profile.IsBossDefeated(2) {
 		t.Fatalf("Boss 2 defeat did not survive JSON round-trip")

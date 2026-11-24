@@ -107,6 +107,32 @@ type DistrictLayout struct {
 	CanalY        float32
 }
 
+// MapDef defines a playable city district configuration including metadata, bounds,
+// unlocked archetypes, chest locations, and static layout.
+type MapDef struct {
+	ID            string
+	NameIT        string
+	SubtitleIT    string
+	Width, Height float32
+	UnlockedArchs []Archetype
+	ChestSpots    [][2]float32
+	Layout        DistrictLayout
+}
+
+// DefaultDistrictMap returns the canonical District 01 MapDef wrapping BuildDistrictLayout().
+func DefaultDistrictMap() MapDef {
+	return MapDef{
+		ID:            "neon_center",
+		NameIT:        "Centro Neon",
+		SubtitleIT:    "Quartiere Notturno & Naviglio",
+		Width:         ArenaWidth,
+		Height:        ArenaHeight,
+		UnlockedArchs: []Archetype{ArchEmo, ArchStudent, ArchKawaii, ArchGyaru},
+		ChestSpots:    [][2]float32{{140, 260}, {640, 352}, {1140, 440}},
+		Layout:        BuildDistrictLayout(),
+	}
+}
+
 // BuildDistrictLayout constructs the rich stratified Pop-Urban city district for the 1280x720 arena.
 func BuildDistrictLayout() DistrictLayout {
 	layout := DistrictLayout{

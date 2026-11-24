@@ -34,14 +34,24 @@ type HelicopterSpotlight struct {
 	ShootTimer float32
 }
 
-// PoliceSystem manages GTA-style Wanted Stars (0..5★), multipliers, patrols, cruisers, and the 5★ chopper.
+// PoliceHazard represents a 3★+ horizontal laser/spike road barrier strip.
+type PoliceHazard struct {
+	Active         bool
+	X1, Y1, X2, Y2 float32
+	TelegraphTimer float32
+	LifeTimer      float32
+}
+
+// PoliceSystem manages GTA-style Wanted Stars (0..5★), multipliers, patrols, cruisers, hazards, and the 5★ chopper.
 type PoliceSystem struct {
 	Stars          int
 	HeatDecayTimer float32
 	SpawnTimer     float32
 	CruiserTimer   float32
+	HazardTimer    float32
 	Officers       []PoliceOfficer
 	Cruisers       []PoliceCruiser
+	Hazards        []PoliceHazard
 	Heli           HelicopterSpotlight
 	nextOfficerID  int
 }
@@ -51,9 +61,11 @@ func NewPoliceSystem() PoliceSystem {
 	return PoliceSystem{
 		Officers:      make([]PoliceOfficer, 0, 16),
 		Cruisers:      make([]PoliceCruiser, 0, 6),
+		Hazards:       make([]PoliceHazard, 0, 4),
 		Heli:          HelicopterSpotlight{Radius: 96.0},
 		SpawnTimer:    2.0,
 		CruiserTimer:  4.0,
+		HazardTimer:   4.5,
 		nextOfficerID: 1,
 	}
 }
@@ -89,6 +101,9 @@ func (ps *PoliceSystem) ReduceStar(n int) {
 	}
 	if ps.Stars < 5 {
 		ps.Heli.Active = false
+	}
+	if ps.Stars < 3 {
+		ps.Hazards = ps.Hazards[:0]
 	}
 	if ps.Stars == 0 {
 		ps.Officers = ps.Officers[:0]
@@ -131,6 +146,9 @@ func (ps *PoliceSystem) XPAndCashMultiplier() (xpMult float32, cashMult float32)
 // Update advances heat decay, police spawns, cruiser lane-rushes, and helicopter spotlight danmaku.
 func (ps *PoliceSystem) Update(dt, timeScale float32, playerX, playerY float32, stops []BusStop, bullets *BulletPool, telegraphs *[]TelegraphLine, rng *rand.Rand) {
 	if ps.Stars <= 0 {
+		if len(ps.Hazards) > 0 {
+			ps.Hazards = ps.Hazards[:0]
+		}
 		return
 	}
 
@@ -182,10 +200,12 @@ func (ps *PoliceSystem) Update(dt, timeScale float32, playerX, playerY float32, 
 
 		// Target player (or active BusStop if SWAT at 4★+)
 		tx, ty := playerX, playerY
+		targetingStop := false
 		if o.IsSWAT {
 			for s := range stops {
 				if stops[s].Active {
 					tx, ty = stops[s].X, stops[s].Y
+					targetingStop = true
 					break
 				}
 			}
@@ -209,30 +229,33 @@ func (ps *PoliceSystem) Update(dt, timeScale float32, playerX, playerY float32, 
 		o.ShootTimer -= effDT
 		if o.ShootTimer <= 0 && d < 520 {
 			aim := float32(math.Atan2(float64(dy), float64(dx)))
+			antiStop := ps.Stars >= 4 && o.IsSWAT && targetingStop
 			if ps.Stars >= 3 {
 				o.ShootTimer = 1.75
 				for k := -1; k <= 1; k++ {
 					ang := aim + float32(k)*0.24
 					bullets.Spawn(Bullet{
-						X:      o.X,
-						Y:      o.Y,
-						VX:     float32(math.Cos(float64(ang))) * 155,
-						VY:     float32(math.Sin(float64(ang))) * 155,
-						Radius: 4.5,
-						MaxAge: 4.0,
-						Kind:   BulletPolice,
+						X:        o.X,
+						Y:        o.Y,
+						VX:       float32(math.Cos(float64(ang))) * 155,
+						VY:       float32(math.Sin(float64(ang))) * 155,
+						Radius:   4.5,
+						MaxAge:   4.0,
+						Kind:     BulletPolice,
+						AntiStop: antiStop,
 					})
 				}
 			} else {
 				o.ShootTimer = 2.1
 				bullets.Spawn(Bullet{
-					X:      o.X,
-					Y:      o.Y,
-					VX:     float32(math.Cos(float64(aim))) * 125,
-					VY:     float32(math.Sin(float64(aim))) * 125,
-					Radius: 5.0,
-					MaxAge: 4.2,
-					Kind:   BulletPolice,
+					X:        o.X,
+					Y:        o.Y,
+					VX:       float32(math.Cos(float64(aim))) * 125,
+					VY:       float32(math.Sin(float64(aim))) * 125,
+					Radius:   5.0,
+					MaxAge:   4.2,
+					Kind:     BulletPolice,
+					AntiStop: antiStop,
 				})
 			}
 		}
@@ -309,6 +332,54 @@ func (ps *PoliceSystem) Update(dt, timeScale float32, playerX, playerY float32, 
 			continue
 		}
 		i++
+	}
+
+	// 3★+: Laser/spike road hazard barrier strips (up to 3 active)
+	if ps.Stars >= 3 {
+		for i := 0; i < len(ps.Hazards); {
+			h := &ps.Hazards[i]
+			if !h.Active {
+				ps.Hazards[i] = ps.Hazards[len(ps.Hazards)-1]
+				ps.Hazards = ps.Hazards[:len(ps.Hazards)-1]
+				continue
+			}
+			if h.TelegraphTimer > 0 {
+				h.TelegraphTimer -= effDT
+				if h.TelegraphTimer < 0 {
+					h.TelegraphTimer = 0
+				}
+				i++
+				continue
+			}
+			h.LifeTimer -= effDT
+			if h.LifeTimer <= 0 {
+				ps.Hazards[i] = ps.Hazards[len(ps.Hazards)-1]
+				ps.Hazards = ps.Hazards[:len(ps.Hazards)-1]
+				continue
+			}
+			i++
+		}
+
+		ps.HazardTimer -= effDT
+		if ps.HazardTimer <= 0 && len(ps.Hazards) < 3 {
+			ps.HazardTimer = 4.5 - float32(ps.Stars-3)*0.4
+			if ps.HazardTimer < 3.2 {
+				ps.HazardTimer = 3.2
+			}
+			cx := clamp32(playerX+(rng.Float32()-0.5)*220, 144, ArenaWidth-144)
+			cy := clamp32(playerY+(rng.Float32()-0.5)*140, 148, BoardwalkRailY-28)
+			ps.Hazards = append(ps.Hazards, PoliceHazard{
+				Active:         true,
+				X1:             cx - 48,
+				Y1:             cy,
+				X2:             cx + 48,
+				Y2:             cy,
+				TelegraphTimer: 0.85,
+				LifeTimer:      8.0,
+			})
+		}
+	} else if len(ps.Hazards) > 0 {
+		ps.Hazards = ps.Hazards[:0]
 	}
 
 	// 5★: Helicopter spotlight pursues Alfredo and rains 360° danmaku when inside cone

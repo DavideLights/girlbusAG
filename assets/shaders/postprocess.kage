@@ -21,8 +21,9 @@ func sampleClamped(uv vec2, origin vec2, srcSize vec2, minPos vec2, maxPos vec2)
 
 func highlightTap(c vec3) vec3 {
 	peak := max(c.r, max(c.g, c.b))
-	mask := smoothstep(0.68, 1.0, peak)
-	return c * mask
+	chroma := peak - min(c.r, min(c.g, c.b))
+	mask := smoothstep(0.74, 1.0, peak)
+	return c * mask * mix(0.36, 1.0, smoothstep(0.08, 0.34, chroma))
 }
 
 // dualRingBloom performs an 8-tap isotropic dual-ring optical bloom:
@@ -108,7 +109,7 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 		// with subtle 8-tap optical bloom, gentle evening polish, and smooth Chronos/Rewind.
 		base := imageSrc0UnsafeAt(clamp(srcPos, minPos, maxPos))
 		bloom := dualRingBloom(uv, origin, srcSize, minPos, maxPos)
-		bloomAdd := bloom * vec3(1.03, 0.99, 0.96) * 0.14
+		bloomAdd := bloom * vec3(1.03, 0.99, 0.96) * 0.10
 
 		rgb := eveningGrade(base.rgb, 0.55) + bloomAdd
 		effectAlpha := max(bloomAdd.r, max(bloomAdd.g, bloomAdd.b))
@@ -159,7 +160,7 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 
 		// Rich 8-tap dual-ring warm halation & neon bloom.
 		bloom := dualRingBloom(crtUV, origin, srcSize, minPos, maxPos)
-		rgb = eveningGrade(rgb, 1.0) + bloom*(vec3(1.09, 0.97, 0.88)*0.28)
+		rgb = eveningGrade(rgb, 1.0) + bloom*(vec3(1.09, 0.97, 0.88)*0.20)
 
 		// Soft subtle Trinitron horizontal scanlines (4.5% modulation) + delicate phosphor warmth.
 		scanPhase := 0.5 + 0.5*sin(crtUV.y*screenDim.y*3.14159265)
@@ -218,7 +219,7 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 
 		// Stylized 8-tap dual-ring neon bleed + evening contrast & noir magenta/cyan shadow grade.
 		bloom := dualRingBloom(vhsUV, origin, srcSize, minPos, maxPos)
-		rgb = eveningGrade(rgb, 0.70) + bloom*(vec3(1.08, 0.92, 1.14)*0.26)
+		rgb = eveningGrade(rgb, 0.70) + bloom*(vec3(1.08, 0.92, 1.14)*0.20)
 
 		luma := dot(rgb, vec3(0.299, 0.587, 0.114))
 		shadowTone := smoothstep(0.15, 0.85, 1.0-luma)

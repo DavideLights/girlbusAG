@@ -217,6 +217,18 @@ def build_pizzeria_96x64() -> Canvas:
     c.set_pixel(19, 0, hex_to_rgba("#FFF5DF", 180))
     c.set_pixel(20, 0, hex_to_rgba("#FFF5DF", 120))
 
+    # The recess on the right gives the terracotta roof a visible return.
+    c.fill_rect(82, 9, 9, 52, P["O"])
+    c.fill_rect(83, 10, 7, 49, P["stucco_sh"])
+    c.fill_rect(86, 12, 4, 45, P["terra_sh"])
+    c.fill_rect(85, 44, 3, 14, P["terra_base"])
+    for y in (14, 19, 45, 50, 55):
+        c.fill_rect(87, y, 3, 1, P["terra_hi"])
+    c.fill_rect(81, 3, 7, 7, P["O"])
+    c.fill_rect(83, 4, 6, 6, P["terra_sh"])
+    c.fill_rect(86, 5, 5, 6, P["O"])
+    c.fill_rect(87, 6, 3, 3, P["terra_base"])
+
     # --- TERRACOTTA ROMAN TILED ROOF & CORNICE TRIM (x=10..84, y=4..10) ---
     draw_box(c, 10, 4, 75, 5, P["terra_base"], P["O"], hi=P["terra_hi"], sh=P["terra_sh"])
     # Scalloped Mediterranean barrel roof tiles
@@ -318,21 +330,20 @@ def build_pizzeria_96x64() -> Canvas:
     draw_box(c, 14, 45, 32, 13, P["t"], P["O"], hi=P["T"], sh=P["int_dark"])
     # Warm dark interior behind wood-fired oven
     c.fill_rect(15, 46, 30, 11, P["amber_deep"])
-    # Brick wood-fired pizza oven dome inside window (x=18..38, y=47..56)
-    draw_box(c, 18, 47, 20, 9, P["terra_base"], P["O"], hi=P["terra_hi"], sh=P["terra_sh"])
-    # Oven brick arch & radiant orange/gold hearth fire!
-    c.fill_rect(21, 49, 14, 7, P["oven_red"])
-    c.fill_rect(22, 48, 12, 8, P["oven_orange"])
-    c.fill_rect(24, 50, 8, 6, P["oven_gold"])
-    c.fill_rect(26, 52, 4, 4, P["oven_core"])
-    # Dancing flame tongues
-    c.set_pixel(25, 49, P["oven_gold"])
-    c.set_pixel(27, 49, P["oven_core"])
-    c.set_pixel(29, 50, P["oven_core"])
-    c.set_pixel(30, 49, P["oven_gold"])
-    # Brick arch keystone accents
-    for ax in (21, 25, 29, 33):
-        c.set_pixel(ax, 48, P["stucco_hi"])
+    # Stepped brick arch above the wood fire.
+    c.fill_rect(18, 51, 20, 5, P["terra_sh"])
+    c.fill_rect(19, 49, 18, 7, P["terra_base"])
+    c.fill_rect(21, 48, 14, 2, P["terra_hi"])
+    c.fill_rect(24, 47, 8, 1, P["stucco_sh"])
+    c.fill_rect(22, 52, 12, 4, P["oven_red"])
+    c.fill_rect(24, 50, 8, 6, P["amber_deep"])
+    c.fill_rect(25, 52, 6, 4, P["oven_orange"])
+    c.fill_rect(24, 54, 8, 2, P["oven_gold"])
+    c.fill_rect(27, 53, 3, 3, P["oven_core"])
+    c.set_pixel(26, 51, P["oven_gold"])
+    c.set_pixel(29, 52, P["oven_gold"])
+    c.set_pixel(24, 50, P["oven_orange"])
+    c.set_pixel(30, 51, P["oven_orange"])
     # Wooden pizza peel resting on right side of oven window
     c.fill_rect(39, 53, 5, 2, P["1"])
     c.fill_rect(41, 49, 1, 5, P["T"])
@@ -424,10 +435,20 @@ def build_vinyl_bar_96x64() -> Canvas:
     c = Canvas(96, 64)
     fill_ellipse(c, 48, 62.5, 45, 2.0, P["s"])
 
+    # Stepped stone return, with thin brass reveals echoing the marquee frame.
+    c.fill_rect(84, 9, 7, 51, P["O"])
+    c.fill_rect(85, 10, 5, 49, P["slate_sh"])
+    c.fill_rect(89, 12, 2, 44, P["slate_deep"])
+    for y in (14, 19, 37):
+        c.fill_rect(85, y, 4, 1, P["slate_hi"])
+
     # --- ROOFTOP CORNICE & ART-DECO CROWN (x=9..87, y=2..11) ---
-    # Stepped retro synthwave center parapet crest
+    # Art Deco center parapet with a muted brass cap and short cyan inset.
     draw_box(c, 33, 2, 30, 5, P["slate_base"], P["O"], hi=P["slate_hi"], sh=P["slate_sh"])
-    c.fill_rect(35, 4, 26, 1, P["X"])  # sleek cyan roof accent stripe
+    c.fill_rect(33, 3, 30, 1, P["T"])
+    c.fill_rect(38, 1, 20, 2, P["slate_hi"])
+    c.fill_rect(41, 0, 14, 1, P["O"])
+    c.fill_rect(41, 4, 14, 1, P["2"])
     # Rooftop small turntable-styled vent box on left
     draw_box(c, 14, 3, 11, 5, P["P"], P["O"], hi=P["M"], sh=P["p"])
     c.fill_rect(16, 4, 7, 2, P["g"])
@@ -451,10 +472,9 @@ def build_vinyl_bar_96x64() -> Canvas:
     draw_box(c, 82, 10, 4, 52, P["slate_sh"], P["O"], hi=P["slate_hi"], sh=P["slate_deep"])
 
     # --- STRING FAIRY LIGHTS ALONG CORNICE (y=9..14, x=11..85) ---
-    fairy_cols = [P["G"], P["F"], P["X"], P["C"], P["neon_mag"]]
-    draw_fairy_string(c, 11, 36, 9, 2.8, fairy_cols, step=5)
-    draw_fairy_string(c, 36, 61, 9, 2.8, fairy_cols[1:], step=5)
-    draw_fairy_string(c, 61, 85, 9, 2.8, fairy_cols[2:], step=5)
+    fairy_cols = [P["G"], P["F"], P["C"]]
+    for start, end in ((11, 36), (36, 61), (61, 85)):
+        draw_fairy_string(c, start, end, 9, 2.8, fairy_cols, step=7)
 
     # --- GLOWING CYAN & CORAL NEON VINYL RECORD EMBLEM (cx=26, cy=25) ---
     fill_ellipse(c, 26, 25, 11.5, 10.5, P["neon_cyan_glow"])
@@ -632,6 +652,16 @@ def build_gelateria_96x64() -> Canvas:
     c = Canvas(96, 64)
     fill_ellipse(c, 48, 62.5, 45, 2.0, P["s"])
 
+    # Mint side wall and tucked-under strawberry cornice cap.
+    c.fill_rect(82, 7, 10, 54, P["O"])
+    c.fill_rect(83, 8, 8, 52, P["pmint_sh"])
+    c.fill_rect(88, 9, 3, 50, P["Y"])
+    c.fill_rect(83, 5, 7, 4, P["k"])
+    c.fill_rect(88, 6, 4, 3, P["O"])
+    c.fill_rect(89, 7, 2, 1, P["Q"])
+    for y in (13, 20, 46, 53):
+        c.fill_rect(86, y, 3, 1, P["pmint_base"])
+
     # --- SCALLOPED CREAM & STRAWBERRY ROOF PARAPET (x=10..85, y=2..8) ---
     draw_box(c, 10, 4, 76, 4, P["C"], P["O"], hi=P["W"], sh=P["a"])
     # Decorative pastel finials on roof corners
@@ -788,14 +818,21 @@ def build_gelateria_96x64() -> Canvas:
     c.fill_rect(61, 60, 17, 2, P["C"])
 
     # --- SIDEWALK PROPS: CONE A-FRAME SIGN (left) & PASTEL FLOWER POT (right) ---
-    # Left cute gelato A-frame sign (x=2..10, y=50..62)
-    draw_box(c, 2, 51, 8, 9, P["W"], P["O"], hi=P["W"], sh=P["w"])
-    c.fill_rect(3, 52, 6, 7, P["pmint_hi"])
-    c.fill_rect(5, 53, 2, 2, P["K"])  # pink scoop
-    c.fill_rect(5, 55, 2, 2, P["G"])  # cone
-    c.set_pixel(5, 57, P["D"])
-    c.fill_rect(3, 60, 2, 2, P["O"])
-    c.fill_rect(7, 60, 2, 2, P["O"])
+    # Handmade gelato cone standee with a strawberry scoop and waffle shading.
+    c.fill_rect(2, 50, 10, 5, P["O"])
+    c.fill_rect(4, 48, 6, 2, P["O"])
+    c.fill_rect(3, 51, 8, 3, P["K"])
+    c.fill_rect(5, 49, 4, 2, P["Q"])
+    c.set_pixel(4, 51, P["q"])
+    c.fill_rect(8, 52, 3, 2, P["k"])
+    c.fill_rect(4, 54, 6, 3, P["O"])
+    c.fill_rect(5, 57, 4, 3, P["O"])
+    c.fill_rect(5, 55, 4, 2, P["G"])
+    c.fill_rect(6, 57, 2, 2, P["D"])
+    c.set_pixel(7, 55, P["T"])
+    c.set_pixel(6, 57, P["G"])
+    c.fill_rect(3, 60, 8, 2, P["O"])
+    c.fill_rect(4, 60, 6, 1, P["T"])
 
     # Right cute cream planter pot with lush mint-green shrub & pink flowers (x=83..93, y=51..62)
     draw_leaf_cluster(

@@ -1,4 +1,4 @@
-# ⚙️ GIRLBUS: NEON STOP — Technical Stack, Risk Analysis & Architecture Blueprint (v2.0)
+# ⚙️ GIRLBUS: NEON STOP — Technical Stack, Risk Analysis & Architecture Blueprint (v2.4)
 > **Vincoli Ingegneristici del Progetto**:
 > 1. **Unica Codebase** per **Web (Wasm)**, **Android App** e **Linux Desktop**.
 > 2. **Priorità Assoluta 1**: **Codice pulito, semplice, leggero, facile da aggiustare e leggere** — minimizzando il rischio di scrivere codice contorto o introdurre bug nella logica di gameplay e nella gestione della memoria.
@@ -123,58 +123,97 @@ flowchart LR
 
 ---
 
-## 5. Struttura del Progetto (Pulita, Piatta e Facile da Navigare)
+## 5. Struttura Reale del Progetto (v2.4 — Piatta, Chiara & Pronta per Espansione)
 
-In Go evitiamo gerarchie profonde o astrazioni inutili. Ogni file ha una responsabilità chiara e immediata:
+In Go evitiamo gerarchie profonde o astrazioni inutili. Ogni package e file rispecchia esattamente l'organizzazione reale del repository:
 
 ```text
 girlbusAG/
-├── go.mod                          # Dipendenza unica: github.com/hajimehoshi/ebiten/v2
-├── main.go                         # Entry point (Inizializza finestra/Wasm/Mobile e lancia il loop)
-├── README.md                       # Indice generale del progetto
-├── 01_GAME_DESIGN_DOCUMENT.md      # GDD v2.0 Completo
+├── go.mod                          # Dipendenza principale: github.com/hajimehoshi/ebiten/v2 v2.8.6
+├── main.go                         # Entry point (Loop Update/Draw, routing click & guard modali, Overdrive, SFX)
+├── README.md                       # Panoramica progetto, stato build e comandi di avvio/test
+├── 01_GAME_DESIGN_DOCUMENT.md      # GDD v2.4 Completo
 ├── 02_TECH_STACK_AND_ARCHITECTURE.md
+├── 03_ART_STYLE_AND_SPRITE_BIBLE.md
 │
-├── assets/                         # Asset embedded nel binario con //go:embed (Zero file persi!)
-│   ├── embed.go                    # Carica sprite, audio e shader direttamente in memoria
-│   ├── sprites/
-│   │   └── atlas.png               # Singolo Texture Atlas Pixel-Art (Protagonista, Fermate, Ragazze, Boss, Polizia)
+├── assets/                         # Asset embedded nel binario con //go:embed (Zero file esterni richiesti!)
+│   ├── embed.go                    # SpriteBank, helper PlayerSkinSpriteKey & fallback automatici
+│   ├── shaders.go                  # Caricamento shader Kage
 │   ├── shaders/
-│   │   ├── katana_crt.kage         # Shader CRT + VHS Rewind + Aberrazione Cromatica (scritto in sintassi Go!)
-│   │   └── neon_bloom.kage         # Glow neon per Fermate, ZTL, Cavi Tether e sirene Polizia
-│   └── audio/
-│       ├── sfx/                    # Effetti sonori (.ogg)
-│       └── music/                  # Tracce Synthwave con filtro Low-Pass per il Chronos
+│   │   └── postprocess.kage        # Shader unico: Pixel Crisp (0) / Warm CRT (1) / VHS Noir (2) + Chronos/Rewind
+│   └── sprites/
+│       ├── characters/             # Alfredo Base + 4 Costumi (Drip, Banana, Chicken, Samurai), 4 Archetipi + VIP aura
+│       ├── world/                  # 6 Boss, Bus Neon & Bus Dorato, Polizia, Fermate, Proiettili, Vending
+│       ├── map/                    # Edifici, auto, lampioni, slot, alberi, barche e tile stradali
+│       └── ui/                     # Icone UI, Reliquie, Upgrade, Mouse, Stelle Wanted, Cure Espresso
 │
 ├── internal/
-│   ├── game/                       # 🧠 TUTTA LA LOGICA DI GIOCO (Leggibilissima e Piatta!)
-│   │   ├── world.go                # Struct World: contiene Giocatori, Fermate, Orde, Polizia, Boss e Loop Update()
-│   │   ├── player.go               # Movimento stile Katana ZERO, Dash i-frames, Mira Fermata, Chronos
-│   │   ├── bus_stop.go             # Fermate: Gittata, Raggio d'azione, Perfect Hit, Tether, Linee Express, Revive Co-op
-│   │   ├── girls.go                # Archetipi (Emo, Studentessa, Kawaii, Gyaru) + Bersagli VIP Off-Limits
-│   │   ├── bullets.go              # BulletPool pre-allocato (Zero-GC) + Spatial Grid collisioni veloci
-│   │   ├── police.go               # Sistema Stelle 1★-5★, Zone ZTL, Pattuglie/SWAT/Elicottero, Moltiplicatore XP/Soldi
-│   │   ├── bosses.go               # I 6 Boss (Migliore Amica, Amante, Professoressa, Dirigente, Rettrice, Mamma) + 3-Stop Break
-│   │   ├── economy.go              # Gestione XP (Level-Up in-run), Soldi (Shop Neon & Tangenti Polizia), Castrazione Lv1
-│   │   ├── challenges.go           # Tracker delle Challenge per sbloccare Mappe, Skin e Fermate tra le partite
-│   │   └── coop.go                 # Gestione 2-4 Player ("Caos Condiviso", Bolla Chronos Locale, Ghost Bus)
+│   ├── audio/                      # 🔊 Synthwave Procedurale Zero-Alloc + 25 SFX Pre-renderizzati (niente .ogg esterni)
+│   │   ├── audio.go                # Engine: ducking Low-Pass in Chronos, BPM dinamico, pool 4x per SFX
+│   │   ├── synth.go                # Sintesi musicale multi-layer (incluso Rizz Fever arpeggio)
+│   │   ├── sfx.go                  # Generatore PCM dei 25 effetti sonori (incl. ShieldBlock / ShieldBreak)
+│   │   └── audio_test.go
 │   │
-│   ├── minigames/                  # 🎮 1 File Semplice per ogni Minigioco (1.5-3.0s) + Combo Finale
-│   │   ├── minigame.go             # Interfaccia comune + Boarding Combo a 4 azioni
-│   │   ├── stardew_bar.go          # Barra tensione inerziale
-│   │   ├── pragmata_grid.go        # Griglia logica 4x4 (Nodi Blu/Gialli)
-│   │   ├── kawaii_graze.go         # "Schiva le Goccioline!" (Tear-Graze sotto l'ombrellino)
-│   │   └── emo_rhythm.go           # Sequenza ritmica Post-Punk
+│   ├── game/                       # 🧠 TUTTA LA SIMULAZIONE DETERMINISTICA PURE-GO
+│   │   ├── types.go                # Costanti (FixedPadCenterX/Y, Hitbox, Buffer 120ms, Coyote 0.35s), enum e tipi base
+│   │   ├── world.go                # Loop World.Update, Spawn/Pause/QueuedLevelUps, click priority, Overdrive, Eventi
+│   │   ├── player.go               # Movimento, Dash i-frames, Chronos Hold/Toggle, Reliquie, Cooldown & Bassline Pulse
+│   │   ├── bus_stop.go             # Fermate, scudo vetrata, ComputeStopUIAnchor/PadCenter, NeonBus
+│   │   ├── girls.go                # AI & pattern dei 4 archetipi + varianti VIP
+│   │   ├── bullets.go              # BulletPool statico da 4096 slot (Zero-GC) + deflessioni + scudo + AntiStop
+│   │   ├── police.go               # Wanted 1★–5★, Pattuglie, Volanti, Barriere 3★, SWAT AntiStop 4★, Elicottero 5★
+│   │   ├── bosses.go               # I 6 Boss Gatekeeper, Cloni, Scorta, ZTL Marziale, Ciabatta & 3-Stop Break
+│   │   ├── minigames.go            # Emo BPM Rhythm, Pragmata 4×4, Kawaii Tear-Graze, Gyaru Hold-to-Rise + Combo 4-Step
+│   │   ├── shop.go                 # Distributore Neon (Espresso, Tangente, Reliquie, Cassa) & Slot Rizz-Slots 777
+│   │   ├── map_layout.go           # Topologia distretto 1280×720 + astrazione MapDef / DefaultDistrictMap()
+│   │   └── *_test.go               # 30 unit test deterministici su bilanciamento, layout, boss, shop & polish
 │   │
-│   ├── render/                     # 🎨 RENDERER PIXEL-ART & UI DIEGETICA
-│   │   ├── renderer.go             # Disegna Arena, ZTL, Entità, Ologrammi Minigiochi e applica Shader Kage
-│   │   └── vfx.go                  # Hit-Stop (45/90/140ms), Camera Shake, VHS Rewind
+│   ├── input/                      # 🕹️ INPUT UNIFICATO CROSS-PLATFORM ("Zero Hand-Lift")
+│   │   ├── input.go                # WASD + Mouse LMB/RMB/Wheel + pad/bussola + fallback Frecce/IJKL + Gamepad + Touch
+│   │   └── input_test.go
 │   │
-│   └── input/                      # 🕹️ INPUT UNIFICATO CROSS-PLATFORM
-│       └── input.go                # Traduce Tastiera+Mouse, Gamepad e Touch Android nelle stesse 4 Azioni + Mira
+│   ├── meta/                       # 💾 PERSISTENZA, CHALLENGE & SKIN
+│   │   ├── meta.go                 # Settings (FilterMode, DirInputMode, ChronosToggle...) + Profile (5 Skin, 2 Bus, Titoli)
+│   │   ├── challenges.go           # 10 Challenge + RunTracker anti doppio-conteggio
+│   │   ├── storage_desktop.go / storage_wasm.go
+│   │   └── meta_test.go
+│   │
+│   ├── render/                     # 🎨 RENDERER PIXEL-ART & HUD DIEGETICA
+│   │   ├── renderer.go             # Arena Y-sorted, animazioni, mira, proiettili e riquadri dei minigiochi
+│   │   ├── action_effects.go       # Scintille, tether, avvisi corsia, scie dash e pannelli minigioco
+│   │   ├── hud.go                  # Salute, Chronos, boss, hotbar, notifiche e pannelli Upgrade/Shop/Slot
+│   │   ├── lighting.go             # Luci del quartiere, riflessi sul canale ed effetti delle entità
+│   │   ├── postprocess.go          # Wrapper shader PostProcessor (Warm CRT / VHS Noir / Pixel Crisp)
+│   │   └── ui_helpers.go           # Cache testo con accenti italiani (à è é ì ò ù) & misura rune UTF-8
+│   │
+│   └── ui/                         # 📋 MENU, OPZIONI & SFIDE
+│       ├── ui.go                   # Manager, transizioni, focus e input dei menu
+│       ├── theme.go                # Palette, componenti e geometria dei controlli
+│       ├── title.go                # Insegna e comandi della home
+│       ├── map_picker.go           # Selettore mappe, anteprime e animazione
+│       ├── menus.go                # Pausa, opzioni, comandi e risultati
+│       ├── guide.go                # Guida e accesso al tutorial interattivo
+│       ├── collection.go           # Sfide, anteprime e personalizzazione
+│       ├── reward_icons.go         # Icone dei premi e dello stato di sblocco
+│       └── ui_test.go              # Focus, opzioni, guida e navigazione mappe
 │
-└── scripts/                        # 🚀 BUILD 1-CLICK PER LE 3 PIATTAFORME
-    ├── build_linux.sh              # go build -ldflags="-s -w" -o dist/girlbus_linux
-    ├── build_web.sh                # GOOS=js GOARCH=wasm go build + compressione Brotli
-    └── build_android.sh            # ebitenmobile bind -> genera APK / AAB per Android
+├── tools/                          # 🎨 Pipeline generativa Python Pillow per sprite, costumi & preview 8x/10x
+├── scripts/                        # 🚀 Script di build (build_linux.sh, build_web.sh)
+└── dist/web/                       # 📦 Bundle WebAssembly (girlbus.wasm, index.html, wasm_exec.js)
 ```
+
+### Ordine di rendering
+
+1. `App.Update` chiama `Renderer.AdvanceVisuals` al passo di aggiornamento del gioco. Le animazioni ambientali e le notifiche avanzano in base a quel passo.
+2. `DrawWorldScene` disegna il quartiere a `640×360`. Le luci architettoniche e i riflessi del canale sono sotto gli sprite ordinati per coordinata Y. Gli effetti legati alle entità, l'autobus e la mira precedono i segnali di pericolo e i proiettili.
+3. `PostProcessor.Present` applica il filtro Kage selezionato. Il bloom è più intenso sugli accenti luminosi saturi. HUD, riquadri dei minigiochi e menu vengono composti dopo il filtro, così testo e hitbox restano allineati.
+4. `game.ComputeStopUIAnchor` fissa l'origine del pannello al lancio. `World.StopSafeTopY` riserva spazio ai banner in alto. La geometria del pannello in `renderer.go` serve anche a evitare sovrapposizioni con le notifiche di combattimento.
+
+Il selettore della home conserva la scheda corrente nel `ui.Manager`. Le anteprime sono disegnate una volta e riutilizzate durante la transizione. Le schede Spiaggia e Upcoming soon sono elementi dell'interfaccia. L'accesso alle modalità di gioco dalla home richiede la scheda Centro Neon, che usa `game.DefaultDistrictMap`.
+
+### Stato Tecnico Verificato (Build v2.4)
+* **Zero-GC Bullet Pool**: `BulletPool` usa un array fisso `[4096]Bullet` value-type (`MaxBullets = 4096`) senza allocazioni durante il combattimento.
+* **Audio Interamente Procedurale**: `internal/audio/` genera musica synthwave multi-layer e `25` buffer SFX in PCM `44.1 kHz` senza dipendere da asset audio esterni.
+* **Multi-Mappa Predisposta (`MapDef`)**: `DefaultDistrictMap()` in [internal/game/map_layout.go](./internal/game/map_layout.go) incapsula geometria, pool ragazze e 3 `ChestSpots` predisposti per i futuri Forzieri Boss.
+* I **49 test** passano in `internal/audio` (7), `internal/game` (30), `internal/input` (3), `internal/meta` (4) e `internal/ui` (5). Verificati anche `go vet ./...` e le compilazioni Windows e WebAssembly.
+* **Verifica visiva su Windows**. Catturati 20 scenari da Ebitengine, tra cui le tre schede della home, la transizione tra mappe, minigioco, boss, lungocanale e scene di gioco con i tre filtri.

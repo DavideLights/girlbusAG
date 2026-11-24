@@ -15,20 +15,22 @@ import (
 	"girlbusAG/internal/ui"
 )
 
-// App implements ebiten.Game for GIRLBUS: NEON STOP (girlbusAG v2.1).
+// App implements ebiten.Game for GIRLBUS: NEON STOP.
 type App struct {
-	world          *game.World
-	bgWorld        *game.World
-	renderer       *render.Renderer
-	post           *render.PostProcessor
-	reader         *input.Reader
-	ui             *ui.Manager
-	audio          *audio.Engine
-	save           meta.SaveData
-	tracker        meta.RunTracker
-	overdriveAck   bool
-	lastPerfectAim bool
-	tick           float32
+	world           *game.World
+	bgWorld         *game.World
+	renderer        *render.Renderer
+	post            *render.PostProcessor
+	reader          *input.Reader
+	ui              *ui.Manager
+	audio           *audio.Engine
+	save            meta.SaveData
+	tracker         meta.RunTracker
+	overdriveAck    bool
+	lastPerfectAim  bool
+	tick            float32
+	modalGuardTimer float32
+	wasModalOpen    bool
 }
 
 // NewApp initializes persisted settings/profile, SpriteBank, PostProcessor, Audio, UI, and World.
@@ -82,6 +84,8 @@ func (a *App) startRun(bossRush bool) {
 	a.tracker = meta.NewRunTracker()
 	a.overdriveAck = false
 	a.lastPerfectAim = false
+	a.modalGuardTimer = 0
+	a.wasModalOpen = false
 	a.ui.Scene = ui.ScenePlaying
 	a.applyPrefsToRenderer()
 }
@@ -91,6 +95,8 @@ func (a *App) startTutorial() {
 	a.tracker = meta.NewRunTracker()
 	a.overdriveAck = false
 	a.lastPerfectAim = false
+	a.modalGuardTimer = 0
+	a.wasModalOpen = false
 	a.ui.Scene = ui.ScenePlaying
 	a.applyPrefsToRenderer()
 }
@@ -102,12 +108,14 @@ func (a *App) applyPrefsToRenderer() {
 		a.save.Settings.ScreenShake,
 		a.save.Settings.ShowFPS,
 	)
+	a.renderer.SetDirInputMode(a.save.Settings.DirInputMode)
 }
 
 // Update advances menus or active gameplay simulation, audio ducking, and challenge tracking.
 func (a *App) Update() error {
 	const dt = float32(1.0 / 60.0)
 	a.tick += dt
+	a.renderer.AdvanceVisuals(dt)
 
 	if input.AnyInputJustPressed() {
 		a.audio.Unlock()
@@ -175,6 +183,9 @@ func (a *App) Update() error {
 			}
 		case ui.ActionContinueOverdrive:
 			a.overdriveAck = true
+			if a.world != nil {
+				a.world.EnterOverdrive()
+			}
 			a.ui.Scene = ui.ScenePlaying
 		case ui.ActionToTitle:
 			a.ui.OpenScene(ui.SceneTitle, ui.SceneTitle)
@@ -203,10 +214,11 @@ func (a *App) Update() error {
 	}
 
 	stopPhase := 0
-	var stopScreenX, stopScreenY float32
+	stopScreenX, stopScreenY := game.FixedPadCenterX, game.FixedPadCenterY
 	canThrowExtraStop := a.world.Player.StopCooldownTimer <= 0 && a.world.ActiveStopCount() < a.world.Player.EffectiveMaxStops()
 	if !a.world.PendingLevelUp && !a.world.ShopMenu.Active && !a.world.SlotModal.Active {
 		bestD2 := float32(1e12)
+		safeTopY := a.world.StopSafeTopY()
 		for i := range a.world.Stops {
 			st := &a.world.Stops[i]
 			if !st.Active || st.BusRushTriggered || !st.PlayerInside {
@@ -215,8 +227,15 @@ func (a *App) Update() error {
 			d2 := (a.world.Player.X-st.X)*(a.world.Player.X-st.X) + (a.world.Player.Y-st.Y)*(a.world.Player.Y-st.Y)
 			if d2 < bestD2 {
 				bestD2 = d2
-				stopScreenX = st.X - a.world.CameraX
-				stopScreenY = st.Y - a.world.CameraY
+				if a.save.Settings.DirInputMode == meta.DirModeAroundStop {
+					stopScreenX, stopScreenY = game.ClampCompassScreenPos(
+						st.X-a.world.CameraX,
+						st.Y-a.world.CameraY,
+						safeTopY,
+					)
+				} else {
+					stopScreenX, stopScreenY = st.PadCenter()
+				}
 				if !st.Minigame.Completed {
 					if st.Arch == game.ArchStudent {
 						stopPhase = 2
@@ -241,35 +260,54 @@ func (a *App) Update() error {
 		a.save.Settings.ChronosToggle,
 	)
 
+	// Guard against accidental click-through during the first 0.30s after any modal opens
+	modalOpen := a.world.PendingLevelUp || a.world.ShopMenu.Active || a.world.SlotModal.Active
+	if modalOpen && !a.wasModalOpen {
+		a.modalGuardTimer = 0.30
+	}
+	a.wasModalOpen = modalOpen
+	if a.modalGuardTimer > 0 {
+		a.modalGuardTimer -= dt
+		if a.modalGuardTimer < 0 {
+			a.modalGuardTimer = 0
+		}
+	}
+
 	// Mouse click routing for Level-Up cards, Shop modal, Slot modal, Tutorial HUD buttons, and Hotbar dock
 	if in.MouseLeftJustPressed {
 		mx, my := in.MouseScreenX, in.MouseScreenY
 		if a.world.PendingLevelUp {
-			for i := 0; i < 3; i++ {
-				if render.LevelUpCardRect(i).Contains(mx, my) {
-					in.ChooseUpgrade = i
-					a.audio.PlaySFX(audio.SFXUIClick)
-					break
-				}
-			}
-		} else if a.world.ShopMenu.Active {
-			if render.ShopCloseRect().Contains(mx, my) {
-				in.CancelJustPressed = true
-				a.audio.PlaySFX(audio.SFXUIClick)
-			} else {
-				for i := 0; i < 4; i++ {
-					if render.ShopChoiceRect(i).Contains(mx, my) {
-						in.ShopAction = i + 1
+			if a.modalGuardTimer <= 0 {
+				for i := 0; i < 3; i++ {
+					if render.LevelUpCardRect(i).Contains(mx, my) {
+						in.ChooseUpgrade = i
+						a.audio.PlaySFX(audio.SFXUIClick)
 						break
 					}
 				}
 			}
+		} else if a.world.ShopMenu.Active {
+			if a.modalGuardTimer <= 0 {
+				if render.ShopCloseRect().Contains(mx, my) {
+					in.CancelJustPressed = true
+					a.audio.PlaySFX(audio.SFXUIClick)
+				} else {
+					for i := 0; i < 4; i++ {
+						if render.ShopChoiceRect(i).Contains(mx, my) {
+							in.ShopAction = i + 1
+							break
+						}
+					}
+				}
+			}
 		} else if a.world.SlotModal.Active {
-			if render.SlotSpinRect().Contains(mx, my) {
-				in.SlotSpinJustPressed = true
-			} else if render.SlotCloseRect().Contains(mx, my) {
-				in.CancelJustPressed = true
-				a.audio.PlaySFX(audio.SFXUIClick)
+			if a.modalGuardTimer <= 0 {
+				if render.SlotSpinRect().Contains(mx, my) {
+					in.SlotSpinJustPressed = true
+				} else if render.SlotCloseRect().Contains(mx, my) {
+					in.CancelJustPressed = true
+					a.audio.PlaySFX(audio.SFXUIClick)
+				}
 			}
 		} else {
 			if a.world.TutorialMode {
@@ -433,6 +471,14 @@ func (a *App) processWorldEvents() {
 			} else {
 				a.audio.PlaySFX(audio.SFXShopBuy)
 			}
+		case game.EventRelicAcquired:
+			a.renderer.ShowRelicToast(game.RelicKind(ev.Value))
+		case game.EventStopShieldHit:
+			if ev.Flag {
+				a.audio.PlaySFX(audio.SFXShieldBreak)
+			} else {
+				a.audio.PlaySFX(audio.SFXShieldBlock)
+			}
 		}
 	}
 
@@ -490,7 +536,7 @@ func (a *App) Layout(_, _ int) (int, int) {
 
 func main() {
 	ebiten.SetWindowSize(1280, 720)
-	ebiten.SetWindowTitle("GIRLBUS: NEON STOP (v2.1)")
+	ebiten.SetWindowTitle("GIRLBUS: NEON STOP")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
 	if err := ebiten.RunGame(NewApp()); err != nil {

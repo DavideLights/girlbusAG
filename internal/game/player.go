@@ -2,8 +2,9 @@ package game
 
 // PlayerAfterimage stores one ghost trail snapshot for Alfredo's Katana-ZERO style Dash.
 type PlayerAfterimage struct {
-	X, Y  float32
-	Alpha float32
+	X, Y    float32
+	Alpha   float32
+	FacingX float32
 }
 
 // Player represents Alfredo, the nimble on-foot protagonist.
@@ -46,6 +47,7 @@ type Player struct {
 
 	// Combat status & game-feel timers
 	ThrowAnimTimer       float32
+	ThrowFacingX         float32
 	StunTimer            float32
 	SlowTimer            float32
 	GroundedTimer        float32 // La Mamma "In Punizione!" temporary slot penalty
@@ -384,7 +386,11 @@ func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog 
 			for i := len(p.Afterimages) - 1; i > 0; i-- {
 				p.Afterimages[i] = p.Afterimages[i-1]
 			}
-			p.Afterimages[0] = PlayerAfterimage{X: p.X, Y: p.Y, Alpha: 0.75}
+			facing := p.DashDirX
+			if facing == 0 {
+				facing = p.FacingX
+			}
+			p.Afterimages[0] = PlayerAfterimage{X: p.X, Y: p.Y, Alpha: 0.75, FacingX: facing}
 		}
 	} else {
 		spdMult := p.SpeedMult

@@ -4,22 +4,49 @@ import "math"
 
 // Bullet is a flat value-type projectile stored in BulletPool for Zero-GC updates.
 type Bullet struct {
-	X, Y        float32
-	VX, VY      float32
-	Radius      float32
-	Age, MaxAge float32
-	Kind        BulletKind
-	BouncesLeft int
+	X, Y         float32
+	VX, VY       float32
+	Radius       float32
+	Age, MaxAge  float32
+	Kind         BulletKind
+	BouncesLeft  int
 	Homing       bool
 	Grazed       bool
 	GlobalGrazed bool
 	SplitDone    bool
+	AntiStop     bool
+}
+
+// ShieldHitEvent records a BusStop back-glass shield hit or SWAT anti-stop strike.
+type ShieldHitEvent struct {
+	StopX, StopY float32
+	Broken       bool
+	AntiStop     bool
+	TimerShaved  bool
 }
 
 // BulletPool holds up to MaxBullets (4096) pre-allocated projectiles with O(1) swap-removal.
 type BulletPool struct {
-	Items [MaxBullets]Bullet
-	Count int
+	Items      [MaxBullets]Bullet
+	Count      int
+	ShieldHits []ShieldHitEvent
+}
+
+// DrainShieldHits returns and clears pending shield hit events recorded during Update.
+func (p *BulletPool) DrainShieldHits() []ShieldHitEvent {
+	if len(p.ShieldHits) == 0 {
+		return nil
+	}
+	out := make([]ShieldHitEvent, len(p.ShieldHits))
+	copy(out, p.ShieldHits)
+	p.ShieldHits = p.ShieldHits[:0]
+	return out
+}
+
+func (p *BulletPool) recordShieldHit(ev ShieldHitEvent) {
+	if len(p.ShieldHits) < 64 {
+		p.ShieldHits = append(p.ShieldHits, ev)
+	}
 }
 
 // Spawn inserts a bullet into the pre-allocated pool if capacity remains.
@@ -165,11 +192,40 @@ func (p *BulletPool) Update(dt, timeScale float32, playerX, playerY float32, sto
 		b.X += b.VX * effDT
 		b.Y += b.VY * effDT
 
-		// Bus Stop back-glass shield blocks bullets approaching from behind/top.
+		// Bus Stop back-glass shield & SWAT AntiStop strike checks.
 		blockedByShield := false
 		for s := range stops {
 			st := &stops[s]
-			if !st.Active || st.ShieldHP <= 0 {
+			if !st.Active {
+				continue
+			}
+			if b.AntiStop && !st.BusRushTriggered && distSq(b.X, b.Y, st.X, st.Y) <= 26.0*26.0 {
+				st.ShieldFlashTimer = 0.30
+				if st.ShieldHP > 0 {
+					st.ShieldHP--
+					p.recordShieldHit(ShieldHitEvent{
+						StopX:    st.X,
+						StopY:    st.Y,
+						Broken:   st.ShieldHP == 0,
+						AntiStop: true,
+					})
+				} else {
+					st.LifeTimer -= 2.5
+					if st.LifeTimer < 0 {
+						st.LifeTimer = 0
+					}
+					p.recordShieldHit(ShieldHitEvent{
+						StopX:       st.X,
+						StopY:       st.Y,
+						Broken:      true,
+						AntiStop:    true,
+						TimerShaved: true,
+					})
+				}
+				blockedByShield = true
+				break
+			}
+			if st.ShieldHP <= 0 {
 				continue
 			}
 			// Shield glass sits on the upper/back side of the shelter: [-26, +26] in X, [-28, -4] in Y.
@@ -177,6 +233,12 @@ func (p *BulletPool) Update(dt, timeScale float32, playerX, playerY float32, sto
 				b.X >= st.X-26 && b.X <= st.X+26 &&
 				b.Y >= st.Y-28 && b.Y <= st.Y-4 {
 				st.ShieldHP--
+				st.ShieldFlashTimer = 0.28
+				p.recordShieldHit(ShieldHitEvent{
+					StopX:  st.X,
+					StopY:  st.Y,
+					Broken: st.ShieldHP == 0,
+				})
 				blockedByShield = true
 				break
 			}

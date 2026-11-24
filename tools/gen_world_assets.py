@@ -261,43 +261,63 @@ STOP_GYARU_48: List[str] = [
     "................................................",  # 47
 ]
 
-# 1E. Standalone Neon Drink Vending Shop (32x32)
-# Bright red body (R,r), lighted glass display with colorful drink cans (X,Y,F,C),
-# glowing SHOP top header, and terracotta potted bush (Y,y,l,T,t,1) on the right!
-SHOP_VENDING_32: List[str] = [
-    "................................",  # 00
-    "................................",  # 01
-    "...OOOOOOOOOOOOOOOOOO...........",  # 02 - Vending top outline
-    "..ORRRRRRRRRRRRRRRRRRO..........",  # 03 - Bright red roof
-    "..ORggggggggggggggggRO..........",  # 04 - Glowing SHOP header frame
-    "..ORgXXXgXgXgXXXgXXXRO..........",  # 05 - S H O P pixel top (3x5 each)
-    "..ORgXgggXgXgXgXgXgXRO..........",  # 06 - S H O P pixel upper
-    "..ORgXXXgXXXgXgXgXXXRO..........",  # 07 - S H O P pixel mid
-    "..ORgggXgXgXgXgXgXggRO..........",  # 08 - S H O P pixel lower
-    "..ORgXXXgXgXgXXXgXggRO..........",  # 09 - S H O P pixel base
-    "..ORWWWWWWWWWWWWWWWWRO..........",  # 10 - Lighted white inner frame
-    "..ORWggggggggggggggWRO..........",  # 11 - Glass display top
-    "..ORWgXXggYYggFFggCWRO..........",  # 12 - Drink cans row 1 (Cyan, Green, Coral, Cream)
-    "..ORWgXXggYYggFFggCWRO..........",  # 13 - Drink cans row 1
-    "..ORWMMMMMMMMMMMMMMWRO..........",  # 14 - Metal shelf 1
-    "..ORWgCCggXXggKKggYWRO..........",  # 15 - Drink cans row 2 (Cream, Cyan, Pink, Green)
-    "..ORWgCCggXXggKKggYWRO..........",  # 16 - Drink cans row 2
-    "..ORWMMMMMMMMMMMMMMWRO..........",  # 17 - Metal shelf 2
-    "..ORWgFFggCCggXXggGWRO..........",  # 18 - Drink cans row 3 (Coral, Cream, Cyan, Gold)
-    "..ORWWWWWWWWWWWWWWWWRO..OOOOO...",  # 19 - Display bottom + Potted bush top!
-    "..ORRRRRRRRRRRRRRRRRRO.OllYYyO..",  # 20 - Red body + Bush foliage
-    "..ORROCCCCCCCCOORXGRROOllYYYYyO.",  # 21 - Glowing logo panel + Coin slot + Bush
-    "..ORROCCCCCCCCOORrGRROOllYYYYyyO",  # 22 - Logo panel + Bush
-    "..ORRRRRRRRRRRRRRRRRROYYYYyyyOO.",  # 23 - Red body + Bush lower
-    "..ORRROggggggggOORRRO.OyyyyyOO..",  # 24 - Dispenser slot + Bush base
-    "..ORRROgzzzzzzgOORRRO..OT11TO...",  # 25 - Dispenser flap + Terracotta pot rim
-    "..ORRROggggggggOORRRO..OTTTtO...",  # 26 - Dispenser base + Terracotta pot
-    "..ORRRRRRRRRRRRRRRRRRO.OOTttO...",  # 27 - Red base + Terracotta pot
-    "..OrrrrrrrrrrrrrrrrrrO..OTttO...",  # 28 - Red bottom shadow + Pot base
-    "..sOOOOOOOOOOOOOOOOOOs..OOOOO...",  # 29 - Base outline
-    "...ssssssssssssssssss..sssssss..",  # 30 - Ground shadow
-    "................................",  # 31
-]
+# 1E. Standalone Konbini espresso shop (32x32)
+def build_shop_vending_32() -> Canvas:
+    c = Canvas(32, 32)
+    p = PALETTE
+    vermilion = hex_to_rgba("#D94C53")
+    lacquer_hi = hex_to_rgba("#FF967E")
+    lacquer_sh = hex_to_rgba("#A12C4B")
+
+    # Lacquered steel cabinet with a bevel, shaded side and short rubber feet.
+    c.fill_rect(6, 2, 20, 27, p["O"])
+    c.fill_rect(4, 4, 24, 23, p["O"])
+    c.fill_rect(26, 6, 3, 19, p["O"])
+    c.fill_rect(7, 28, 4, 3, p["O"])
+    c.fill_rect(22, 28, 4, 3, p["O"])
+    c.fill_rect(25, 5, 2, 22, lacquer_sh)
+    c.fill_rect(27, 7, 1, 17, p["r"])
+    c.fill_rect(5, 4, 20, 23, vermilion)
+    c.fill_rect(7, 3, 17, 2, lacquer_hi)
+    c.fill_rect(5, 5, 1, 20, lacquer_hi)
+    c.fill_rect(7, 26, 17, 2, lacquer_sh)
+    for y in (17, 19, 21):
+        c.set_pixel(26, y, p["O"])
+
+    # Cream enamel marquee with a tiny ESP wordmark and ruby end caps.
+    c.fill_rect(7, 5, 16, 8, p["O"])
+    c.fill_rect(8, 6, 14, 6, p["C"])
+    c.fill_rect(8, 6, 14, 1, p["W"])
+    c.draw_grid(
+        ["###.###.##.", "#...#...#.#", "##..###.##.", "#.....#.#..", "###.###.#.."],
+        {"#": lacquer_sh, ".": p["."]},
+        offset_x=9,
+        offset_y=7,
+    )
+    c.set_pixel(21, 7, p["F"])
+    c.set_pixel(21, 10, p["F"])
+
+    # Espresso alcove with brushed steel, an actual spout and a silhouetted cup.
+    c.fill_rect(7, 14, 12, 11, p["O"])
+    c.fill_rect(8, 15, 10, 9, p["g"])
+    c.fill_rect(8, 15, 10, 1, p["M"])
+    c.fill_rect(11, 16, 4, 1, p["d"])
+    c.fill_rect(12, 17, 2, 1, p["1"])
+    c.fill_rect(11, 19, 5, 1, p["a"])
+    c.fill_rect(10, 20, 5, 2, p["C"])
+    c.fill_rect(11, 22, 3, 1, p["a"])
+    c.set_pixel(10, 20, p["W"])
+    c.set_pixel(15, 21, p["C"])
+    c.fill_rect(8, 23, 10, 1, p["M"])
+
+    # The cyan reader is the sole emissive accent on the control strip.
+    c.fill_rect(20, 14, 4, 10, lacquer_sh)
+    c.fill_rect(20, 15, 3, 3, p["g"])
+    c.set_pixel(21, 16, p["X"])
+    c.fill_rect(20, 19, 3, 1, p["C"])
+    c.fill_rect(20, 21, 3, 1, p["a"])
+    c.fill_rect(8, 26, 11, 1, lacquer_hi)
+    return c
 
 
 # ==============================================================================
@@ -995,25 +1015,97 @@ def build_tile_crosswalk_32() -> Canvas:
 # MAIN ASSET GENERATION & VERIFICATION
 # ==============================================================================
 
+ROUTE_GLYPHS = {
+    "1": ("010", "110", "010", "010", "111"),
+    "5": ("111", "100", "111", "001", "111"),
+    "E": ("111", "100", "110", "100", "111"),
+    "G": ("111", "100", "101", "101", "111"),
+    "I": ("111", "010", "010", "010", "111"),
+    "M": ("101", "111", "111", "101", "101"),
+    "N": ("101", "111", "111", "111", "101"),
+    "O": ("111", "101", "101", "101", "111"),
+    "P": ("111", "101", "111", "100", "100"),
+    "U": ("101", "101", "101", "101", "111"),
+}
+
+
+def draw_route_code(canvas: Canvas, x: int, y: int, label: str, ink: RGBA) -> None:
+    for index, letter in enumerate(label):
+        for row, pattern in enumerate(ROUTE_GLYPHS[letter]):
+            for column, pixel in enumerate(pattern):
+                if pixel == "1":
+                    canvas.set_pixel(x + index * 4 + column, y + row, ink)
+
+
+def build_stop_sign(grid: List[str], route: str, ink: RGBA) -> Canvas:
+    canvas = grid_to_canvas(grid, 48, 48, PALETTE)
+    canvas.fill_rect(5, 7, 22, 6, hex_to_rgba("#292339"))
+    canvas.fill_rect(5, 7, 22, 1, hex_to_rgba("#443752"))
+    canvas.fill_rect(7, 9, 3, 3, ink)
+    canvas.set_pixel(8, 10, hex_to_rgba("#292339"))
+    draw_route_code(canvas, 13, 8, route, ink)
+    return canvas
+
+
+def build_neon_bus() -> Canvas:
+    palette = {
+        **PALETTE,
+        "C": hex_to_rgba("#FFD8A9"),
+        "F": hex_to_rgba("#DB6184"),
+        "f": hex_to_rgba("#9B3C66"),
+        "N": hex_to_rgba("#3D476E"),
+        "n": hex_to_rgba("#262B46"),
+        "g": hex_to_rgba("#222238"),
+        "z": hex_to_rgba("#454563"),
+        "X": hex_to_rgba("#61E8D1"),
+        "2": hex_to_rgba("#2898A1"),
+        "3": hex_to_rgba("#B7F3DF"),
+    }
+    bus = grid_to_canvas(BUS_NEON_96, 96, 48, palette)
+    brass = hex_to_rgba("#FFE3B5")
+    highlight = hex_to_rgba("#F9889B")
+    frame = hex_to_rgba("#5F5A7D")
+    bus.fill_rect(30, 11, 39, 1, brass)
+    bus.fill_rect(12, 11, 14, 3, palette["g"])
+    bus.fill_rect(13, 12, 10, 1, palette["X"])
+    bus.fill_rect(24, 12, 1, 1, brass)
+    bus.fill_rect(9, 23, 12, 1, highlight)
+    bus.fill_rect(34, 23, 12, 1, highlight)
+    bus.fill_rect(58, 23, 11, 1, highlight)
+    for x in (26, 51):
+        bus.fill_rect(x, 16, 1, 11, frame)
+        bus.fill_rect(x + 2, 24, 2, 1, brass)
+    bus.fill_rect(76, 24, 6, 1, highlight)
+    bus.fill_rect(86, 17, 4, 7, palette["n"])
+    bus.fill_rect(87, 18, 3, 5, palette["z"])
+    bus.fill_rect(88, 19, 2, 1, frame)
+    bus.fill_rect(87, 29, 4, 2, brass)
+    bus.fill_rect(88, 29, 3, 1, palette["W"])
+    bus.fill_rect(4, 31, 3, 2, highlight)
+    bus.fill_rect(55, 31, 5, 5, palette["n"])
+    draw_route_code(bus, 56, 31, "1", brass)
+    return bus
+
+
 def main() -> None:
     os.makedirs(OUT_DIR, exist_ok=True)
 
     # 1. Bus Stops (48x48) & Standalone Vending Shop (32x32)
     stops_48 = {
-        "stop_kawaii": STOP_KAWAII_48,
-        "stop_emo": STOP_EMO_48,
-        "stop_student": STOP_STUDENT_48,
-        "stop_gyaru": STOP_GYARU_48,
+        "stop_kawaii": (STOP_KAWAII_48, "POP", PALETTE["q"]),
+        "stop_emo": (STOP_EMO_48, "EMO", PALETTE["Z"]),
+        "stop_student": (STOP_STUDENT_48, "UNI", PALETTE["3"]),
+        "stop_gyaru": (STOP_GYARU_48, "5G", PALETTE["X"]),
     }
-    for name, grid in stops_48.items():
-        canvas = grid_to_canvas(grid, 48, 48, PALETTE)
+    for name, (grid, route, ink) in stops_48.items():
+        canvas = build_stop_sign(grid, route, ink)
         save_asset_and_preview(canvas, OUT_DIR, name, zoom=6)
 
-    shop_canvas = grid_to_canvas(SHOP_VENDING_32, 32, 32, PALETTE)
+    shop_canvas = build_shop_vending_32()
     save_asset_and_preview(shop_canvas, OUT_DIR, "shop_vending", zoom=8)
 
     # 2. The Neon Bus (96x48)
-    bus_canvas = grid_to_canvas(BUS_NEON_96, 96, 48, PALETTE)
+    bus_canvas = build_neon_bus()
     save_asset_and_preview(bus_canvas, OUT_DIR, "bus_neon", zoom=5)
 
     # 3. Police Units (32x32 & 48x32)

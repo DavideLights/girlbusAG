@@ -161,8 +161,9 @@ func (w *World) HandleShopInput(in InputState) {
 			if picked == RelicFakeVIPPass {
 				w.Player.MaxMultiHook = clampInt(w.Player.MaxMultiHook+1, 1, 12)
 			}
-			w.ShopMenu.Message = "RELIQUIA: " + spec.Name + "!"
+			w.ShopMenu.Message = spec.Name + ": " + spec.Desc
 			w.addPopup(w.Player.X, w.Player.Y-32, spec.Name+"!", 1)
+			w.emitEvent(EventRelicAcquired, int(picked), false)
 		} else {
 			// All 6 relics already owned: bonus vitality boost
 			w.Player.MaxHP++

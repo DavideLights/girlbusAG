@@ -9,12 +9,12 @@ const (
 	ArenaWidth   = 1280
 	ArenaHeight  = 720
 
-	MaxBullets          = 4096
-	PerfectHitRadius    = float32(24.0)
-	PlayerHitboxRadius  = float32(6.0)
-	BaseGrazeRadius     = float32(28.0)
-	ExpressLinkMaxDist  = float32(450.0)
-	BusRushSpeed        = float32(900.0)
+	MaxBullets            = 4096
+	PerfectHitRadius      = float32(24.0)
+	PlayerHitboxRadius    = float32(6.0)
+	BaseGrazeRadius       = float32(28.0)
+	ExpressLinkMaxDist    = float32(450.0)
+	BusRushSpeed          = float32(900.0)
 	BasslinePulsePeriod   = float32(2.5)
 	BasslinePulseRadius   = float32(72.0)
 	BoardwalkRailY        = float32(676.0)
@@ -23,6 +23,10 @@ const (
 	TetherCoyoteDuration  = float32(0.35)
 	StreakWindowDuration  = float32(8.0)
 	BusSlipstreamDuration = float32(1.5)
+
+	// Fixed screen coordinates for Option B stable minigame / boarding directional mouse pad.
+	FixedPadCenterX = float32(384.0)
+	FixedPadCenterY = float32(275.0)
 )
 
 // Archetype identifies both Bus Stop shelter types and Girl horde archetypes.
@@ -216,6 +220,8 @@ const (
 	EventSlipstream
 	EventFeverUp
 	EventHealPickup
+	EventRelicAcquired
+	EventStopShieldHit
 )
 
 // WorldEvent records a single simulation event emitted during World.Update.
@@ -319,8 +325,10 @@ type WaveRing struct {
 	MaxRadius float32
 	Life      float32
 	MaxLife   float32
-	Kind      int // 0=Bassline, 1=PerfectCancel, 2=BusPurify, 3=CampusBell, 4=ViralFlash
+	Kind      int // 0=Bassline, 1=PerfectCancel, 2=BusPurify, 3=CampusBell, 4=ViralFlash, 5=BossBreak
 }
+
+const WaveBossBreak = 5
 
 // BusSlipstream represents the temporary aerodynamic speed ribbon left behind by a streaking NeonBus.
 type BusSlipstream struct {
@@ -330,12 +338,13 @@ type BusSlipstream struct {
 
 // HealPickup represents a world-space healing collectible ("Cure in giro") dropped across the district.
 type HealPickup struct {
-	X, Y      float64
-	Amount    int // 1 or 2 HP
-	Chronos   float64
-	LifeTimer float64
-	BobPhase  float64
-	Big       bool
+	X, Y       float64
+	Amount     int // 1 or 2 HP
+	Chronos    float64
+	LifeTimer  float64
+	BobPhase   float64
+	Big        bool
+	BlackHeart bool
 }
 
 // UpgradeKind identifies an in-run Level-Up upgrade card.

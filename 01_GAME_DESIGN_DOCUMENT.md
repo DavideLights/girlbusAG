@@ -1,4 +1,4 @@
-# 🚍 GIRLBUS: NEON STOP — Game Design Document (GDD v2.1 - Ergonomia & Loop Avanzato)
+# 🚍 GIRLBUS: NEON STOP — Game Design Document (GDD v2.4 - Build Stabile Pre-Espansione, Ergonomia & Roadmap Espansione)
 > **Studio Pillar**: *"Se Rockstar Games facesse un 2D Pixel-Art Rogue-lite Bullet-Hell su rimorchiare ragazze alle fermate dell'autobus sotto pioggia acida, volanti della polizia e synthwave."*
 > **Core References**: *Katana ZERO* (Personaggio a piedi agile, Chronos, Hit-Stop, Neon-Noir, VHS Glitch) × *PokéBonk / Vampire Survivors* (Arena Continua Evolvibile, Orde Esponenziali, Telegraphs) × *Stardew Valley* & *Pragmata* (Tensione Micro-Minigioco in Tempo Reale) × *GTA* (Sistema Wanted a Stelle Polizia Risk/Reward).
 
@@ -22,7 +22,7 @@
 | **Katana ZERO** | Chronos (Slow-Mo), Hit-Stop brutale, VHS Rewind, Neon-Noir | **Chronos "Rizz-Focus"**: rallenta il bullet-hell attorno alla fermata (`0.25x`). **VHS Rewind**: ogni morte (*Heartbreak*) riavvolge il nastro magnetico della partita. | • **Hit-stop**: `45 ms` aggancio base, `90 ms` *Perfect Drop*, `140 ms` *Boss Break*.<br>• **Audio Ducking**: filtro Passa-Basso (`800 Hz`) sul synthwave durante il Chronos. |
 | **PokéBonk** | Arena continua, auto-impulsi per la folla minore, telegraph a corsie | Il protagonista emette un **impulso ritmico passivo** (*Bassline Pulse*) per respingere i disturbi minori, mentre le **Ragazze e i Boss** si catturano attivamente piazzando le **Fermate**. | • **Run Rapida**: **8–10 minuti** ad altissima intensità.<br>• **Telegraph Corsie**: linee LED rosse (`0.8s`) prima di cariche, laser o volanti della Polizia. |
 | **Stardew Valley** | Barra d'inerzia con *Sweet Spot* mobile | **Minigioco "Tension-Lock"**: barra olografica verticale a fianco della fermata; tieni il cursore sull'icona della ragazza con tap ritmici mentre schivi i proiettili. | • **Decay**: `-18%/s` fuori zona; `+30%` carica istantanea se hai centrato il *Perfect Hit*. |
-| **Pragmata** | Griglia di nodi in tempo reale durante il combattimento | **Minigioco "Route-Hack"**: griglia `3x3` o `4x4` stile display LED dell'autobus. Collega Start a **`[BOARD]`** passando su nodi **Blu** (`+XP/Soldi`) e **Gialli** (*Freeze Proiettili / Scudo*). | • **Persistenza**: se smetti di premere per fare un Dash schivata, il cursore **resta dov'è**.<br>• **Punizione Hit**: se subisci danno, il percorso si resetta. |
+| **Pragmata** | Griglia di nodi in tempo reale durante il combattimento | **Minigioco "Route-Hack"**. Nella griglia `4x4` punta alla bandiera verde in basso a destra. I nodi facoltativi danno **XP** (azzurro) o rallentano i proiettili (clessidra gialla). | • **Persistenza**: se smetti di premere per fare un Dash schivata, il cursore **resta dov'è**.<br>• **Punizione Hit**: se subisci danno, il percorso si resetta. |
 
 * **Regola d'Oro UI Diegetica**: Zero pop-up modali. I minigiochi sono ologrammi al neon ancorati in *world-space* accanto alla fermata (`75%` opacità, colori freddi Ciano/Verde contro i proiettili nemici Rosso/Magenta/Giallo).
 
@@ -86,7 +86,8 @@ La partita si svolge in un'**Arena Continua Evolvibile** (stile *Vampire Survivo
 I Boss non muoiono sparandogli a caso: hanno una barra **"Autorità / Orgoglio" divisa in 3 Fasi (3 Scudi)**.
 1. Per rompere ciascuna delle 3 fasi, devi **centrare il Boss con una Fermata**, resistere dentro il raggio al suo **Pattern Bullet-Hell Speciale** mentre completi il Minigioco, e chiudere la **Boarding Combo**.
 2. A ogni fase spezzata, il Boss va in *Enrage*, cambia pattern di attacco e chiama rinforzi.
-3. Spezzata la **3ª Fase**, il Boss cede e viene caricato sull'Autobus! Rilascia una **Cassa Boss (Upgrade Leggendario + Pioggia di Soldi)**, riduce di `-2★` la Polizia e **fa scattare istantaneamente il Tier di Difficoltà successivo dell'arena** (nuovi archetipi di ragazze, densità orde aumentata, musica che sale di BPM).
+3. Spezzata la **3ª Fase**, il Boss cede e viene caricato sull'Autobus! Rilascia **Soldi + 1 Chiave Boss (`🔑`)**, riduce di `-2★` la Polizia e **fa scattare istantaneamente il Tier di Difficoltà successivo dell'arena** (nuovi archetipi di ragazze, densità orde aumentata, musica che sale di BPM).
+   * **Forzieri Blindati Neon (Novità v2.3)**: In ogni mappa sono posizionati **Forzieri / Cassette Sicure** chiusi (`🔒`). Spendendo una **Chiave Boss** lasciata cadere da un Boss sconfitto e avvicinandosi al forziere, il giocatore lo apre ottenendo **Reliquie Rare / Upgrade Leggendari / Pack di Caffè & Cash** esclusivi.
 
 ### 4.2 I 6 Boss del Gioco (Meccaniche & Pattern)
 
@@ -108,9 +109,41 @@ Ogni fermata ha **Gittata di Lancio**, **Raggio d'Azione**, **Perk**, **Minigioc
 | Archetipo Fermata & Ragazza | 🎯 Gittata Lancio & Raggio Azione | 🚏 Perk della Fermata | 💃 Pattern Bullet-Hell della Tipa | 🎮 Minigioco (1.5–3.0s) | 💜 Match Perfetto (Affinità) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **1. EMO**<br>*(Pensilina Grunge Viola)* | **Gittata**: Media (`220px`)<br>**Raggio**: Ampio (`140px`) | **Melancholic Fog**: nebbia che rallenta del `30%` tutti i proiettili nel raggio e carica il Chronos. | **Razor Cross**: spirali lente che dopo `1.0s` si spezzano in croci diagonali veloci. | **Rhythm-Lock**: premi le 4 direzioni/azioni a tempo col basso post-punk quando le note toccano il centro. | **`SOULMATE`**: La nebbia assorbe 1 hit gratis + Finestra combo `+40%` + Droppa *Black Heart* (Cura). |
-| **2. STUDENTESSA (Uni)**<br>*(Pensilina Campus LED)* | **Gittata**: Lunga (`300px`)<br>**Raggio**: Medio (`105px`) | **Campus Bell**: ogni `3.5s` suona la campanella che respinge (*Knockback*) le folle e le pattuglie vicine. | **Protractor Laser**: linee laser geometriche (`0.7s` telegraph) + aeroplanini di carta rimbalzanti. | **Pragmata Grid (`4x4`)**: collega Start a `[PASS]` toccando nodi **Blu** (`+XP`) e **Gialli** (*Freeze Laser*). | **`HONOR ROLL`**: 1 nodo Blu e 1 Giallo già attivi + Stordisce le Studentesse nel raggio per `1.2s`. |
+| **2. STUDENTESSA (Uni)**<br>*(Pensilina Campus LED)* | **Gittata**: Lunga (`300px`)<br>**Raggio**: Medio (`105px`) | **Campus Bell**: ogni `3.5s` suona la campanella che respinge (*Knockback*) le folle e le pattuglie vicine. | **Protractor Laser**: linee laser geometriche (`0.7s` telegraph) + aeroplanini di carta rimbalzanti. | **Pragmata Grid (`4x4`)**. Raggiungi la bandiera verde. I nodi facoltativi danno `20 XP` base (azzurro) o portano i proiettili all'`8%` della velocità per `1.5s` (giallo). | **`HONOR ROLL`**: 1 nodo Blu e 1 Giallo già attivi + Stordisce le Studentesse nel raggio per `1.2s`. |
 | **3. KAWAII**<br>*(Pensilina Ombrellino Rosa)* | **Gittata**: Corta (`150px`)<br>**Raggio**: Compatto (`85px`) | **Purikura Umbrella**: devia i proiettili verticali e trasforma le goccioline sfiorate in scintille a ricerca. | **Sweatdrop Rain**: pioggia densa di **Goccioline Anime** 💧 rimbalzanti + anelli di cuoricini. | **"Schiva le Goccioline!" (Tear-Graze)**: danza sotto l'ombrellino sfiorando (*Graze* `<= 22px`) le goccioline blu/rosa senza toccarle! | **`MOE CRITICAL`**: Raggio di *Graze* raddoppiato + Ogni gocciolina sfiorata cancella 2 proiettili nemici. |
 | **4. CYBER-GYARU**<br>*(Pensilina Hologram 5G)* | **Gittata**: Molto Lunga (`360px`)<br>**Raggio**: Esteso (`165px`) | **5G Hotspot Chain**: fulmina i nemici che tagliano il cavo Tether e si collega alle altre fermate a distanza `+50%`. | **Ring-Light Flash**: coni fotografici accecanti + droni che sparano raffiche triforcute. | **Stardew Valley Bar**: tieni il cursore verde sull'icona *Trending* che scatta in alto e in basso. | **`VIRAL #1`**: Cursore Stardew `+35%` più grande + Emette un *Mega-Flash* che stordisce l'orda per `2s`. |
+
+### 5.1 Espansione Roster Futuro — Nuove Mappe & Archetipi di Ragazze (Specifica Design v2.3)
+
+Per dare progressione reale alle future **Nuove Mappe Sbloccabili**, i nuovi archetipi di Ragazze & Fermate non entrano tutti insieme fin dall'inizio: **vengono sbloccati progressivamente man mano che il giocatore sblocca nuove arene**:
+
+1. **🎻 Ragazza Musicista (*Chitarra Elettrica / Violino Neon*) — Minigioco "Virtuoso Hero" (Stile *Guitar Hero* + Time-Freeze)** *(Sbloccabile su Mappa "Cyber-Shibuya Crossing / Distretto Club")*:
+   * **Avatar & Arma Scenica**: Musicista glam/rock-classica con **chitarra elettrica al neon** oppure **violino elettrico luminoso** (variante visiva in-run).
+   * **Pattern Bullet-Hell**: onde sonore a pentagramma e raffiche ritmiche di "note/accordi" con telegraph visivo sul tempo della musica.
+   * **Perk Pensilina (*Palco Acustico*)**: amplifica il *Bassline Pulse* e ricarica lentamente il Chronos finché stai dentro il raggio.
+   * **Minigioco Dedicato — "Virtuoso Hero" (4 Colonne + Time-Freeze)**:
+     * All'aggancio, la fermata genera una **bolla di Time-Freeze temporaneo** (`2.5–3.5s`) per permettere al giocatore di concentrarsi al 100% sull'esecuzione musicale senza rischi letali immediati.
+     * Compaiono **4 colonne verticali** (come *Guitar Hero*) in cui scendono pallini/note a tempo sul motivo musicale.
+     * Controlli unificati: 4 colonne mappate su `A/S/D/F`, `Frecce/IJKL`, 4 tasti frontali Gamepad (`Y/B/A/X`) oppure clic diretti sulle 4 tracce touch/mouse.
+     * **Valutazione Timing**: ogni nota presa assegna **`PERFECT`**, **`GOOD`** o **`MISS`**; precisione alta e Combo di note moltiplicano **XP, Cash (`fino a 2.5x`)** e potenziano l'onda finale **Encore Bullet-Clear** quando passa il Bus.
+
+2. **🏋️‍♀️ Ragazza Palestrata (*Fitness / Gym-Crush*) — Minigioco "Max Trazioni" & Alternative** *(Sbloccabile su Mappa "Neon Iron District / Zona Fitness")*:
+   * **Identità & Pattern Bullet-Hell**: atleta iper-energetica con manubri neon; lancia dischi/kettlebell rimbalzanti e onde d'urto a terra in palestra urbana.
+   * **Perk Pensilina (*Rack Corazzato*)**: vetrata posteriore rinforzata con scudi extra e *knockback* fisico contro chi entra nel cerchio.
+   * **Proposta Principale — "Max Trazioni / Pull-Up Mash" (Idea Luca)**: finestra intensa di `3.0–4.0s` in cui devi premere **il più velocemente possibile il tasto sinistro del mouse (`LMB`)** (o `SPACE`) per accumulare il massimo numero di trazioni alla sbarra prima dello scadere del tempo; ogni soglia superata (`5 / 10 / 15+ trazioni`) aumenta il punteggio Rizz/Cash e libera una scarica muscolare che respinge i nemici vicini.
+   * **Proposte Alternative da Valutare**:
+     * *Proposta A — "Max-Rep Spotter" (3 Serie Timing)*: 3 barre di sollevamento a velocità crescente dove devi fermare l'indicatore nella zona dorata (*PR! Personal Record*) per liberare una scarica d'urto.
+     * *Proposta B — "Kettlebell Rhythm-Pump"*: tieni premuto per caricare la spinta e rilascia al picco ottimale; ogni ripetizione pulita scaglia un manubrio olografico contro i proiettili in arrivo.
+
+3. **🏐 Ragazza Pallavolista (*Volley Ace*) — Minigioco "Mini-Partita / Spike" *(Idee in Definizione)*** *(Sbloccabile su Mappa "Lungomare Sunset / Arena Volley")*:
+   * **Identità & Pattern Bullet-Hell**: schiacciatrice da torneo notturno; esegue *Jump Serve* ad arco parabolico con ombra d'impatto sull'asfalto e "muri" lineari a rete.
+   * **Perk Pensilina (*Rete Rimbalzante*)**: la parte superiore della pensilina diventa una rete elastica che rimanda indietro parte dei proiettili nemici.
+   * **Proposte Minigioco da Valutare**:
+     * *Proposta A — "Mini-Rally 3-Tocchi" (Bagher → Alzata → Schiacciata)*: micro-campo olografico 2D laterale diviso da una rete; sposti il cursore/clicchi per chiudere 3 passaggi puliti e concludere con la **Schiacciata (`SPIKE!`)** che spazza i proiettili reali nell'arena.
+     * *Proposta B — "Muro & Schiacciata" (Timing 2-Fasi)*: prima scegli rapidamente la corsia della battuta avversaria (sinistra/centro/destra), poi premi a tempo al culmine del salto per schiacciare a punto.
+4. **🖱️ Idea Minigioco Futuro Dual-Click (`Click SX + Click DX` / `LMB + RMB`) *(Concept in Sviluppo)***:
+   * **Obiettivo Ergonomico**: sfruttare **entrambi i tasti principali del mouse (`LMB` + `RMB`)** senza mai staccare le mani da `WASD` + Mouse (mantenendo `SPAZIO` sempre dedicato al Dash durante la sequenza).
+   * **Possibile Meccanica**: sequenze rapide di **Parata / Contrattacco** o **Ritmo Bimanuale SX/DX** (es. indicatori ciano `LMB` e magenta `RMB` alternati su due tracce corte, o doppio-click simultaneo sul picco per bonus `2x`!).
 
 ---
 
@@ -121,27 +154,30 @@ Non esistono potenziamenti statistici permanenti (`+danno` o `-cooldown` comprat
 
 | Parametro | 🔒 Punto di Partenza ("Castrato" - Minuto 0:00) | 🔓 Dopo Boss 1–2 (Minuto 3:00–5:00) | 🔥 Climax pre-Boss Finale (Minuto 8:00+) |
 | :--- | :--- | :--- | :--- |
-| **Cooldown Fermata** | **`12.0 secondi`** (se sbagli il lancio sei nei guai) | `6.0 secondi` (`-35%` su Perfect Hit) | **`1.5 secondi`** (Reset istantaneo su *Multi-Perfect*) |
+| **Cooldown Fermata** | **`6.5 secondi`** (se sbagli il lancio devi aspettare o fare Graze/Parry) | `3.5–4.5 secondi` (`-35%` su Perfect Hit / Recall) | **`1.5 secondi`** (Reset istantaneo / dimezzato su *Rush Hour*) |
 | **Fermate Attive in Arena** | **`1 sola Fermata`** | `2 Fermate` (sblocco *Linea Urbana*) | **`4–5 Fermate`** di archetipi misti con *Zona Capolinea* |
 | **Multi-Hook (Orda)** | **`1 sola ragazza`** agganciata per fermata | `3–4 ragazze` simultanee | **`10–15+ ragazze`** catturate con 1 solo Minigioco + Combo! |
 | **Chronos (Slow-Mo)** | **`0% Slow-Mo (1.0x)`** — risolvi il minigioco a velocità reale! | `0.60x` per `1.5s` su aggancio | **`0.20x` ("Katana Zero Time")** dentro il raggio della pensilina |
 | **Gittata & Raggio** | Valori base ridotti del `-25%` | Valori standard dell'archetipo | **`+60%` Raggio d'Azione** con onde d'urto a catena |
 
-### 6.2 Economia In-Run: XP vs Soldi (Cash)
+### 6.2 Economia In-Run: XP, Soldi (Cash) & Chiavi Boss
 * **XP (Esperienza)**: Si ottiene catturando ragazze e sconfiggendo Boss (moltiplicata fino a `3.5x` dalle Stelle Polizia!). Ad ogni Level-Up scegli **1 di 3 Upgrade** per potenziare le tue fermate, ridurre il cooldown o aumentare il Multi-Hook.
 * **Soldi (Cash `$`)**: Si ottengono con le catture, i bersagli **VIP / ZTL (`3x`)** e il moltiplicatore **Polizia (`+300%` a 5★)**. Si spendono **solo dentro la partita** presso i **Chioschi / Distributori Neon** nell'arena per:
   1. Comprare **Nuove Tipologie di Fermate** o **Reliquie/Moduli Rari**.
   2. Comprare **Caffè Espresso / Kit Rizz** (Cura HP / Ricarica Chronos).
   3. **Pagare la Cauzione / Tangente** per azzerare o ridurre le Stelle della Polizia quando il bullet-hell a 4★–5★ diventa insostenibile!
+* **Chiavi Boss & Forzieri nella Mappa (`🔑` -> `🔒`)**:
+  * Ogni Boss sconfitto rilascia **1 Chiave Boss** raccolta automaticamente (mostrata nell'HUD).
+  * In punti chiave della mappa spawnano **Forzieri Blindati Neon** (2–3 per arena) chiusi a chiave: passando vicino con una **Chiave Boss** il forziere si sblocca con animazione ed eroga **1 Reliquia garantita + Cash / Caffè Espresso**, premiando l'esplorazione attiva dell'arena dopo ogni scontro Boss!
 
 ### 6.3 Progressione Tra le Partite: Sbloccabili tramite Challenge!
 Tra una partita e l'altra non compri statistiche, ma sblocchi **contenuti orizzontali e cosmetici** completando **Challenge specifiche in partita**:
 
 | Categoria Sbloccabile | Esempio di Challenge in Partita | Cosa Sblocca per le Partite Future |
 | :--- | :--- | :--- |
-| 🗺️ **Nuove Mappe / Arene** | *"Sconfiggi La Rettrice con almeno 3★ di Polizia attive"* | **Mappa "Cyber-Shibuya Crossing"** (nuovi incroci ZTL, treni sopraelevati e pool ragazze inedito). |
+| 🗺️ **Nuove Mappe & Nuove Ragazze** | *"Sconfiggi La Rettrice con almeno 3★ di Polizia attive"* | **Nuove Arene** (*Cyber-Shibuya*, *Zona Fitness*, *Volley Arena*) con **nuovi archetipi di ragazze** dedicati (Musicista, Palestrata, Pallavolista). |
 | 🚏 **Nuove Fermate (Pool & Starter)** | *"Cattura 8 ragazze contemporaneamente con una sola Fermata"* | **Fermata Goth-Industrial** o **Fermata VIP Limousine** selezionabile a inizio run o trovabile negli Shop. |
-| 🎨 **Skin Protagonista, Pensiline & Bus** | *"Sopravvivi per 60 secondi a 5★ di Polizia senza subire danni"* | **Skin "Cyber-Samurai Zero"** per il protagonista + **Autobus Dorato Drift** + **Pensiline Olografiche Arcade**. |
+| 🎨 **Skin Protagonista, Costumi, Bus & Titoli** | *"Sopravvivi per 45s a 5★ senza danni" / "Affinità Totale" / "Autobus Pieno"* | **Costumi Alfredo (`Neon Drip`, `Alfredo Banana`, `Alfredo Aletta di Pollo`, `Cyber-Samurai Zero`)** + **Autobus Dorato Drift** + **Titoli Profilo** equipaggiabili. |
 | 🎭 **Modificatori & Boss Rush** | *"Batti tutti e 6 i Boss del gioco almeno una volta"* | Modalità **"Rush Orario di Punta"** (tutti e 6 i Boss in una singola run estrema). |
 
 ---
@@ -227,9 +263,21 @@ Per rompere la monotonia tra un Boss e l'altro senza introdurre popup invasivi, 
 
 ### 8.4 Roadmap Prioritizzata di Implementazione (Impatto vs Sforzo)
 
-1. **Priorità P0 — Ergonomia & Game Feel Immediato *(Massimo impatto a zero nuovi asset)***:
-   * Modalità *Zero Hand-Lift* su Mouse (`LMB` nei minigiochi 1-tasto, quadranti cliccabili/puntatore per Pragmata & Combo, `Rotellina Mouse` cambio fermata), separazione `Click Destro` Dash vs `Cancel`, `Shift Sinistro` Chronos (Hold/Toggle), `Input Buffer 120ms`, `Tether Coyote Time 0.35s`, `Gyaru Hold-to-Rise`, `Emo BPM-Sync`, Gamepad Stick Destro + Face Buttons e *Smart Magnetic Aim* per Solo Tastiera.
-2. **Priorità P1 — Meccaniche di Profondità sul Loop *(Trasformano i tempi morti in azione)***:
-   * *Bullet Graze Globale* + *Dash-Parry* riduzione cooldown, *Stop Recall 50% + EMP*, *Rizz Fever Streak (`x2`→`x5`)* con layer synthwave, *Bus Slipstream + Al Volo* e *Herding Magnet-Beat*.
-3. **Priorità P2 — Eventi Dinamici & Espansione Contenuti**:
-   * I `4 Eventi Dinamici di Quartiere`, seconda arena sbloccabile (*Cyber-Shibuya Crossing*), nuove fermate (*Goth-Industrial* / *VIP Limousine*), **Multiplayer Cooperativo 2–4 Giocatori** (*Caos Condiviso*) e **HUD Touch + Build Android** (`scripts/build_android.sh`).
+1. **Priorità P0 — Ergonomia & Game Feel Immediato *(Completato ✅)***:
+   * Modalità *Zero Hand-Lift* su Mouse (`LMB` nei minigiochi 1-tasto, pad/bussola cliccabili per Pragmata & Combo, `Rotellina Mouse` cambio fermata), separazione `Click Destro` Dash vs `Cancel`, `Shift Sinistro` Chronos (Hold/Toggle), `Input Buffer 120ms`, `Tether Coyote Time 0.35s`, `Gyaru Hold-to-Rise`, `Emo BPM-Sync`, Gamepad Twin-Stick + Face Buttons, *Smart Magnetic Aim* e fallback `Frecce/IJKL`.
+2. **Priorità P1 — Meccaniche di Profondità sul Loop *(Completato ✅)***:
+   * *Bullet Graze Globale* + *Dash-Parry* riduzione cooldown, *Stop Recall 50% + EMP*, *Rizz Fever Streak (`x2`→`x5`)* con layer synthwave, *Bus Slipstream + Al Volo*, *Herding Magnet-Beat*, *Overdrive* ciclico post-vittoria e modalità *Boss Rush*.
+3. **Polish, Chiarezza & Bugfix Pre-Espansione *(Completato ✅)***:
+   * Box minigioco ancorato sul punto di click fino a fine fermata, opzione **Controllo frecce** con **Pad nel riquadro** o **Attorno alla fermata**, priorità `LMB` su ragazze/minigiochi rispetto a Shop/Slot, coda Level-Up in minigioco + guardia anti-misclick `0.30s`, barre pixel-aligned (`+0.5`), indicatori debuff/buff su Alfredo, vetrata scudo con pip e flash/SFX, frecce fuori schermo (`BOSS` / `CURA`), mirino radiale di cooldown/blocco, accenti italiani nitidi, 5 costumi Alfredo ripuliti + *Autobus Dorato* + Titoli equipaggiabili e `MapDef` multi-mappa predisposto.
+   * La rifinitura visiva di menu, HUD e arena è descritta nella sezione 8.5.
+4. **Priorità P2 — Eventi Dinamici & Espansione Contenuti *(Prossima Fase)***:
+   * I `4 Eventi Dinamici di Quartiere`, **Nuove Mappe Sbloccabili** con i nuovi archetipi (*Musicista*, *Palestrata Max Trazioni*, *Pallavolista* + concept Dual-Click `LMB+RMB`), **Chiavi Boss & Forzieri Blindati Neon**, **Multiplayer Cooperativo 2–4 Giocatori** (*Caos Condiviso*) e **HUD Touch + Build Android**.
+
+### 8.5 Presentazione e leggibilità in partita
+
+- Accanto all'insegna pixel art, il selettore mostra **Centro Neon** come unica mappa giocabile, **Spiaggia** come anteprima oscurata con lucchetto e **Upcoming soon** come scheda delle mappe future. Una scheda bloccata disabilita l'avvio della run e della Boss Rush dalla home.
+- **Impara a giocare** apre una guida che spiega il primo imbarco in tre azioni: piazzare la fermata, completare il minigioco e chiudere la combo per chiamare il bus. La guida include l'accesso al tutorial interattivo. **Comandi** apre il riferimento ai controlli, mentre **Sfide & skin** mostra requisiti, sblocchi e anteprime.
+- La barra in alto raggruppa salute attuale e massima, Chronos, ricercato, tempo, fase, cassa, livello e XP. Le etichette e gli accenti di colore rendono riconoscibili i gruppi. La barra in basso indica l'archetipo attivo, il numero di fermate piazzate rispetto al limite e lo stato del lancio. Gli scudi del boss hanno un indicatore dedicato.
+- Il riquadro del minigioco resta vicino al punto di lancio. Quando il click comanda il minigioco o la combo, il mirino di lancio lascia spazio ai relativi indicatori. I messaggi di Perfect Drop e affinità si dispongono attorno al riquadro.
+- Nella UNI, la bandiera, le lettere XP e la clessidra compaiono sia nelle caselle sia nella legenda breve accanto alla griglia. L'istruzione «Vai all'arrivo» indica l'obiettivo prima di presentare i bonus.
+- La posa di lancio segue la direzione del bersaglio. L'ingresso della pensilina, le scintille del Perfect Drop, l'onda di rottura degli scudi e la scia dell'autobus danno un riscontro visivo alle azioni. I segnali di corsia e laser passano in primo piano e indicano il tempo rimasto prima dell'attacco con una linea che si riempie.

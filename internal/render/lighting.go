@@ -11,9 +11,12 @@ import (
 	"girlbusAG/internal/game"
 )
 
-const numAmbientParticles = 92
+const (
+	numAmbientParticles = 92
+	radialLightSize     = 64
+)
 
-var colGoldenHourShadow = Premul(24, 16, 36, 95)
+var colGoldenHourShadow = Premul(33, 22, 53, 77)
 
 type particleKind uint8
 
@@ -65,13 +68,12 @@ var lampMoteAnchors = [12][2]float32{
 }
 
 func buildRadialLightTexture() *ebiten.Image {
-	const size = 64
-	rgba := image.NewRGBA(image.Rect(0, 0, size, size))
-	center := float64(size-1) * 0.5
-	maxR := float64(size) * 0.5
+	rgba := image.NewRGBA(image.Rect(0, 0, radialLightSize, radialLightSize))
+	center := float64(radialLightSize-1) * 0.5
+	maxR := float64(radialLightSize) * 0.5
 
-	for y := 0; y < size; y++ {
-		for x := 0; x < size; x++ {
+	for y := 0; y < radialLightSize; y++ {
+		for x := 0; x < radialLightSize; x++ {
 			dx := float64(x) - center
 			dy := float64(y) - center
 			dist := math.Sqrt(dx*dx+dy*dy) / maxR
@@ -277,9 +279,14 @@ func (r *Renderer) drawGroundShadows(dst *ebiten.Image, w *game.World, camX, cam
 		case game.PropBuildingKonbini, game.PropBuildingCoffee, game.PropBuildingArcade,
 			game.PropBuildingRamen, game.PropBuildingBookstore, game.PropBuildingMetro,
 			game.PropBuildingPizzeria, game.PropBuildingVinylBar, game.PropBuildingGelateria:
-			// Crisp architectural down-right drop shadow spilled across the north promenade
-			vector.DrawFilledRect(dst, px+8, py+pr.H-6, pr.W+4, 16, sh, false)
-			vector.DrawFilledRect(dst, px+pr.W-2, py+12, 10, pr.H-8, sh, false)
+			// The footprint has a tight contact edge and a stepped penumbra toward the road.
+			by := pr.SortY - camY
+			contact := Premul(27, 17, 44, 112)
+			penumbra := Premul(47, 31, 68, 37)
+			vector.DrawFilledRect(dst, px+5, by-6, pr.W-6, 8, contact, false)
+			vector.DrawFilledRect(dst, px+9, by+2, pr.W-4, 5, sh, false)
+			vector.DrawFilledRect(dst, px+13, by+7, pr.W-5, 4, penumbra, false)
+			vector.DrawFilledRect(dst, px+pr.W-5, py+16, 8, pr.H-14, penumbra, false)
 		case game.PropBuildingNewsstand, game.PropNeonBillboard, game.PropFoodCart, game.PropBusShelterDeco:
 			vector.DrawFilledRect(dst, px+5, py+pr.H-5, pr.W+2, 11, sh, false)
 		case game.PropFountain:
@@ -336,11 +343,13 @@ func (r *Renderer) drawGroundShadows(dst *ebiten.Image, w *game.World, camX, cam
 	// Vending machine & Slot machine drop shadows
 	for _, shop := range w.Shops {
 		sx, sy := shop.X-camX, shop.Y-camY
-		vector.DrawFilledRect(dst, sx-11, sy-8, 28, 24, sh, false)
+		vector.DrawFilledRect(dst, sx-10, sy+9, 27, 7, sh, false)
+		vector.DrawFilledRect(dst, sx-7, sy+16, 25, 3, Premul(47, 31, 68, 36), false)
 	}
 	for _, sm := range w.SlotMachines {
 		sx, sy := sm.X-camX, sm.Y-camY
-		vector.DrawFilledRect(dst, sx-12, sy-8, 30, 26, sh, false)
+		vector.DrawFilledRect(dst, sx-10, sy+9, 27, 7, sh, false)
+		vector.DrawFilledRect(dst, sx-7, sy+16, 25, 3, Premul(47, 31, 68, 36), false)
 	}
 
 	// Active Bus Stop shelter architectural drop shadows
@@ -356,25 +365,7 @@ func (r *Renderer) drawGroundShadows(dst *ebiten.Image, w *game.World, camX, cam
 }
 
 func (r *Renderer) drawAdditiveGlow(dst *ebiten.Image, sx, sy, radius float32, c color.RGBA, intensity float32) {
-	if r.lightTex == nil || radius <= 1 || intensity <= 0.005 {
-		return
-	}
-	if sx+radius < 0 || sx-radius > game.ScreenWidth || sy+radius < 0 || sy-radius > game.ScreenHeight {
-		return
-	}
-	scale := float64(radius*2.0) / 64.0
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(-32, -32)
-	op.GeoM.Scale(scale, scale)
-	op.GeoM.Translate(float64(sx), float64(sy))
-	op.Blend = ebiten.BlendLighter
-	op.ColorScale.Scale(
-		float32(c.R)/255.0*intensity,
-		float32(c.G)/255.0*intensity,
-		float32(c.B)/255.0*intensity,
-		1.0,
-	)
-	dst.DrawImage(r.lightTex, op)
+	r.drawAdditiveBeam(dst, sx, sy, radius, radius, c, intensity)
 }
 
 func (r *Renderer) drawAdditiveBeam(dst *ebiten.Image, sx, sy, rx, ry float32, c color.RGBA, intensity float32) {
@@ -385,10 +376,11 @@ func (r *Renderer) drawAdditiveBeam(dst *ebiten.Image, sx, sy, rx, ry float32, c
 		return
 	}
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(-32, -32)
-	op.GeoM.Scale(float64(rx*2.0)/64.0, float64(ry*2.0)/64.0)
+	op.GeoM.Translate(-radialLightSize/2, -radialLightSize/2)
+	op.GeoM.Scale(float64(rx*2.0)/radialLightSize, float64(ry*2.0)/radialLightSize)
 	op.GeoM.Translate(float64(sx), float64(sy))
 	op.Blend = ebiten.BlendLighter
+	op.Filter = ebiten.FilterLinear
 	op.ColorScale.Scale(
 		float32(c.R)/255.0*intensity,
 		float32(c.G)/255.0*intensity,
@@ -409,20 +401,16 @@ func brightenLightColor(c color.RGBA, boost float32) color.RGBA {
 	return color.RGBA{R: mix(c.R), G: mix(c.G), B: mix(c.B), A: 255}
 }
 
-// drawLightingPass renders the evening twilight shadow veil, multi-layer district lighting
-// across all 10 LightKinds, real-time shimmering canal reflections, heal pickup halos,
-// dynamic entity glows, bus headlights, police lightbars, and bullet micro-glows.
-func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY float32) {
-	// 0. Subtle Evening Twilight Shadow Veil (Katana ZERO / Eastward rich indigo mood)
-	// Applied BEFORE additive lights so warm pools and neon blooms POP dramatically
-	// while Alfredo, girls, and high-luminance bullets stay 100% crisp and readable.
-	veilAlpha := uint8(34)
+// drawDistrictLighting projects the district lights onto the ground behind the world sprites.
+func (r *Renderer) drawDistrictLighting(dst *ebiten.Image, w *game.World, camX, camY float32) {
+	veil := uint8(22)
 	if w.Police.Stars >= 5 {
-		veilAlpha = 46
+		veil = 32
 	}
-	vector.DrawFilledRect(dst, 0, 0, game.ScreenWidth, game.ScreenHeight, Premul(14, 12, 34, veilAlpha), false)
+	vector.DrawFilledRect(dst, 0, 0, game.ScreenWidth, game.ScreenHeight, Premul(27, 21, 50, veil), false)
+	r.drawAdditiveBeam(dst, 454-camX, 52-camY, 770, 245, color.RGBA{255, 172, 118, 255}, 0.064)
+	r.drawAdditiveBeam(dst, 1000-camX, w.CanalY-camY, 720, 191, color.RGBA{104, 170, 229, 255}, 0.046)
 
-	// 1. Multi-Layer District Illumination for ALL 10 LightKinds
 	for i := range w.Lights {
 		l := &w.Lights[i]
 		lx, ly := l.X-camX, l.Y-camY
@@ -432,72 +420,55 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 			continue
 		}
 
-		flicker := float32(0.94 +
-			0.04*math.Sin(float64(r.tick*3.1+l.X*0.037)) +
-			0.02*math.Sin(float64(r.tick*7.3+l.Y*0.051)))
+		flicker := float32(0.97 + 0.03*math.Sin(float64(r.tick*2.1+l.X*0.037)))
 		c := color.RGBA{R: l.R, G: l.G, B: l.B, A: 255}
 
 		switch l.Kind {
 		case game.LightStreetlamp:
-			// 3-Layer Signature Streetlamp Illumination:
-			// Layer A: Warm elliptical perspective ground pool aligned to lamp base (ly+34)
 			warmPool := color.RGBA{255, 210, 128, 255}
-			r.drawAdditiveBeam(dst, lx, ly+34, l.Radius*1.05, l.Radius*0.58, warmPool, 0.36*l.Intensity*flicker)
-			r.drawAdditiveBeam(dst, lx, ly+34, l.Radius*0.50, l.Radius*0.28, color.RGBA{255, 224, 152, 255}, 0.22*l.Intensity*flicker)
-			// Layer B: Soft vertical volumetric light cone connecting lantern head to ground
-			r.drawAdditiveBeam(dst, lx, ly+18, 26, 34, color.RGBA{255, 224, 155, 255}, 0.24*l.Intensity*flicker)
-			// Layer C: Crisp glowing lantern bulb halo + hot filament core
-			r.drawAdditiveGlow(dst, lx, ly+2, 30, color.RGBA{255, 240, 195, 255}, 0.50*flicker)
-			r.drawAdditiveGlow(dst, lx, ly+2, 10, color.RGBA{255, 250, 230, 255}, 0.42*flicker)
+			r.drawAdditiveBeam(dst, lx+6, ly+33, l.Radius*0.93, l.Radius*0.43, warmPool, 0.22*l.Intensity*flicker)
+			r.drawAdditiveBeam(dst, lx+6, ly+32, l.Radius*0.43, l.Radius*0.20, color.RGBA{255, 224, 152, 255}, 0.14*l.Intensity*flicker)
+			r.drawAdditiveBeam(dst, lx, ly+15, 18, 30, warmPool, 0.12*l.Intensity*flicker)
+			r.drawAdditiveGlow(dst, lx, ly+2, 22, color.RGBA{255, 240, 195, 255}, 0.22*flicker)
 
 		case game.LightShopWindow:
-			// Angled warm sidewalk spill + bright inviting interior window core glow
-			coreCol := brightenLightColor(c, 0.35)
-			r.drawAdditiveBeam(dst, lx, ly+20, l.Radius*1.10, l.Radius*0.65, c, 0.34*l.Intensity*flicker)
-			r.drawAdditiveBeam(dst, lx, ly+2, 32, 16, coreCol, 0.46*l.Intensity*flicker)
+			r.drawAdditiveBeam(dst, lx+6, ly+23, l.Radius*0.90, l.Radius*0.40, c, 0.20*l.Intensity*flicker)
+			r.drawAdditiveBeam(dst, lx+4, ly+18, 31, 12, brightenLightColor(c, 0.30), 0.12*l.Intensity*flicker)
 
 		case game.LightNeonSign:
-			// Vivid colored atmospheric halo + bright inner neon bloom + wet-asphalt reflection spill
-			pulse := float32(0.88 + 0.12*math.Sin(float64(r.tick*4.5+l.X*0.02)))
-			r.drawAdditiveGlow(dst, lx, ly, l.Radius*0.85, c, 0.28*l.Intensity*pulse)
-			r.drawAdditiveBeam(dst, lx, ly, 28, 13, brightenLightColor(c, 0.40), 0.44*l.Intensity*pulse)
-			r.drawAdditiveBeam(dst, lx, ly+40, l.Radius*0.62, l.Radius*0.24, c, 0.17*l.Intensity*pulse)
+			r.drawAdditiveBeam(dst, lx, ly, l.Radius*0.71, l.Radius*0.33, c, 0.16*l.Intensity*flicker)
+			r.drawAdditiveBeam(dst, lx+5, ly+48, l.Radius*0.51, l.Radius*0.19, c, 0.13*l.Intensity*flicker)
+			for glint := 0; glint < 3; glint++ {
+				step := float32(glint)
+				width := l.Radius * (0.26 - 0.058*step)
+				x := float32(math.Floor(float64(lx - width/2 + 4*step)))
+				y := float32(math.Floor(float64(ly + 46 + step*4)))
+				alpha := uint8((52 - step*10) * l.Intensity * flicker)
+				vector.DrawFilledRect(dst, x, y, width, 1, Premul(c.R, c.G, c.B, alpha), false)
+			}
 
 		case game.LightVending:
-			// Pulsing colored cabinet bloom + crisp display core + forward sidewalk ground spill pool
-			pulse := float32(0.92 + 0.08*math.Sin(float64(r.tick*3.8+l.X*0.03)))
-			r.drawAdditiveBeam(dst, lx, ly+18, l.Radius*0.84, l.Radius*0.44, c, 0.28*l.Intensity*pulse)
-			r.drawAdditiveGlow(dst, lx, ly-2, l.Radius*0.58, c, 0.34*l.Intensity*pulse)
-			r.drawAdditiveBeam(dst, lx, ly-4, 16, 20, brightenLightColor(c, 0.45), 0.42*l.Intensity*pulse)
+			r.drawAdditiveBeam(dst, lx, ly+17, l.Radius*0.46, l.Radius*0.21, c, 0.23*l.Intensity*flicker)
+			r.drawAdditiveBeam(dst, lx, ly-3, 22, 21, c, 0.14*l.Intensity*flicker)
 
 		case game.LightSlotMachine:
-			// Energetic marquee cabinet bloom + golden-magenta forward sidewalk spill
-			pulse := float32(0.84 + 0.16*math.Sin(float64(r.tick*6.2+l.X*0.03)))
-			altCol := color.RGBA{255, 62, 152, 255}
-			altMix := float32(0.5 + 0.5*math.Sin(float64(r.tick*4.2+l.X*0.02)))
-			r.drawAdditiveBeam(dst, lx, ly+18, l.Radius*0.86, l.Radius*0.46, c, 0.30*l.Intensity*pulse)
-			r.drawAdditiveGlow(dst, lx, ly-2, l.Radius*0.62, c, 0.34*l.Intensity*pulse)
-			r.drawAdditiveGlow(dst, lx, ly-6, 24, altCol, 0.28*l.Intensity*altMix)
+			pulse := float32(0.91 + 0.09*math.Sin(float64(r.tick*3.3+l.X*0.03)))
+			r.drawAdditiveBeam(dst, lx, ly+19, l.Radius*0.49, l.Radius*0.24, color.RGBA{255, 89, 169, 255}, 0.19*l.Intensity*pulse)
+			r.drawAdditiveBeam(dst, lx, ly-7, 24, 14, c, 0.20*l.Intensity*pulse)
 
 		case game.LightLantern:
-			// Warm swaying golden-coral paper lantern core + elliptical ground/water pool
-			swayX := float32(math.Sin(float64(r.tick*2.1+l.X*0.045))) * 1.8
-			r.drawAdditiveBeam(dst, lx+swayX*0.5, ly+18, l.Radius*0.92, l.Radius*0.54, c, 0.32*l.Intensity*flicker)
-			r.drawAdditiveGlow(dst, lx+swayX, ly, 24, brightenLightColor(c, 0.30), 0.48*flicker)
-			r.drawAdditiveGlow(dst, lx+swayX, ly, 9, color.RGBA{255, 248, 224, 255}, 0.40*flicker)
+			swayX := float32(math.Sin(float64(r.tick*2.1+l.X*0.045))) * 1.2
+			r.drawAdditiveBeam(dst, lx+swayX, ly+18, l.Radius*0.76, l.Radius*0.41, c, 0.22*l.Intensity*flicker)
+			r.drawAdditiveGlow(dst, lx+swayX, ly, 19, brightenLightColor(c, 0.22), 0.18*flicker)
 
 		case game.LightFountain:
-			// Shimmering multi-ring turquoise/cyan underwater glow pulsing with water ripples + crisp mist core
-			rip1 := float32(0.88 + 0.12*math.Sin(float64(r.tick*3.6)))
-			rip2 := float32(0.86 + 0.14*math.Cos(float64(r.tick*5.2+0.9)))
-			r.drawAdditiveBeam(dst, lx, ly+6, l.Radius*1.08, l.Radius*0.68, c, 0.30*l.Intensity*rip1)
-			r.drawAdditiveBeam(dst, lx, ly+2, l.Radius*0.64, l.Radius*0.42, color.RGBA{88, 246, 255, 255}, 0.36*l.Intensity*rip2)
-			r.drawAdditiveGlow(dst, lx, ly-5, 26, color.RGBA{204, 252, 255, 255}, 0.44*rip1)
+			ripples := float32(0.92 + 0.08*math.Sin(float64(r.tick*3.6)))
+			r.drawAdditiveBeam(dst, lx, ly+6, l.Radius*0.88, l.Radius*0.44, c, 0.23*l.Intensity*ripples)
+			r.drawAdditiveBeam(dst, lx, ly+4, l.Radius*0.46, l.Radius*0.28, c, 0.18*l.Intensity*ripples)
 
 		case game.LightBollard:
-			// Tight, classy architectural ground glow pool + tiny bright diffuser core
-			r.drawAdditiveBeam(dst, lx, ly+10, l.Radius*0.85, l.Radius*0.52, c, 0.30*l.Intensity*flicker)
-			r.drawAdditiveGlow(dst, lx, ly-1, 14, brightenLightColor(c, 0.45), 0.48*flicker)
+			r.drawAdditiveBeam(dst, lx, ly+10, l.Radius*0.62, l.Radius*0.31, c, 0.19*l.Intensity*flicker)
+			r.drawAdditiveGlow(dst, lx, ly-1, 12, brightenLightColor(c, 0.25), 0.17*flicker)
 
 		case game.LightTraffic:
 			// Cycles smoothly between emerald-green, amber, and ruby-red lens bloom + crosswalk spill
@@ -511,31 +482,29 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 			default:
 				tc = color.RGBA{255, 58, 86, 255} // Ruby red
 			}
-			pulse := float32(0.90 + 0.10*math.Sin(float64(r.tick*5.0+l.X*0.02)))
-			r.drawAdditiveBeam(dst, lx, ly+32, l.Radius*0.95, l.Radius*0.52, tc, 0.28*l.Intensity*pulse)
-			r.drawAdditiveGlow(dst, lx, ly, 24, tc, 0.50*pulse)
-			r.drawAdditiveGlow(dst, lx, ly, 9, brightenLightColor(tc, 0.55), 0.48*pulse)
+			r.drawAdditiveBeam(dst, lx, ly+26, l.Radius*0.58, l.Radius*0.31, tc, 0.15*l.Intensity)
+			r.drawAdditiveGlow(dst, lx, ly, 17, tc, 0.21)
 
 		case game.LightVehicle:
 			// Warm twin headlight spill cones OR soft ruby taillight wash
 			isTaillight := l.R > 200 && l.G < 110
 			if isTaillight {
-				r.drawAdditiveBeam(dst, lx-10, ly+4, l.Radius*0.74, l.Radius*0.42, c, 0.30*l.Intensity)
-				r.drawAdditiveGlow(dst, lx, ly-3, 14, c, 0.44)
-				r.drawAdditiveGlow(dst, lx, ly+5, 14, c, 0.44)
+				r.drawAdditiveBeam(dst, lx-10, ly+4, l.Radius*0.62, l.Radius*0.28, c, 0.23*l.Intensity)
+				r.drawAdditiveGlow(dst, lx, ly-3, 12, c, 0.23)
+				r.drawAdditiveGlow(dst, lx, ly+5, 12, c, 0.23)
 			} else {
-				r.drawAdditiveBeam(dst, lx+18, ly-4, l.Radius*0.92, l.Radius*0.28, c, 0.28*l.Intensity)
-				r.drawAdditiveBeam(dst, lx+18, ly+6, l.Radius*0.92, l.Radius*0.28, c, 0.28*l.Intensity)
-				r.drawAdditiveGlow(dst, lx+2, ly-4, 12, brightenLightColor(c, 0.45), 0.44)
-				r.drawAdditiveGlow(dst, lx+2, ly+6, 12, brightenLightColor(c, 0.45), 0.44)
+				r.drawAdditiveBeam(dst, lx+20, ly-4, l.Radius*0.78, l.Radius*0.19, c, 0.23*l.Intensity)
+				r.drawAdditiveBeam(dst, lx+20, ly+6, l.Radius*0.78, l.Radius*0.19, c, 0.23*l.Intensity)
 			}
 		}
 	}
 
-	// 2. Real-Time Shimmering Canal Water Reflections (Y = 672..720)
 	r.drawCanalReflections(dst, w, camX, camY)
+}
 
-	// 3. World Healing Pickups ("Cure in giro") Mint-White + Golden Pulse Halo
+// drawLightingPass adds the lights that follow moving entities and tactical effects.
+func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY float32) {
+	// Healing pickups share a mint and gold halo.
 	for i := range w.HealPickups {
 		hp := &w.HealPickups[i]
 		hx, hy := float32(hp.X)-camX, float32(hp.Y)-camY
@@ -547,8 +516,8 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 		if hp.Big {
 			baseR = 48
 		}
-		r.drawAdditiveGlow(dst, hx, hy, baseR, color.RGBA{100, 255, 198, 255}, 0.38*pulse)
-		r.drawAdditiveGlow(dst, hx, hy-2, baseR*0.56, color.RGBA{255, 242, 168, 255}, 0.44*pulse)
+		r.drawAdditiveGlow(dst, hx, hy, baseR, color.RGBA{100, 255, 198, 255}, 0.22*pulse)
+		r.drawAdditiveGlow(dst, hx, hy-2, baseR*0.56, color.RGBA{255, 242, 168, 255}, 0.22*pulse)
 	}
 
 	// 4. Active Bus Stops Soft Archetype Ground Glow + Beacon Pillar
@@ -563,9 +532,9 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 			ac = colGold
 		}
 		pulse := float32(0.85 + 0.15*math.Sin(float64(r.tick*5.5)))
-		r.drawAdditiveBeam(dst, sx, sy+12, 68, 42, ac, 0.38*pulse)
-		r.drawAdditiveBeam(dst, sx, sy-14, 18, 44, brightenLightColor(ac, 0.30), 0.26*pulse)
-		r.drawAdditiveGlow(dst, sx, sy, st.CaptureRadius*0.88, ac, 0.14*pulse)
+		r.drawAdditiveBeam(dst, sx, sy+12, 62, 31, ac, 0.23*pulse)
+		r.drawAdditiveBeam(dst, sx, sy-14, 13, 41, brightenLightColor(ac, 0.30), 0.15*pulse)
+		r.drawAdditiveGlow(dst, sx, sy, st.CaptureRadius*0.88, ac, 0.10*pulse)
 	}
 
 	// 5. Girls VIP Golden Aura & Boss Dramatic Radial Aura
@@ -574,7 +543,7 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 		g := &w.Girls[i]
 		if g.IsVIP {
 			gx, gy := g.X-camX, g.Y-camY
-			r.drawAdditiveGlow(dst, gx, gy, 36, vipCol, 0.40)
+			r.drawAdditiveBeam(dst, gx, gy+8, 33, 22, vipCol, 0.26)
 		}
 	}
 	if w.Boss.Active {
@@ -590,18 +559,18 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 		if af.Alpha <= 0.04 {
 			continue
 		}
-		r.drawAdditiveGlow(dst, af.X-camX, af.Y-camY, 28, colGyaru, af.Alpha*0.44)
+		r.drawAdditiveBeam(dst, af.X-camX, af.Y-camY+10, 26, 13, colGyaru, af.Alpha*0.20)
 	}
 	if w.Player.X >= 0 && w.Player.Y >= 0 {
 		px, py := w.Player.X-camX, w.Player.Y-camY
-		// Subtle grounding focus halo so Alfredo always reads cleanly in evening light
-		r.drawAdditiveBeam(dst, px, py+10, 26, 15, colGyaru, 0.15)
+		// Keep the light on the pavement under Alfredo's shoes.
+		r.drawAdditiveBeam(dst, px, py+13, 24, 9, colGyaru, 0.12)
 		if w.Player.ChronosActive {
-			r.drawAdditiveGlow(dst, px, py, 50, colGyaru, 0.36)
+			r.drawAdditiveBeam(dst, px, py+14, 42, 15, colGyaru, 0.24)
 		}
 		if w.Player.HealFlashTimer > 0 {
 			hf := clampF(float32(w.Player.HealFlashTimer/0.45), 0, 1)
-			r.drawAdditiveGlow(dst, px, py, 44, color.RGBA{90, 255, 185, 255}, 0.52*hf)
+			r.drawAdditiveBeam(dst, px, py+15, 34, 12, color.RGBA{90, 255, 185, 255}, 0.30*hf)
 		}
 	}
 
@@ -626,32 +595,29 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 		bx, by := b.X-camX, b.Y-camY
 		headCol := color.RGBA{255, 236, 175, 255}
 		// Twin volumetric forward headlight cones
-		r.drawAdditiveBeam(dst, bx+112, by-9, 96, 24, headCol, 0.46)
-		r.drawAdditiveBeam(dst, bx+112, by+9, 96, 24, headCol, 0.46)
+		r.drawAdditiveBeam(dst, bx+99, by-8, 71, 15, headCol, 0.33)
+		r.drawAdditiveBeam(dst, bx+99, by+8, 71, 15, headCol, 0.33)
 		// Bright headlight bulbs
-		r.drawAdditiveGlow(dst, bx+44, by-9, 20, color.RGBA{255, 252, 224, 255}, 0.68)
-		r.drawAdditiveGlow(dst, bx+44, by+9, 20, color.RGBA{255, 252, 224, 255}, 0.68)
+		r.drawAdditiveGlow(dst, bx+44, by-9, 15, color.RGBA{255, 252, 224, 255}, 0.50)
+		r.drawAdditiveGlow(dst, bx+44, by+9, 15, color.RGBA{255, 252, 224, 255}, 0.50)
 		// Neon chassis underglow + magenta slipstream wake
-		r.drawAdditiveBeam(dst, bx, by+4, 74, 36, archetypeColor(b.Arch), 0.38)
-		r.drawAdditiveBeam(dst, bx-96, by, 86, 24, colKawaii, 0.34)
+		r.drawAdditiveBeam(dst, bx, by+7, 68, 24, archetypeColor(b.Arch), 0.26)
+		r.drawAdditiveBeam(dst, bx-89, by, 66, 18, colKawaii, 0.24)
 	}
 
-	// 8. Police Cruiser Alternating Red/Blue Asphalt Lightbar Pools + 5* Helicopter Spotlight
-	sirenRed := int(r.tick*14)%2 == 0
+	// Crossfade the cruiser lights so the wet road picks up both colors.
+	sirenMix := float32(0.5 + 0.5*math.Sin(float64(r.tick*12)))
 	for _, c := range w.Police.Cruisers {
 		if !c.Active || !c.Dashing {
 			continue
 		}
 		cx, cy := c.X-camX, c.Y-camY
-		sc := color.RGBA{255, 45, 75, 255}
-		alt := color.RGBA{65, 165, 255, 255}
-		if !sirenRed {
-			sc, alt = alt, sc
-		}
-		// Wide asphalt lightbar reflection pool + intense roof beacon
-		r.drawAdditiveBeam(dst, cx, cy+10, 82, 42, sc, 0.42)
-		r.drawAdditiveGlow(dst, cx, cy-6, 46, sc, 0.54)
-		r.drawAdditiveGlow(dst, cx-10, cy-6, 24, alt, 0.24)
+		red := color.RGBA{255, 45, 75, 255}
+		blue := color.RGBA{65, 165, 255, 255}
+		r.drawAdditiveBeam(dst, cx-11, cy+10, 65, 24, red, 0.14+0.24*sirenMix)
+		r.drawAdditiveBeam(dst, cx+11, cy+6, 65, 24, blue, 0.38-0.24*sirenMix)
+		r.drawAdditiveGlow(dst, cx-5, cy-6, 21, red, 0.12+0.28*sirenMix)
+		r.drawAdditiveGlow(dst, cx+5, cy-6, 21, blue, 0.40-0.28*sirenMix)
 		headDir := float32(1)
 		if c.VX < 0 {
 			headDir = -1
@@ -695,22 +661,21 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 		default:
 			gc = color.RGBA{255, 90, 120, 255}
 		}
-		r.drawAdditiveGlow(dst, bx, by, rad, gc, 0.30)
+		r.drawAdditiveGlow(dst, bx, by, rad, gc, 0.20)
 	}
 }
 
-// drawCanalReflections projects animated sine-broken colored reflection columns onto the
-// Southern Canal Water (Y = 672..720) beneath every southern light (Y >= 530).
+// drawCanalReflections breaks the colored columns into narrow ripples below the embankment.
 func (r *Renderer) drawCanalReflections(dst *ebiten.Image, w *game.World, camX, camY float32) {
-	const canalTopWorld = float32(672)
-	const canalBotWorld = float32(720)
-	if canalTopWorld-camY > game.ScreenHeight || canalBotWorld-camY < 0 {
+	const canalBottom = float32(game.ArenaHeight)
+	canalTop := w.CanalY + 8 // The canal-edge tile covers the first eight pixels past CanalY.
+	if canalTop-camY >= game.ScreenHeight || canalBottom-camY <= 0 {
 		return
 	}
 
 	for i := range w.Lights {
 		l := &w.Lights[i]
-		if l.Y < 530 {
+		if l.Y < w.BoardwalkY-96 {
 			continue
 		}
 		lx := l.X - camX
@@ -723,41 +688,25 @@ func (r *Renderer) drawCanalReflections(dst *ebiten.Image, w *game.World, camX, 
 			rc = color.RGBA{255, 214, 132, 255}
 		}
 
-		// Closer lights cast stronger, crisper reflection columns on the canal surface
-		proximity := clampF(1.0-(canalTopWorld-l.Y)/185.0, 0.32, 1.0)
-		baseInt := l.Intensity * proximity * 0.42
-		if l.Y >= 680 {
-			// Moored canal boat bow lanterns sit directly on the water
-			baseInt = l.Intensity * 0.50
+		proximity := clampF(1-(canalTop-l.Y)/181, 0.22, 1)
+		strength := l.Intensity * proximity
+		reflectionTop := max(canalTop, l.Y+2)
+		depth := canalBottom - reflectionTop
+		if depth <= 4 {
+			continue
 		}
+		washY := reflectionTop + depth*0.5 - camY
+		r.drawAdditiveBeam(dst, lx, washY, l.Radius*0.39, depth*0.5, rc, strength*0.18)
 
-		// Soft atmospheric surface wash right on the water
-		washY := float32(694) - camY
-		r.drawAdditiveBeam(dst, lx, washY, l.Radius*0.52, 18, rc, baseInt*0.42)
-
-		// 5 animated sine-broken horizontal shimmer streaks descending across Y = 676..716
-		const bands = 5
-		for b := 0; b < bands; b++ {
-			fb := float32(b)
-			wy := float32(677) + fb*8.8
-			if wy < l.Y-2 {
-				wy = l.Y + 4 + fb*4.5
-			}
-			if wy > canalBotWorld-2 {
-				break
-			}
-			sy := wy - camY
-			if sy < -8 || sy > game.ScreenHeight+8 {
-				continue
-			}
-
-			wavePhase := float64(r.tick*3.2 + fb*1.25 + l.X*0.042)
-			shimmerX := lx + float32(math.Sin(wavePhase))*(3.5+fb*1.3)
-			pulse := float32(0.70 + 0.30*math.Cos(wavePhase*1.4))
-			depthFade := 1.0 - fb*0.14
-			streakRX := (18.0 + fb*4.2) * (0.75 + 0.25*pulse)
-			streakRY := float32(2.6 + fb*0.35)
-			r.drawAdditiveBeam(dst, shimmerX, sy, streakRX, streakRY, rc, baseInt*depthFade*pulse)
+		for band, offset := range [...]float32{0.12, 0.27, 0.46, 0.65, 0.87} {
+			phase := float64(r.tick*2.8 + float32(band)*2.12 + l.X*0.042)
+			pulse := float32(0.76 + 0.24*math.Cos(phase))
+			width := l.Radius * (0.18 + offset*0.25) * pulse
+			sy := float32(math.Floor(float64(reflectionTop + depth*offset - camY)))
+			x := lx + float32(math.Sin(phase))*(2+8*offset) - width*0.5
+			sx := float32(math.Floor(float64(x)))
+			a := uint8(185 * strength * (1 - 0.65*offset) * pulse)
+			vector.DrawFilledRect(dst, sx, sy, width, 1, Premul(rc.R, rc.G, rc.B, a), false)
 		}
 	}
 }

@@ -394,5 +394,44 @@ func buildSFXBank() [sfxCount][]byte {
 	// 23. SFXChallengeUnlock: triumphant neon trophy chime.
 	bank[SFXChallengeUnlock] = buildArpSFX([]float64{783.99, 987.77, 1174.66, 1567.98}, 0.08, 0.22, oscTri, 0.68)
 
+	// 24. SFXShieldBlock: crisp crystalline metallic/glass deflect ping (~0.11s).
+	{
+		var ph1, ph2, ph3, prevN float64
+		rng := sfxRNG(0x61A55B10)
+		bank[SFXShieldBlock] = renderSFX(0.11, func(_ int, t, dt, _ float64) (float64, float64) {
+			ph1 += 1480.0 * dt
+			ph2 += 2217.0 * dt
+			ph3 += 3136.0 * dt
+			n := rng.next()
+			hp := n - prevN
+			prevN = n
+			ping := (oscSine(ph1)*0.48 + oscSine(ph2)*0.32 + oscTri(ph3)*0.20) * math.Exp(-t*28.0) * 0.68
+			tick := hp * math.Exp(-t*95.0) * 0.28
+			return ping*1.04 + tick, ping*0.96 + tick
+		})
+	}
+
+	// 25. SFXShieldBreak: resonant glass shatter burst (~0.24s).
+	{
+		var ph1, ph2, phSub, prevN float64
+		rng := sfxRNG(0x61A55B2E)
+		bank[SFXShieldBreak] = renderSFX(0.24, func(_ int, t, dt, d float64) (float64, float64) {
+			prog := t / d
+			ph1 += (1860.0 - 1140.0*prog) * dt
+			ph2 += (2480.0 - 1420.0*prog) * dt
+			phSub += (190.0 - 95.0*prog) * dt
+			n := rng.next()
+			hp := n - prevN
+			prevN = n
+			shatter := hp * math.Exp(-t*13.0) * 0.66
+			if int(t*260)%3 == 0 {
+				shatter *= 1.22
+			}
+			shards := (oscSine(ph1)*0.42 + oscTri(ph2)*0.36) * math.Exp(-t*15.0) * 0.45
+			thud := oscSine(phSub) * math.Exp(-t*18.0) * 0.34
+			return shatter*1.06 + shards + thud, shatter*0.94 + shards*0.92 + thud
+		})
+	}
+
 	return bank
 }
