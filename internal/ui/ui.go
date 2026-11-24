@@ -78,14 +78,24 @@ type Manager struct {
 	volumeDrag     int
 }
 
-// RunSummary captures end-of-run stats for GameOver and Victory screens.
+// RunSummary captures end-of-run stats, build loadout, and seed for GameOver and Victory screens.
 type RunSummary struct {
-	Score        int
-	RunTime      float32
-	GirlsBoarded int
-	Bosses       int
-	Tier         int
-	BossRush     bool
+	Score           int
+	RunTime         float32
+	GirlsBoarded    int
+	Bosses          int
+	Tier            int
+	BossRush        bool
+	Seed            int64
+	Level           int
+	MaxStreak       int
+	PeakWanted      int
+	PerfectDrops    int
+	EventsCompleted int
+	BoardedByArch   [game.ArchCount]int
+	UpgradeRanks    [game.UpgradeCount]int
+	Relics          [game.RelicCount]bool
+	Quip            string
 }
 
 // NewManager initializes the UI starting at SceneTitle.
@@ -112,12 +122,22 @@ func (m *Manager) OpenScene(targetScene, returnTo Scene) {
 // SetEndRun displays GameOver or Victory with recorded summary, record flag, and newly unlocked challenges.
 func (m *Manager) SetEndRun(victory bool, w *game.World, newRecord bool, unlocks []meta.ChallengeDef) {
 	m.LastWorldStats = RunSummary{
-		Score:        w.Score,
-		RunTime:      w.RunTime,
-		GirlsBoarded: w.GirlsBoarded,
-		Bosses:       w.BossesDefeated,
-		Tier:         w.DifficultyTier,
-		BossRush:     w.BossRushMode,
+		Score:           w.Score,
+		RunTime:         w.RunTime,
+		GirlsBoarded:    w.GirlsBoarded,
+		Bosses:          w.BossesDefeated,
+		Tier:            w.DifficultyTier,
+		BossRush:        w.BossRushMode,
+		Seed:            w.Seed,
+		Level:           w.Player.Level,
+		MaxStreak:       w.MaxStreak,
+		PeakWanted:      w.PeakWanted,
+		PerfectDrops:    w.PerfectDrops,
+		EventsCompleted: w.EventsCompleted,
+		BoardedByArch:   w.BoardedByArch,
+		UpgradeRanks:    w.Player.UpgradeRanks,
+		Relics:          w.Player.Relics,
+		Quip:            game.EndRunQuip(victory, w.BossRushMode, w.PeakWanted, w.BossesDefeated, w.MaxStreak),
 	}
 	m.NewRecord = newRecord
 	m.RunUnlocks = unlocks

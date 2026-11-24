@@ -147,12 +147,12 @@ type RelicSpec struct {
 }
 
 var relicSpecs = [RelicCount]RelicSpec{
-	RelicNoiseCancel:    {Kind: RelicNoiseCancel, Name: "Cuffie Noise-Cancel", Desc: "-15% Cooldown Fermate, +20% Ricarica Chronos"},
-	RelicMonthlyPass:    {Kind: RelicMonthlyPass, Name: "Abbonamento Mensile", Desc: "+1 Scudo Vetro, +15% Raggio Fermata"},
-	RelicArmoredGlass:   {Kind: RelicArmoredGlass, Name: "Vetro Blindato", Desc: "+3 Scudi Vetro, Perfect Drop pulisce +35px"},
-	RelicLuckySocks:     {Kind: RelicLuckySocks, Name: "Calzini Portafortuna", Desc: "+Fortuna Rizz-Slots 777 & +15% Soldi"},
-	RelicDoubleEspresso: {Kind: RelicDoubleEspresso, Name: "Doppio Espresso", Desc: "+18% Velocita Movimento & +25% Minigiochi"},
-	RelicFakeVIPPass:    {Kind: RelicFakeVIPPass, Name: "Pass VIP Falso", Desc: "+25% XP/Soldi & +1 Ragazza Multi-Hook"},
+	RelicNoiseCancel:    {Kind: RelicNoiseCancel, Name: "Cuffie Noise-Cancel", Desc: "Fermate pronte -15% prima, Chronos +20% carica"},
+	RelicMonthlyPass:    {Kind: RelicMonthlyPass, Name: "Abbonamento Mensile", Desc: "Vetro fermata +1 blocco, cerchio cattura +15%"},
+	RelicArmoredGlass:   {Kind: RelicArmoredGlass, Name: "Vetro Blindato", Desc: "Vetro +3 blocchi, Lancio Perfetto pulisce di più"},
+	RelicLuckySocks:     {Kind: RelicLuckySocks, Name: "Calzini Portafortuna", Desc: "Più fortuna alla Slot 777 e +15% soldi"},
+	RelicDoubleEspresso: {Kind: RelicDoubleEspresso, Name: "Doppio Espresso", Desc: "Corri +18% più veloce e minigiochi +25% rapidi"},
+	RelicFakeVIPPass:    {Kind: RelicFakeVIPPass, Name: "Pass VIP Falso", Desc: "+25% XP e soldi, +1 ragazza per fermata"},
 }
 
 // GetRelicSpec returns the specification for a RelicKind.
@@ -224,6 +224,8 @@ const (
 	EventStopShieldHit
 	EventBossKeyGained
 	EventChestOpened
+	EventDistrictEventStart // Value = int(DistrictEventKind)
+	EventDistrictEventEnd   // Value = int(DistrictEventKind)
 )
 
 // WorldEvent records a single simulation event emitted during World.Update.
@@ -290,11 +292,13 @@ type FloatingText struct {
 
 // VendingShop is a Konbini Neon Vending Machine on the sidewalk for in-run items, bribes, and relics.
 type VendingShop struct {
-	X, Y      float32
-	Radius    float32
-	Cooldown  float32
-	HealCost  int
-	BribeCost int
+	X, Y            float32
+	Radius          float32
+	Cooldown        float32
+	HealCost        int
+	BribeCost       int
+	HealCooldown    float32
+	UpgradeCooldown float32
 }
 
 // SlotMachine is an interactive Rizz-Slots 777 cabinet placed in the district.
@@ -369,13 +373,21 @@ const (
 	UpgradeRange
 	UpgradeChronos
 	UpgradeVitality
+	UpgradeDashKatana
+	UpgradeGlassFortress
+	UpgradeMinigameTurbo
+	UpgradeBasslineShock
+	UpgradePerfectNova
+	UpgradeRizzMagnet
+	UpgradeCount
 )
 
 // UpgradeCard is one of the 3 choices offered upon leveling up.
 type UpgradeCard struct {
-	Kind  UpgradeKind
-	Title string
-	Desc  string
+	Kind    UpgradeKind
+	Title   string
+	Desc    string
+	MaxRank int
 }
 
 // clamp32 clamps v to [lo, hi].

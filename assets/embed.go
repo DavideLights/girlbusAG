@@ -177,6 +177,12 @@ const (
 	SpriteIconUpgRange        = "sprites/ui/icon_upg_range.png"
 	SpriteIconUpgChronos      = "sprites/ui/icon_upg_chronos.png"
 	SpriteIconUpgVitality     = "sprites/ui/icon_upg_vitality.png"
+	SpriteIconUpgDash         = "sprites/ui/icon_upg_dash.png"
+	SpriteIconUpgShield       = "sprites/ui/icon_upg_shield.png"
+	SpriteIconUpgRhythm       = "sprites/ui/icon_upg_rhythm.png"
+	SpriteIconUpgBass         = "sprites/ui/icon_upg_bass.png"
+	SpriteIconUpgPerfect      = "sprites/ui/icon_upg_perfect.png"
+	SpriteIconUpgMagnet       = "sprites/ui/icon_upg_magnet.png"
 	SpriteIconRelicHeadphones = "sprites/ui/icon_relic_headphones.png"
 	SpriteIconRelicPass       = "sprites/ui/icon_relic_pass.png"
 	SpriteIconRelicShield     = "sprites/ui/icon_relic_shield.png"
@@ -371,6 +377,12 @@ var expectedSpecs = []spriteSpec{
 	{SpriteIconUpgRange, 20, 20, color.RGBA{92, 186, 255, 255}, color.RGBA{255, 255, 255, 255}, "bullet"},
 	{SpriteIconUpgChronos, 20, 20, color.RGBA{176, 98, 255, 255}, color.RGBA{255, 230, 120, 255}, "bullet"},
 	{SpriteIconUpgVitality, 20, 20, color.RGBA{255, 68, 108, 255}, color.RGBA{255, 224, 236, 255}, "bullet"},
+	{SpriteIconUpgDash, 20, 20, color.RGBA{0, 245, 212, 255}, color.RGBA{255, 255, 255, 255}, "bullet"},
+	{SpriteIconUpgShield, 20, 20, color.RGBA{136, 194, 237, 255}, color.RGBA{255, 210, 102, 255}, "bullet"},
+	{SpriteIconUpgRhythm, 20, 20, color.RGBA{255, 107, 157, 255}, color.RGBA{255, 215, 64, 255}, "bullet"},
+	{SpriteIconUpgBass, 20, 20, color.RGBA{176, 98, 255, 255}, color.RGBA{114, 226, 197, 255}, "bullet"},
+	{SpriteIconUpgPerfect, 20, 20, color.RGBA{255, 215, 64, 255}, color.RGBA{0, 245, 212, 255}, "bullet"},
+	{SpriteIconUpgMagnet, 20, 20, color.RGBA{255, 209, 102, 255}, color.RGBA{0, 240, 255, 255}, "bullet"},
 	{SpriteIconRelicHeadphones, 16, 16, color.RGBA{255, 42, 133, 255}, color.RGBA{0, 245, 212, 255}, "bullet"},
 	{SpriteIconRelicPass, 16, 16, color.RGBA{255, 210, 68, 255}, color.RGBA{64, 176, 255, 255}, "bullet"},
 	{SpriteIconRelicShield, 16, 16, color.RGBA{64, 210, 255, 255}, color.RGBA{255, 255, 255, 255}, "bullet"},

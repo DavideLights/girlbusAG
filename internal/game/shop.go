@@ -1,6 +1,9 @@
 package game
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // Slot machine symbol constants.
 const (
@@ -55,27 +58,57 @@ type SlotMachineState struct {
 	ResultKind   int // 0=neutral, 1=win, 2=jackpot, 3=hazard
 }
 
-// EspressoHealCost is the standard Vending Shop Caffe Espresso healing price.
-const EspressoHealCost = 35
+// EspressoHealCost is the starting Vending Shop Caffe Espresso healing price.
+const (
+	EspressoHealCost    = 35
+	EspressoCooldownSec = float32(40.0)
+	UpgradeCooldownSec  = float32(35.0)
+)
 
-// CurrentHealCost returns the Espresso healing price for the active Vending Shop.
-func (w *World) CurrentHealCost() int {
-	if w.ShopMenu.ShopIndex >= 0 && w.ShopMenu.ShopIndex < len(w.Shops) && w.Shops[w.ShopMenu.ShopIndex].HealCost > 0 {
-		return w.Shops[w.ShopMenu.ShopIndex].HealCost
+func (w *World) applyHappyHourDiscount(base int) int {
+	if w.DistrictEvent.Active == DistrictEventHappyHour {
+		return max(1, int(math.Round(float64(base)*0.65)))
 	}
-	return EspressoHealCost
+	return base
+}
+
+// CurrentHealCost returns the Espresso healing price for the active Vending Shop, scaling per purchase.
+func (w *World) CurrentHealCost() int {
+	base := EspressoHealCost
+	if w.ShopMenu.ShopIndex >= 0 && w.ShopMenu.ShopIndex < len(w.Shops) && w.Shops[w.ShopMenu.ShopIndex].HealCost > 0 {
+		base = w.Shops[w.ShopMenu.ShopIndex].HealCost
+	}
+	cost := base + w.Player.EspressoBuys*30
+	if cost > 215 {
+		cost = 215
+	}
+	return w.applyHappyHourDiscount(cost)
 }
 
 // CurrentBribeCost returns the current police bribe price based on Wanted Stars.
 func (w *World) CurrentBribeCost() int {
+	base := 100
 	if w.Police.Stars >= 4 {
-		return 180
+		base = 180
 	}
-	return 100
+	return w.applyHappyHourDiscount(base)
 }
 
-// CurrentSlotCost returns the spin cost of the active slot machine (scales slightly per use).
+// CurrentRelicCost returns the escalating price of a random Relic at the Vending Shop.
+func (w *World) CurrentRelicCost() int {
+	return w.applyHappyHourDiscount(120 + w.Player.ShopRelicBuys*45)
+}
+
+// CurrentUpgradeCost returns the escalating price of an Upgrade Crate at the Vending Shop.
+func (w *World) CurrentUpgradeCost() int {
+	return w.applyHappyHourDiscount(140 + w.Player.ShopUpgradeBuys*60)
+}
+
+// CurrentSlotCost returns the spin cost of the active slot machine (0 during Happy Hour free spin).
 func (w *World) CurrentSlotCost() int {
+	if w.DistrictEvent.Active == DistrictEventHappyHour && w.DistrictEvent.FreeSlotSpinAvailable {
+		return 0
+	}
 	idx := w.SlotModal.MachineIndex
 	if idx < 0 || idx >= len(w.SlotMachines) {
 		return 35
@@ -129,19 +162,36 @@ func (w *World) HandleShopInput(in InputState) {
 		return
 	}
 
+	var shop *VendingShop
+	if w.ShopMenu.ShopIndex >= 0 && w.ShopMenu.ShopIndex < len(w.Shops) {
+		shop = &w.Shops[w.ShopMenu.ShopIndex]
+	}
+
 	switch in.ShopAction {
 	case ShopActionHeal:
+		if !w.TutorialMode && w.Player.HP >= w.Player.MaxHP {
+			w.ShopMenu.Message = "SALUTE GIA AL MASSIMO!"
+			return
+		}
+		if shop != nil && shop.HealCooldown > 0 {
+			w.ShopMenu.Message = fmt.Sprintf("ESPRESSO IN RICARICA (%.0fs)!", math.Ceil(float64(shop.HealCooldown)))
+			return
+		}
 		cost := w.CurrentHealCost()
 		if w.Player.Cash < cost {
 			w.ShopMenu.Message = fmt.Sprintf("SERVONO $%d!", cost)
 			return
 		}
 		w.Player.Cash -= cost
+		w.Player.EspressoBuys++
 		w.Player.Heal(2)
-		w.Player.ChronosMeter = w.Player.ChronosMax
+		w.Player.ChronosMeter = clamp32(w.Player.ChronosMeter+65.0, 0, w.Player.ChronosMax)
+		if shop != nil {
+			shop.HealCooldown = EspressoCooldownSec
+		}
 		w.TutUsedSlotOrShop = true
-		w.ShopMenu.Message = "CAFFE ESPRESSO! +2 HP & CHRONOS FULL!"
-		w.addPopup(w.Player.X, w.Player.Y-28, "ESPRESSO +2 HP & CHRONOS!", 3)
+		w.ShopMenu.Message = "CAFFE ESPRESSO! +2 HP & +65 CHRONOS!"
+		w.addPopup(w.Player.X, w.Player.Y-28, "ESPRESSO +2 HP & +65 CHRONOS!", 3)
 		w.emitEvent(EventShopBuy, ShopActionHeal, false)
 
 	case ShopActionBribe:
@@ -162,33 +212,40 @@ func (w *World) HandleShopInput(in InputState) {
 		w.emitEvent(EventShopBuy, ShopActionBribe, false)
 
 	case ShopActionRelic:
-		const cost = 120
+		if w.Player.RelicCountOwned() >= int(RelicCount) {
+			w.ShopMenu.Message = "RELIQUIE ESAURITE (6/6)!"
+			return
+		}
+		cost := w.CurrentRelicCost()
 		if w.Player.Cash < cost {
 			w.ShopMenu.Message = fmt.Sprintf("SERVONO $%d PER LA RELIQUIA!", cost)
 			return
 		}
 		w.Player.Cash -= cost
+		w.Player.ShopRelicBuys++
 		w.TutUsedSlotOrShop = true
 		if picked, ok := w.grantRandomUnownedRelic(); ok {
 			spec := GetRelicSpec(picked)
 			w.ShopMenu.Message = spec.Name + ": " + spec.Desc
 			w.addPopup(w.Player.X, w.Player.Y-32, spec.Name+"!", 1)
-		} else {
-			// All 6 relics already owned: bonus vitality boost
-			w.Player.MaxHP++
-			w.Player.Heal(2)
-			w.ShopMenu.Message = "TUTTE LE RELIQUIE! +1 MAX HP & +2 HP!"
-			w.addPopup(w.Player.X, w.Player.Y-32, "+1 MAX HP BONUS!", 1)
 		}
 		w.emitEvent(EventShopBuy, ShopActionRelic, false)
 
 	case ShopActionUpgrade:
-		const cost = 140
+		if shop != nil && shop.UpgradeCooldown > 0 {
+			w.ShopMenu.Message = fmt.Sprintf("CASSA IN RIFORNIMENTO (%.0fs)!", math.Ceil(float64(shop.UpgradeCooldown)))
+			return
+		}
+		cost := w.CurrentUpgradeCost()
 		if w.Player.Cash < cost {
 			w.ShopMenu.Message = fmt.Sprintf("SERVONO $%d PER LA CASSA UPGRADE!", cost)
 			return
 		}
 		w.Player.Cash -= cost
+		w.Player.ShopUpgradeBuys++
+		if shop != nil {
+			shop.UpgradeCooldown = UpgradeCooldownSec
+		}
 		w.TutUsedSlotOrShop = true
 		w.ShopMenu.Active = false
 		w.emitEvent(EventShopBuy, ShopActionUpgrade, false)
@@ -222,22 +279,27 @@ func (w *World) StartSlotSpin() bool {
 		return false
 	}
 	sm := &w.SlotMachines[idx]
-	if w.Player.Cash < sm.SpinCost {
+	cost := w.CurrentSlotCost()
+	if w.Player.Cash < cost {
 		w.SlotModal.ResultTitle = "FONDI INSUFFICIENTI!"
-		w.SlotModal.ResultDesc = fmt.Sprintf("SERVONO $%d PER GIRARE!", sm.SpinCost)
+		w.SlotModal.ResultDesc = fmt.Sprintf("SERVONO $%d PER GIRARE!", cost)
 		w.SlotModal.ResultKind = 3
 		return false
 	}
 
-	w.Player.Cash -= sm.SpinCost
-	sm.SpinsUsed++
-	w.TutUsedSlotOrShop = true
-	if sm.SpinCost < 95 {
-		sm.SpinCost += 10
-		if sm.SpinCost > 95 {
-			sm.SpinCost = 95
+	if cost == 0 && w.DistrictEvent.FreeSlotSpinAvailable {
+		w.DistrictEvent.FreeSlotSpinAvailable = false
+	} else {
+		w.Player.Cash -= cost
+		if sm.SpinCost < 95 {
+			sm.SpinCost += 10
+			if sm.SpinCost > 95 {
+				sm.SpinCost = 95
+			}
 		}
 	}
+	sm.SpinsUsed++
+	w.TutUsedSlotOrShop = true
 
 	lucky := w.Player.HasRelic(RelicLuckySocks)
 	w.SlotModal.TargetReels = rollSlotOutcome(w.rng, lucky)
@@ -340,14 +402,14 @@ func (w *World) resolveSlotPayout() {
 	if r[0] == r[1] && r[1] == r[2] {
 		switch r[0] {
 		case SymGoldBus:
-			w.Player.Cash += 250
+			w.Player.Cash += 180
 			w.Score += 1500
 			w.Player.Heal(w.Player.MaxHP)
 			w.Player.ChronosMeter = w.Player.ChronosMax
 			w.SlotModal.ResultTitle = "JACKPOT 777!! AUTOBUS D'ORO!"
-			w.SlotModal.ResultDesc = "+$250  +120 XP  FULL HP & CHRONOS!"
+			w.SlotModal.ResultDesc = "+$180  +120 XP  FULL HP & CHRONOS!"
 			w.SlotModal.ResultKind = 2
-			w.addPopup(w.Player.X, w.Player.Y-36, "JACKPOT 777! +$250 +120XP!", 1)
+			w.addPopup(w.Player.X, w.Player.Y-36, "JACKPOT 777! +$180 +120XP!", 1)
 			w.emitEvent(EventSlotJackpot, 0, true)
 			if w.Player.AddXP(120) {
 				w.SlotModal.Active = false
@@ -355,12 +417,12 @@ func (w *World) resolveSlotPayout() {
 			}
 			return
 		case SymCash:
-			w.Player.Cash += 140
+			w.Player.Cash += 100
 			w.Score += 400
 			w.SlotModal.ResultTitle = "TRIS DI DOLLARI!"
-			w.SlotModal.ResultDesc = "+$140 IN TASCA!"
+			w.SlotModal.ResultDesc = "+$100 IN TASCA!"
 			w.SlotModal.ResultKind = 1
-			w.addPopup(w.Player.X, w.Player.Y-30, "SLOT TRIS! +$140!", 3)
+			w.addPopup(w.Player.X, w.Player.Y-30, "SLOT TRIS! +$100!", 3)
 			w.emitEvent(EventSlotWin, SymCash, false)
 			return
 		case SymXP:

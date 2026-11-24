@@ -1,4 +1,4 @@
-# 🎨 GIRLBUS: NEON STOP — Art Direction & Sprite Bible (v1.1)
+# 🎨 GIRLBUS: NEON STOP — Art Direction & Sprite Bible (v1.2)
 > **Sintesi Estetica**: **"Vibrant Pop-Urban Chibi Pixel Art"**
 > Unione tra le meccaniche ad alta tensione di *Katana ZERO / PokéBonk* e uno stile visivo **solare, saturo, ironico e super-leggibile** ispirato alla pixel art urbana giapponese contemporanea (`peak-envref7`), alla densità satirica da metropoli pop (`peak-envref4`) e a sprite **Chibi 3/4 Top-Down ultra-espressivi** (`peak-npcref4`, `peak-npcref5`, `peak-npcref6`, `peak-npcref1`), con **Alfredo (versione base urban/casual)** come protagonista (`mainref-alfredo1/2`).
 
@@ -145,5 +145,24 @@ Le facciate mantengono colori più saturi del pavimento. Asfalto bagnato e mosai
 | Slot `32×32` e pavé della piazza `32×32` | [gen_layered_map_assets.py](./tools/gen_layered_map_assets.py) |
 | Asfalto bagnato e mosaico della piazza `32×32` | [gen_tiles_and_icons.py](./tools/gen_tiles_and_icons.py) |
 | Forzieri Blindati Neon (`chest_closed`/`chest_open` `32×28`) & Chiave Boss (`icon_boss_key` `16×16`) | [gen_chest_key_assets.py](./tools/gen_chest_key_assets.py) |
+| 6 Nuove Icone Upgrade Level-Up (`icon_upg_dash`..`magnet` `20×20`) | [gen_upgrade_icons_v2.py](./tools/gen_upgrade_icons_v2.py) |
 
 Le pensiline si riconoscono dalle sigle **EMO**, **UNI**, **POP** e **5G**. La livrea Neon usa una fascia menta, vetri prugna e fanali crema. Il renderer colloca scie, ombre a contatto e lampi in scena secondo lo stato dell'azione.
+
+---
+
+## 5. Art Direction Espansione: Portali Neon/VHS, Mappe al Chiuso & Campus Universitario *(Design P2/P3)*
+
+Per mantenere la stessa immediatezza visiva della Master Palette Pop-Urban (`#1C1124` outline, contrasto netto tra pavimento desaturato e proiettili saturi) anche nelle future arene indoor, l'espansione segue queste regole:
+
+1. **Portali Multidimensionali Bus (Standard Indoor — *Università, Palestra, Club*)**:
+   * Quando una fermata completa la combo in una mappa al chiuso, ai due estremi della corsia si aprono **due squarci verticali/ellittici Neon-VHS** in **Ciano Elettrico (`#00F5D4`)** e **Rosa Shocking (`#FF2A85`)** con brevi scanline glitch orizzontali.
+   * Il Bus `96×48` sbuca dal portale d'ingresso lasciando scintille e sparisce in quello d'uscita, senza richiedere modifiche alla silhouette o alle dimensioni canoniche del mezzo.
+2. **Atrio Universitario / Campus (Indoor con Lucernario)**:
+   * **Pavimento**: piastrelle / marmo chiaro-caldo a basso contrasto (toni pietra/crema desaturati con fughe sottili), così che proiettili e indicatori restino leggibili quanto sull'asfalto di *Centro Neon*.
+   * **Lucernario a Vetri & Faro 5★**: fasci luminosi diagonali tenui attraversano l'atrio dall'alto; a **5★ Wanted**, il cono di luce del **Faro dell'Elicottero** filtra attraverso il lucernario proiettandosi direttamente sul pavimento dell'atrio.
+   * **Props & Segnaletica Dedicati (`MapProp`)**: isole di banchi studio, colonne portanti, bacheche appunti, divanetti area relax, porte scorrevoli a vetri sui bordi e **Macchinette del Caffè della Facoltà**; le aree vietate ZTL diventano strisce gialle/rosse sul pavimento con simbolo **`SHHH! / AULA ESAMI`**.
+3. **Micro-Balloon Arcade Boss & Synergy *(Implementato ✅)***:
+   * Le battute rapide di Boss, *Synergy* e consigli onboarding usano **banner compatti in stile segnaletica urbana pop** (stesso linguaggio di menu e HUD: fondo prugna `#201C2E`, testo crema `#FFEFDB`, bordo netto `1px`, barra accent laterale), ancorati sopra la hotbar (`Y=268`) e mai modali.
+4. **Blackout Neon & ZTL Dorate *(Implementato ✅)***:
+   * Durante *Blackout Neon*, le luci ambientali si attenuano al `22%` sotto un velo notturno scuro lasciando brillare coni di luce localizzati su Alfredo, fermate, boss e pattuglie + halo proiettili potenziati. Durante *Ingorgo ZTL 4x*, le piazzole Bus assumono bordo oro pulsante e bande corallo.

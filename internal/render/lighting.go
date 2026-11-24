@@ -407,9 +407,13 @@ func (r *Renderer) drawDistrictLighting(dst *ebiten.Image, w *game.World, camX, 
 	if w.Police.Stars >= 5 {
 		veil = 32
 	}
+	ambientScale := float32(1.0)
+	if w.DistrictEvent.Active == game.DistrictEventBlackout {
+		ambientScale = 0.22
+	}
 	vector.DrawFilledRect(dst, 0, 0, game.ScreenWidth, game.ScreenHeight, Premul(27, 21, 50, veil), false)
-	r.drawAdditiveBeam(dst, 454-camX, 52-camY, 770, 245, color.RGBA{255, 172, 118, 255}, 0.064)
-	r.drawAdditiveBeam(dst, 1000-camX, w.CanalY-camY, 720, 191, color.RGBA{104, 170, 229, 255}, 0.046)
+	r.drawAdditiveBeam(dst, 454-camX, 52-camY, 770, 245, color.RGBA{255, 172, 118, 255}, 0.064*ambientScale)
+	r.drawAdditiveBeam(dst, 1000-camX, w.CanalY-camY, 720, 191, color.RGBA{104, 170, 229, 255}, 0.046*ambientScale)
 
 	for i := range w.Lights {
 		l := &w.Lights[i]
@@ -421,54 +425,55 @@ func (r *Renderer) drawDistrictLighting(dst *ebiten.Image, w *game.World, camX, 
 		}
 
 		flicker := float32(0.97 + 0.03*math.Sin(float64(r.tick*2.1+l.X*0.037)))
+		intensity := l.Intensity * ambientScale
 		c := color.RGBA{R: l.R, G: l.G, B: l.B, A: 255}
 
 		switch l.Kind {
 		case game.LightStreetlamp:
 			warmPool := color.RGBA{255, 210, 128, 255}
-			r.drawAdditiveBeam(dst, lx+6, ly+33, l.Radius*0.93, l.Radius*0.43, warmPool, 0.22*l.Intensity*flicker)
-			r.drawAdditiveBeam(dst, lx+6, ly+32, l.Radius*0.43, l.Radius*0.20, color.RGBA{255, 224, 152, 255}, 0.14*l.Intensity*flicker)
-			r.drawAdditiveBeam(dst, lx, ly+15, 18, 30, warmPool, 0.12*l.Intensity*flicker)
-			r.drawAdditiveGlow(dst, lx, ly+2, 22, color.RGBA{255, 240, 195, 255}, 0.22*flicker)
+			r.drawAdditiveBeam(dst, lx+6, ly+33, l.Radius*0.93, l.Radius*0.43, warmPool, 0.22*intensity*flicker)
+			r.drawAdditiveBeam(dst, lx+6, ly+32, l.Radius*0.43, l.Radius*0.20, color.RGBA{255, 224, 152, 255}, 0.14*intensity*flicker)
+			r.drawAdditiveBeam(dst, lx, ly+15, 18, 30, warmPool, 0.12*intensity*flicker)
+			r.drawAdditiveGlow(dst, lx, ly+2, 22, color.RGBA{255, 240, 195, 255}, 0.22*flicker*ambientScale)
 
 		case game.LightShopWindow:
-			r.drawAdditiveBeam(dst, lx+6, ly+23, l.Radius*0.90, l.Radius*0.40, c, 0.20*l.Intensity*flicker)
-			r.drawAdditiveBeam(dst, lx+4, ly+18, 31, 12, brightenLightColor(c, 0.30), 0.12*l.Intensity*flicker)
+			r.drawAdditiveBeam(dst, lx+6, ly+23, l.Radius*0.90, l.Radius*0.40, c, 0.20*intensity*flicker)
+			r.drawAdditiveBeam(dst, lx+4, ly+18, 31, 12, brightenLightColor(c, 0.30), 0.12*intensity*flicker)
 
 		case game.LightNeonSign:
-			r.drawAdditiveBeam(dst, lx, ly, l.Radius*0.71, l.Radius*0.33, c, 0.16*l.Intensity*flicker)
-			r.drawAdditiveBeam(dst, lx+5, ly+48, l.Radius*0.51, l.Radius*0.19, c, 0.13*l.Intensity*flicker)
+			r.drawAdditiveBeam(dst, lx, ly, l.Radius*0.71, l.Radius*0.33, c, 0.16*intensity*flicker)
+			r.drawAdditiveBeam(dst, lx+5, ly+48, l.Radius*0.51, l.Radius*0.19, c, 0.13*intensity*flicker)
 			for glint := 0; glint < 3; glint++ {
 				step := float32(glint)
 				width := l.Radius * (0.26 - 0.058*step)
 				x := float32(math.Floor(float64(lx - width/2 + 4*step)))
 				y := float32(math.Floor(float64(ly + 46 + step*4)))
-				alpha := uint8((52 - step*10) * l.Intensity * flicker)
+				alpha := uint8((52 - step*10) * intensity * flicker)
 				vector.DrawFilledRect(dst, x, y, width, 1, Premul(c.R, c.G, c.B, alpha), false)
 			}
 
 		case game.LightVending:
-			r.drawAdditiveBeam(dst, lx, ly+17, l.Radius*0.46, l.Radius*0.21, c, 0.23*l.Intensity*flicker)
-			r.drawAdditiveBeam(dst, lx, ly-3, 22, 21, c, 0.14*l.Intensity*flicker)
+			r.drawAdditiveBeam(dst, lx, ly+17, l.Radius*0.46, l.Radius*0.21, c, 0.23*intensity*flicker)
+			r.drawAdditiveBeam(dst, lx, ly-3, 22, 21, c, 0.14*intensity*flicker)
 
 		case game.LightSlotMachine:
 			pulse := float32(0.91 + 0.09*math.Sin(float64(r.tick*3.3+l.X*0.03)))
-			r.drawAdditiveBeam(dst, lx, ly+19, l.Radius*0.49, l.Radius*0.24, color.RGBA{255, 89, 169, 255}, 0.19*l.Intensity*pulse)
-			r.drawAdditiveBeam(dst, lx, ly-7, 24, 14, c, 0.20*l.Intensity*pulse)
+			r.drawAdditiveBeam(dst, lx, ly+19, l.Radius*0.49, l.Radius*0.24, color.RGBA{255, 89, 169, 255}, 0.19*intensity*pulse)
+			r.drawAdditiveBeam(dst, lx, ly-7, 24, 14, c, 0.20*intensity*pulse)
 
 		case game.LightLantern:
 			swayX := float32(math.Sin(float64(r.tick*2.1+l.X*0.045))) * 1.2
-			r.drawAdditiveBeam(dst, lx+swayX, ly+18, l.Radius*0.76, l.Radius*0.41, c, 0.22*l.Intensity*flicker)
-			r.drawAdditiveGlow(dst, lx+swayX, ly, 19, brightenLightColor(c, 0.22), 0.18*flicker)
+			r.drawAdditiveBeam(dst, lx+swayX, ly+18, l.Radius*0.76, l.Radius*0.41, c, 0.22*intensity*flicker)
+			r.drawAdditiveGlow(dst, lx+swayX, ly, 19, brightenLightColor(c, 0.22), 0.18*flicker*ambientScale)
 
 		case game.LightFountain:
 			ripples := float32(0.92 + 0.08*math.Sin(float64(r.tick*3.6)))
-			r.drawAdditiveBeam(dst, lx, ly+6, l.Radius*0.88, l.Radius*0.44, c, 0.23*l.Intensity*ripples)
-			r.drawAdditiveBeam(dst, lx, ly+4, l.Radius*0.46, l.Radius*0.28, c, 0.18*l.Intensity*ripples)
+			r.drawAdditiveBeam(dst, lx, ly+6, l.Radius*0.88, l.Radius*0.44, c, 0.23*intensity*ripples)
+			r.drawAdditiveBeam(dst, lx, ly+4, l.Radius*0.46, l.Radius*0.28, c, 0.18*intensity*ripples)
 
 		case game.LightBollard:
-			r.drawAdditiveBeam(dst, lx, ly+10, l.Radius*0.62, l.Radius*0.31, c, 0.19*l.Intensity*flicker)
-			r.drawAdditiveGlow(dst, lx, ly-1, 12, brightenLightColor(c, 0.25), 0.17*flicker)
+			r.drawAdditiveBeam(dst, lx, ly+10, l.Radius*0.62, l.Radius*0.31, c, 0.19*intensity*flicker)
+			r.drawAdditiveGlow(dst, lx, ly-1, 12, brightenLightColor(c, 0.25), 0.17*flicker*ambientScale)
 
 		case game.LightTraffic:
 			// Cycles smoothly between emerald-green, amber, and ruby-red lens bloom + crosswalk spill
@@ -482,19 +487,19 @@ func (r *Renderer) drawDistrictLighting(dst *ebiten.Image, w *game.World, camX, 
 			default:
 				tc = color.RGBA{255, 58, 86, 255} // Ruby red
 			}
-			r.drawAdditiveBeam(dst, lx, ly+26, l.Radius*0.58, l.Radius*0.31, tc, 0.15*l.Intensity)
-			r.drawAdditiveGlow(dst, lx, ly, 17, tc, 0.21)
+			r.drawAdditiveBeam(dst, lx, ly+26, l.Radius*0.58, l.Radius*0.31, tc, 0.15*intensity)
+			r.drawAdditiveGlow(dst, lx, ly, 17, tc, 0.21*ambientScale)
 
 		case game.LightVehicle:
 			// Warm twin headlight spill cones OR soft ruby taillight wash
 			isTaillight := l.R > 200 && l.G < 110
 			if isTaillight {
-				r.drawAdditiveBeam(dst, lx-10, ly+4, l.Radius*0.62, l.Radius*0.28, c, 0.23*l.Intensity)
-				r.drawAdditiveGlow(dst, lx, ly-3, 12, c, 0.23)
-				r.drawAdditiveGlow(dst, lx, ly+5, 12, c, 0.23)
+				r.drawAdditiveBeam(dst, lx-10, ly+4, l.Radius*0.62, l.Radius*0.28, c, 0.23*intensity)
+				r.drawAdditiveGlow(dst, lx, ly-3, 12, c, 0.23*ambientScale)
+				r.drawAdditiveGlow(dst, lx, ly+5, 12, c, 0.23*ambientScale)
 			} else {
-				r.drawAdditiveBeam(dst, lx+20, ly-4, l.Radius*0.78, l.Radius*0.19, c, 0.23*l.Intensity)
-				r.drawAdditiveBeam(dst, lx+20, ly+6, l.Radius*0.78, l.Radius*0.19, c, 0.23*l.Intensity)
+				r.drawAdditiveBeam(dst, lx+20, ly-4, l.Radius*0.78, l.Radius*0.19, c, 0.23*intensity)
+				r.drawAdditiveBeam(dst, lx+20, ly+6, l.Radius*0.78, l.Radius*0.19, c, 0.23*intensity)
 			}
 		}
 	}
@@ -502,8 +507,91 @@ func (r *Renderer) drawDistrictLighting(dst *ebiten.Image, w *game.World, camX, 
 	r.drawCanalReflections(dst, w, camX, camY)
 }
 
+// drawBlackoutOverlay darkens the background arena during DistrictEventBlackout and projects
+// boosted additive cones/auras around Alfredo, active Bus Stops, active Boss, and Police patrols.
+func (r *Renderer) drawBlackoutOverlay(dst *ebiten.Image, w *game.World, camX, camY float32) {
+	if w.DistrictEvent.Active != game.DistrictEventBlackout {
+		return
+	}
+
+	vector.DrawFilledRect(dst, 0, 0, game.ScreenWidth, game.ScreenHeight, Premul(8, 5, 18, 138), false)
+
+	// Boosted aura around Alfredo so player positioning and nearby dangers stay crystal clear.
+	if w.Player.X >= 0 && w.Player.Y >= 0 {
+		px, py := w.Player.X-camX, w.Player.Y-camY
+		r.drawAdditiveGlow(dst, px, py, 92, color.RGBA{120, 235, 255, 255}, 0.34)
+		r.drawAdditiveGlow(dst, px, py, 46, color.RGBA{255, 238, 195, 255}, 0.24)
+	}
+
+	// Boosted pools around active Bus Stops.
+	for i := range w.Stops {
+		st := &w.Stops[i]
+		if !st.Active {
+			continue
+		}
+		sx, sy := st.X-camX, st.Y-camY
+		ac := archetypeColor(st.Arch)
+		if st.SynergyActive {
+			ac = colGold
+		}
+		r.drawAdditiveGlow(dst, sx, sy, st.CaptureRadius*1.15, ac, 0.28)
+		r.drawAdditiveGlow(dst, sx, sy, 42, brightenLightColor(ac, 0.35), 0.24)
+	}
+
+	// Dramatic spotlight aura around active Gatekeeper Boss.
+	if w.Boss.Active {
+		bx, by := w.Boss.X-camX, w.Boss.Y-camY
+		pulse := float32(0.88 + 0.12*math.Sin(float64(r.tick*6.5)))
+		r.drawAdditiveGlow(dst, bx, by, 108, colKawaii, 0.36*pulse)
+		r.drawAdditiveGlow(dst, bx, by, 54, colGold, 0.28*pulse)
+	}
+
+	// Patrol officers, rushing cruisers, and 5* chopper searchlight.
+	for i := range w.Police.Officers {
+		o := &w.Police.Officers[i]
+		if !o.Active {
+			continue
+		}
+		ox, oy := o.X-camX, o.Y-camY
+		col := color.RGBA{95, 180, 255, 255}
+		if o.IsSWAT {
+			col = color.RGBA{255, 70, 105, 255}
+		}
+		r.drawAdditiveGlow(dst, ox, oy, 46, col, 0.26)
+	}
+	sirenMix := float32(0.5 + 0.5*math.Sin(float64(r.tick*12)))
+	for _, c := range w.Police.Cruisers {
+		if !c.Active {
+			continue
+		}
+		cx, cy := c.X-camX, c.Y-camY
+		red := color.RGBA{255, 55, 85, 255}
+		blue := color.RGBA{75, 175, 255, 255}
+		r.drawAdditiveGlow(dst, cx, cy, 74, blue, 0.24+0.14*(1-sirenMix))
+		r.drawAdditiveGlow(dst, cx, cy, 62, red, 0.24+0.14*sirenMix)
+		headDir := float32(1)
+		if c.VX < 0 {
+			headDir = -1
+		}
+		r.drawAdditiveBeam(dst, cx+headDir*56, cy, 72, 26, color.RGBA{240, 248, 255, 255}, 0.36)
+	}
+	if w.Police.Stars >= 5 && w.Police.Heli.Active {
+		hx, hy := w.Police.Heli.X-camX, w.Police.Heli.Y-camY
+		r.drawAdditiveGlow(dst, hx, hy, w.Police.Heli.Radius*1.30, color.RGBA{255, 245, 185, 255}, 0.36)
+	}
+}
+
 // drawLightingPass adds the lights that follow moving entities and tactical effects.
 func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY float32) {
+	isBlackout := w.DistrictEvent.Active == game.DistrictEventBlackout
+	stopBoost := float32(1.0)
+	playerBoost := float32(1.0)
+	bulletIntensity := float32(0.20)
+	if isBlackout {
+		stopBoost = 1.60
+		playerBoost = 1.85
+		bulletIntensity = 0.36
+	}
 	// Healing pickups share a mint and gold halo.
 	for i := range w.HealPickups {
 		hp := &w.HealPickups[i]
@@ -555,9 +643,9 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 			ac = colGold
 		}
 		pulse := float32(0.85 + 0.15*math.Sin(float64(r.tick*5.5)))
-		r.drawAdditiveBeam(dst, sx, sy+12, 62, 31, ac, 0.23*pulse)
-		r.drawAdditiveBeam(dst, sx, sy-14, 13, 41, brightenLightColor(ac, 0.30), 0.15*pulse)
-		r.drawAdditiveGlow(dst, sx, sy, st.CaptureRadius*0.88, ac, 0.10*pulse)
+		r.drawAdditiveBeam(dst, sx, sy+12, 62, 31, ac, 0.23*pulse*stopBoost)
+		r.drawAdditiveBeam(dst, sx, sy-14, 13, 41, brightenLightColor(ac, 0.30), 0.15*pulse*stopBoost)
+		r.drawAdditiveGlow(dst, sx, sy, st.CaptureRadius*0.88, ac, 0.10*pulse*stopBoost)
 	}
 
 	// 5. Girls VIP Golden Aura & Boss Dramatic Radial Aura
@@ -587,9 +675,12 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 	if w.Player.X >= 0 && w.Player.Y >= 0 {
 		px, py := w.Player.X-camX, w.Player.Y-camY
 		// Keep the light on the pavement under Alfredo's shoes.
-		r.drawAdditiveBeam(dst, px, py+13, 24, 9, colGyaru, 0.12)
+		r.drawAdditiveBeam(dst, px, py+13, 24, 9, colGyaru, 0.12*playerBoost)
+		if isBlackout {
+			r.drawAdditiveGlow(dst, px, py, 44, color.RGBA{175, 245, 255, 255}, 0.22)
+		}
 		if w.Player.ChronosActive {
-			r.drawAdditiveBeam(dst, px, py+14, 42, 15, colGyaru, 0.24)
+			r.drawAdditiveBeam(dst, px, py+14, 42, 15, colGyaru, 0.24*playerBoost)
 		}
 		if w.Player.HealFlashTimer > 0 {
 			hf := clampF(float32(w.Player.HealFlashTimer/0.45), 0, 1)
@@ -684,7 +775,7 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 		default:
 			gc = color.RGBA{255, 90, 120, 255}
 		}
-		r.drawAdditiveGlow(dst, bx, by, rad, gc, 0.20)
+		r.drawAdditiveGlow(dst, bx, by, rad, gc, bulletIntensity)
 	}
 }
 
@@ -694,6 +785,10 @@ func (r *Renderer) drawCanalReflections(dst *ebiten.Image, w *game.World, camX, 
 	canalTop := w.CanalY + 8 // The canal-edge tile covers the first eight pixels past CanalY.
 	if canalTop-camY >= game.ScreenHeight || canalBottom-camY <= 0 {
 		return
+	}
+	ambientScale := float32(1.0)
+	if w.DistrictEvent.Active == game.DistrictEventBlackout {
+		ambientScale = 0.22
 	}
 
 	for i := range w.Lights {
@@ -712,7 +807,7 @@ func (r *Renderer) drawCanalReflections(dst *ebiten.Image, w *game.World, camX, 
 		}
 
 		proximity := clampF(1-(canalTop-l.Y)/181, 0.22, 1)
-		strength := l.Intensity * proximity
+		strength := l.Intensity * proximity * ambientScale
 		reflectionTop := max(canalTop, l.Y+2)
 		depth := canalBottom - reflectionTop
 		if depth <= 4 {

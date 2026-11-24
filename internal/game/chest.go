@@ -11,7 +11,7 @@ const (
 	chestClearRadius     = float32(130.0)
 	chestOpenAnimSeconds = float32(0.65)
 	chestRestockDelaySec = float32(4.0)
-	chestBaseCashReward  = 150.0
+	chestBaseCashReward  = 80.0
 )
 
 func (w *World) initChestsFromMap() {

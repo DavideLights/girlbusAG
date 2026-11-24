@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"math"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
@@ -80,7 +81,11 @@ func NewApp() *App {
 }
 
 func (a *App) startRun(bossRush bool) {
-	a.world = game.NewWorldWithOptions(int64(a.tick*100000)+12345, bossRush)
+	seed := time.Now().UnixNano() & 0x7FFFFFFF
+	if seed == 0 {
+		seed = 12345
+	}
+	a.world = game.NewWorldWithOptions(seed, bossRush)
 	a.tracker = meta.NewRunTracker()
 	a.overdriveAck = false
 	a.lastPerfectAim = false
@@ -215,7 +220,7 @@ func (a *App) Update() error {
 
 	stopPhase := 0
 	stopScreenX, stopScreenY := game.FixedPadCenterX, game.FixedPadCenterY
-	canThrowExtraStop := a.world.Player.StopCooldownTimer <= 0 && a.world.ActiveStopCount() < a.world.Player.EffectiveMaxStops()
+	canThrowExtraStop := a.world.Player.CanThrowStop(a.world.ActiveStopCount())
 	if !a.world.PendingLevelUp && !a.world.ShopMenu.Active && !a.world.SlotModal.Active {
 		bestD2 := float32(1e12)
 		safeTopY := a.world.StopSafeTopY()
@@ -483,6 +488,14 @@ func (a *App) processWorldEvents() {
 			a.audio.PlaySFX(audio.SFXKeyPickup)
 		case game.EventChestOpened:
 			a.audio.PlaySFX(audio.SFXChestOpen)
+		case game.EventDistrictEventStart:
+			if game.DistrictEventKind(ev.Value) == game.DistrictEventZTLJam {
+				a.audio.PlaySFX(audio.SFXPoliceSiren)
+			} else {
+				a.audio.PlaySFX(audio.SFXLevelUp)
+			}
+		case game.EventDistrictEventEnd:
+			a.audio.PlaySFX(audio.SFXSlotWin)
 		}
 	}
 

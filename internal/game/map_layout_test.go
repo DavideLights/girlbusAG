@@ -241,13 +241,13 @@ func TestEvaluateAimAndBusBayBonuses(t *testing.T) {
 		t.Fatalf("expected 1 stop with InBusBay=true, got %+v", w.Stops)
 	}
 	spec := GetArchetypeSpec(ArchKawaii)
-	if w.Stops[0].ShieldHP != spec.ShieldHP+1 || w.Stops[0].MaxShieldHP != spec.ShieldHP+1 {
-		t.Fatalf("expected +1 ShieldHP (%d) in BusBay, got %d/%d", spec.ShieldHP+1, w.Stops[0].ShieldHP, w.Stops[0].MaxShieldHP)
+	if w.Stops[0].ShieldHP != spec.ShieldHP+2 || w.Stops[0].MaxShieldHP != spec.ShieldHP+2 {
+		t.Fatalf("expected +2 ShieldHP (%d) in BusBay, got %d/%d", spec.ShieldHP+2, w.Stops[0].ShieldHP, w.Stops[0].MaxShieldHP)
 	}
 
 	foundPopup := false
 	for _, p := range w.Popups {
-		if p.Text == "BUS BAY +25% VELOCITA!" {
+		if p.Text == "AREA BUS (+40% / SCUDO+2)!" {
 			foundPopup = true
 			break
 		}
@@ -256,7 +256,7 @@ func TestEvaluateAimAndBusBayBonuses(t *testing.T) {
 		t.Fatalf("expected BusBay popup, popups=%+v", w.Popups)
 	}
 
-	// Compare +25% Minigame charge speed: BusBay vs Normal Kawaii stop
+	// Compare +40% Minigame charge speed: BusBay vs Normal Kawaii stop
 	w.HitStopTimer = 0
 	w.Stops[0].Minigame.Progress = 0
 	w.Player.X = w.Stops[0].X
@@ -282,12 +282,12 @@ func TestEvaluateAimAndBusBayBonuses(t *testing.T) {
 	w2.Update(InputState{SelectArchetype: -1, ActionDir: -1, ChooseUpgrade: -1}, 0.05)
 
 	ratio := w.Stops[0].Minigame.Progress / w2.Stops[0].Minigame.Progress
-	if ratio < 1.24 || ratio > 1.26 {
-		t.Fatalf("expected +25%% minigame charge speed (ratio ~1.25), got busbay=%v normal=%v ratio=%v",
+	if ratio < 1.38 || ratio > 1.42 {
+		t.Fatalf("expected +40%% minigame charge speed (ratio ~1.40), got busbay=%v normal=%v ratio=%v",
 			w.Stops[0].Minigame.Progress, w2.Stops[0].Minigame.Progress, ratio)
 	}
 
-	// Verify ZTL aim preview gives +25% radius
+	// Verify ZTL aim preview gives +30% radius
 	ztl := w.ZTLZones[0]
 	w.Player.X = ztl.X + ztl.W*0.5
 	w.Player.Y = ztl.Y + ztl.H*0.5
@@ -295,7 +295,7 @@ func TestEvaluateAimAndBusBayBonuses(t *testing.T) {
 	if !ztlFB.InZTL {
 		t.Fatalf("expected ZTL feedback at ZTL center")
 	}
-	expectedZTLR := spec.CaptureRadius * w.Player.RangeMult * 1.25
+	expectedZTLR := spec.CaptureRadius * w.Player.RangeMult * 1.30
 	if ztlFB.PreviewRadius < expectedZTLR-0.5 || ztlFB.PreviewRadius > expectedZTLR+0.5 {
 		t.Fatalf("expected ZTL PreviewRadius ~%v, got %v", expectedZTLR, ztlFB.PreviewRadius)
 	}

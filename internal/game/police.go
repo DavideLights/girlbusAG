@@ -53,6 +53,7 @@ type PoliceSystem struct {
 	Cruisers       []PoliceCruiser
 	Hazards        []PoliceHazard
 	Heli           HelicopterSpotlight
+	BossFightMode  bool
 	nextOfficerID  int
 }
 
@@ -165,16 +166,22 @@ func (ps *PoliceSystem) Update(dt, timeScale float32, playerX, playerY float32, 
 		}
 	}
 
-	// Spawn officers up to cap based on Stars
+	// Spawn officers up to cap based on Stars (throttled cleanly during Boss Fights)
 	maxOfficers := ps.Stars * 2
 	if maxOfficers > 10 {
 		maxOfficers = 10
+	}
+	if ps.BossFightMode && maxOfficers > 2 {
+		maxOfficers = 2
 	}
 	ps.SpawnTimer -= effDT
 	if ps.SpawnTimer <= 0 && len(ps.Officers) < maxOfficers {
 		ps.SpawnTimer = 3.2 - float32(ps.Stars)*0.35
 		if ps.SpawnTimer < 1.1 {
 			ps.SpawnTimer = 1.1
+		}
+		if ps.BossFightMode {
+			ps.SpawnTimer *= 1.6
 		}
 		sx, sy := randomEdgePos(rng)
 		ps.Officers = append(ps.Officers, PoliceOfficer{
@@ -232,6 +239,9 @@ func (ps *PoliceSystem) Update(dt, timeScale float32, playerX, playerY float32, 
 			antiStop := ps.Stars >= 4 && o.IsSWAT && targetingStop
 			if ps.Stars >= 3 {
 				o.ShootTimer = 1.75
+				if ps.BossFightMode {
+					o.ShootTimer = 2.8
+				}
 				for k := -1; k <= 1; k++ {
 					ang := aim + float32(k)*0.24
 					bullets.Spawn(Bullet{
@@ -247,6 +257,9 @@ func (ps *PoliceSystem) Update(dt, timeScale float32, playerX, playerY float32, 
 				}
 			} else {
 				o.ShootTimer = 2.1
+				if ps.BossFightMode {
+					o.ShootTimer = 3.2
+				}
 				bullets.Spawn(Bullet{
 					X:        o.X,
 					Y:        o.Y,
@@ -265,7 +278,11 @@ func (ps *PoliceSystem) Update(dt, timeScale float32, playerX, playerY float32, 
 
 	// 2★+: Police Cruisers lane-rush with 0.8s red telegraph
 	if ps.Stars >= 2 {
-		ps.CruiserTimer -= effDT
+		hazardDT := effDT
+		if ps.BossFightMode {
+			hazardDT *= 0.55
+		}
+		ps.CruiserTimer -= hazardDT
 		if ps.CruiserTimer <= 0 && len(ps.Cruisers) < ps.Stars-1 {
 			ps.CruiserTimer = 4.6 - float32(ps.Stars)*0.45
 			if ps.CruiserTimer < 2.2 {
@@ -360,7 +377,11 @@ func (ps *PoliceSystem) Update(dt, timeScale float32, playerX, playerY float32, 
 			i++
 		}
 
-		ps.HazardTimer -= effDT
+		hazardSpawnDT := effDT
+		if ps.BossFightMode {
+			hazardSpawnDT *= 0.55
+		}
+		ps.HazardTimer -= hazardSpawnDT
 		if ps.HazardTimer <= 0 && len(ps.Hazards) < 3 {
 			ps.HazardTimer = 4.5 - float32(ps.Stars-3)*0.4
 			if ps.HazardTimer < 3.2 {

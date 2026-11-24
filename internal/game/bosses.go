@@ -77,6 +77,26 @@ func (b *Boss) Spawn(kind BossKind, spawnX, spawnY float32) {
 	b.setupPhaseEntities()
 }
 
+// BossGimmickHint returns a concise tactical Italian hint explaining each Boss's signature mechanic.
+func BossGimmickHint(kind BossKind) string {
+	switch kind {
+	case BossBestFriend:
+		return "RESPINGE LE RAGAZZE - AGGANCIALA PRIMA CHE SCAPPI!"
+	case BossLover:
+		return "2 OLOGRAMMI ESCA - COLPISCI LA VERA (AURA ORO)!"
+	case BossProfessor:
+		return "LASER A CROCE - COMBO SEVERA (ZERO ERRORI)!"
+	case BossExecutive:
+		return "INCLUDI LE STAGISTE ORBITANTI PER ROMPERE LO SCUDO!"
+	case BossRector:
+		return "ZTL MARZIALE - LANCIA PERFECT DROP O +1 STELLA!"
+	case BossMom:
+		return "CIABATTE A RICERCA - SE COLPITO PERDI 1 FERMATA!"
+	default:
+		return "AGGANCIALA CON UNA FERMATA E CHIUDI LA COMBO!"
+	}
+}
+
 func (b *Boss) setupPhaseEntities() {
 	switch b.Kind {
 	case BossLover:

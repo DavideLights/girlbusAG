@@ -208,7 +208,7 @@ func challengeBackRect() game.Rect  { return game.Rect{X: 465, Y: 304, W: 136, H
 
 func endRunButtonRect(i, total int) game.Rect {
 	if total == 3 {
-		return game.Rect{X: 93 + float32(i)*154, Y: 278, W: 146, H: 30}
+		return game.Rect{X: 50 + float32(i)*184, Y: 306, W: 172, H: 28}
 	}
-	return game.Rect{X: 93 + float32(i)*231, Y: 278, W: 223, H: 30}
+	return game.Rect{X: 50 + float32(i)*276, Y: 306, W: 264, H: 28}
 }

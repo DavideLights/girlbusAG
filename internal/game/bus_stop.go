@@ -30,6 +30,7 @@ type BusStop struct {
 	DeployAge        float32
 
 	InZTL       bool
+	GoldenZTL   bool
 	InBusBay    bool
 	PerfectDrop bool
 
@@ -84,12 +85,12 @@ func NewBusStop(id int, x, y float32, arch Archetype, rangeMult float32, inZTL, 
 	spec := GetArchetypeSpec(arch)
 	capR := spec.CaptureRadius * rangeMult
 	if inZTL {
-		capR *= 1.25 // ZTL risk/reward bonus: +25% capture radius
+		capR *= 1.30 // ZTL risk/reward bonus: +30% capture radius
 	}
 	throwR := spec.ThrowRange * rangeMult
 	shieldHP := spec.ShieldHP
 	if inBusBay {
-		shieldHP++ // Legal BUS Bay bonus: +1 Back-Glass Shield HP
+		shieldHP += 2 // Legal BUS Bay bonus: +2 Back-Glass Shield HP
 	}
 
 	return BusStop{

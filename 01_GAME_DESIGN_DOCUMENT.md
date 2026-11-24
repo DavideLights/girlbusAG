@@ -1,4 +1,4 @@
-# 🚍 GIRLBUS: NEON STOP — Game Design Document (GDD v2.4 - Build Stabile Pre-Espansione, Ergonomia & Roadmap Espansione)
+# 🚍 GIRLBUS: NEON STOP — Game Design Document (GDD v2.5 - Build Stabile v2.4, Ergonomia & Piano Evoluzione Roguelite P2/P3)
 > **Studio Pillar**: *"Se Rockstar Games facesse un 2D Pixel-Art Rogue-lite Bullet-Hell su rimorchiare ragazze alle fermate dell'autobus sotto pioggia acida, volanti della polizia e synthwave."*
 > **Core References**: *Katana ZERO* (Personaggio a piedi agile, Chronos, Hit-Stop, Neon-Noir, VHS Glitch) × *PokéBonk / Vampire Survivors* (Arena Continua Evolvibile, Orde Esponenziali, Telegraphs) × *Stardew Valley* & *Pragmata* (Tensione Micro-Minigioco in Tempo Reale) × *GTA* (Sistema Wanted a Stelle Polizia Risk/Reward).
 
@@ -8,7 +8,8 @@
 
 ### 1.1 Chi Controlliamo e Come si Muove
 * **Avatar a Piedi Stile *Katana ZERO***: Il giocatore controlla un protagonista a piedi agile e letale (hitbox compatta per il bullet-hell), dotato di **Movimento 360°**, **Dash con i-frames** (per attraversare muri di proiettili) e **Lancio Tattico della Fermata**.
-* **Il Ruolo dell'Autobus**: L'autobus non si guida manualmente nel traffico; è una **forza della natura neon** che sfreccia a raccogliere le ragazze ogni volta che completi la combo di una fermata (o travolge i nemici lungo i binari della *Linea Express*).
+* **Il Ruolo dell'Autobus ("Linea ∞ — Servizio Sostitutivo Interdimensionale")**: L'autobus non si guida manualmente nel traffico; è una **forza della natura neon** che sfreccia a raccogliere le ragazze ogni volta che completi la combo di una fermata (o travolge i nemici lungo i binari della *Linea Express*).
+  * **Regola Portali Neon/VHS per le Mappe al Chiuso (Design P3)**: Poiché le pensiline lanciate da Alfredo sono di fatto **fermate olografiche tascabili**, l'Autobus Neon non rispetta né i semafori né i muri portanti: nelle arene indoor (*Atrio Universitario*, *Palestra*, *Club*), a chiusura combo si aprono **due squarci/portali glitch Neon-VHS** attraverso i quali il Bus materializza la sua corsa e scompare istantaneamente, garantendo coerenza satirica e visiva in qualsiasi ambiente chiuso.
 * **Schema di Input Unificato ("Zero Hand-Lift" — PC Mouse/Tastiera + Solo Tastiera + Gamepad + Android Touch)**:
   * **Mouse + Tastiera (`WASD` + Mouse)**: `WASD` movimento, `Spazio` / `Click Destro` Dash, `Shift` / `Q` Chronos (configurabile Hold o Toggle), `Rotellina Mouse` o `1–4` / `Tab` cambio Fermata senza staccare le dita dal movimento; `Click Sinistro` Mira/Lancio **e** azione 1-tasto per i minigiochi (*Emo Rhythm*, *Gyaru Stardew Hold*, *Kawaii Dance*), mentre i minigiochi direzionali (*Pragmata 4×4* e *Combo 4 Frecce*) supportano sia `Frecce / IJKL` sia selezione rapida col mouse / quadranti olografici attorno alla fermata (**zero stacco della mano destra dal mouse**).
   * **Solo Tastiera (`WASD` + `Frecce / IJKL`)**: tasto `F` / `Invio` per il lancio con **Smart Magnetic Aim** lungo la direzione di movimento con aggancio morbido verso la ragazza compatibile in gittata.
@@ -145,6 +146,22 @@ Per dare progressione reale alle future **Nuove Mappe Sbloccabili**, i nuovi arc
    * **Obiettivo Ergonomico**: sfruttare **entrambi i tasti principali del mouse (`LMB` + `RMB`)** senza mai staccare le mani da `WASD` + Mouse (mantenendo `SPAZIO` sempre dedicato al Dash durante la sequenza).
    * **Possibile Meccanica**: sequenze rapide di **Parata / Contrattacco** o **Ritmo Bimanuale SX/DX** (es. indicatori ciano `LMB` e magenta `RMB` alternati su due tracce corte, o doppio-click simultaneo sul picco per bonus `2x`!).
 
+### 5.2 Mappe al Chiuso, Portali Neon/VHS & Mappa "Atrio Universitario (Campus)" *(Design P3)*
+
+Per garantire una netta differenziazione visiva rispetto a *Centro Neon* e *Spiaggia* senza spezzare le regole meccaniche del gioco né la coerenza **100% adulta** dell'ambientazione (Campus Universitario / Facoltà, mai scuola superiore), tutte le future arene indoor adottano lo standard **Portali Neon/VHS** e una traduzione tematica dei 4 pilastri dell'arena:
+
+* **Architettura Ibrida Indoor ("Atrio Universitario con Grande Lucernario a Vetri")**:
+  * L'arena rappresenta l'interno di una grande **Facoltà / Atrio Universitario** (pavimento lucido a contrasto controllato, corridoi laterali, isole di banchi studio, colonne portanti, bacheche appunti, area relax con divanetti, ampie porte scorrevoli ai bordi) sormontata da un **grande lucernario vetrato sul soffitto**.
+  * La stessa regola dei **Portali Neon/VHS** per l'Autobus è riutilizzabile direttamente anche per *Neon Iron District (Palestra)* e *Cyber-Shibuya Club / Conservatorio*.
+
+| Pilastro dell'Arena | Centro Neon *(Outdoor)* | Atrio Universitario / Campus *(Indoor con Lucernario — P3)* |
+| :--- | :--- | :--- |
+| **Autobus Neon** | Sfreccia lungo la strada/corsia | **Navetta Express da Portali Neon/VHS**: entra da uno squarcio glitch Ciano/Magenta ed esce dal portale opposto attraversando l'atrio. |
+| **Zone ZTL** | Zone Divieto di Sosta sull'asfalto | **Zone "Silenzio / Aula Esami / Riservato Docenti" (`SHHH!`)**: strisce gialle/rosse sul pavimento; piazzare una fermata e far passare il bus scatena `+1★` immediata. |
+| **Distributori Neon** | Chioschi / Vending in strada | **Macchinette del Caffè della Facoltà** (Espresso, Tangente, Reliquie e Slot in area break). |
+| **Polizia `1★–5★`** | Vigili, Volanti, Barriere, SWAT, Elicottero | `1★–2★` Vigilanza Campus & Volanti da portali o porte scorrevoli a vetri → `3★–4★` Transenne laser d'emergenza & SWAT → `5★` **Faro dell'Elicottero che filtra dal lucernario vetrato** proiettando il cono di luce sul pavimento! |
+| **Ostacoli / Cover** | Auto parcheggiate, alberi, chioschi | Isole di banchi e tavoli studio, colonne portanti, bacheche, divanetti dell'area relax e macchinette. |
+
 ---
 
 ## 6. La "Castrazione" Iniziale Pura, Economia XP/Soldi & Sbloccabili via Challenge
@@ -162,9 +179,9 @@ Non esistono potenziamenti statistici permanenti (`+danno` o `-cooldown` comprat
 
 ### 6.2 Economia In-Run: XP, Soldi (Cash) & Chiavi Boss
 * **XP (Esperienza)**: Si ottiene catturando ragazze e sconfiggendo Boss (moltiplicata fino a `3.5x` dalle Stelle Polizia!). Ad ogni Level-Up scegli **1 di 3 Upgrade** per potenziare le tue fermate, ridurre il cooldown o aumentare il Multi-Hook.
-* **Soldi (Cash `$`)**: Si ottengono con le catture, i bersagli **VIP / ZTL (`3x`)** e il moltiplicatore **Polizia (`+300%` a 5★)**. Si spendono **solo dentro la partita** presso i **Chioschi / Distributori Neon** nell'arena per:
-  1. Comprare **Nuove Tipologie di Fermate** o **Reliquie/Moduli Rari**.
-  2. Comprare **Caffè Espresso / Kit Rizz** (Cura HP / Ricarica Chronos).
+* **Soldi (Cash `$`)**: Si ottengono con le catture, i bersagli **VIP / ZTL (`3x` Cash + `+50%` XP in ZTL)** e il moltiplicatore **Polizia (`+300%` a 5★)**. Si spendono **solo dentro la partita** presso i **Chioschi / Distributori Neon** nell'arena con prezzi crescenti e cooldown anti-abuso (`Espresso 40s` con blocco a Full HP, `Cassa Upgrade 35s`, `Reliquie` bloccate a `6/6` senza farm infinito di MaxHP) per:
+  1. Comprare **Nuove Tipologie di Fermate** o **Reliquie/Moduli Rari** (`120+$45/acquisto`).
+  2. Comprare **Caffè Espresso** (`$35` -> `+$30/acquisto` fino a `$215`, cura `+2 HP` e `+65 Chronos`, cooldown `40s`).
   3. **Pagare la Cauzione / Tangente** per azzerare o ridurre le Stelle della Polizia quando il bullet-hell a 4★–5★ diventa insostenibile!
 * **Chiavi Boss & Forzieri nella Mappa (`🔑` -> `🔒`)**:
   * Ogni Boss sconfitto rilascia **1 Chiave Boss** raccolta automaticamente (mostrata nell'HUD).
@@ -179,6 +196,28 @@ Tra una partita e l'altra non compri statistiche, ma sblocchi **contenuti orizzo
 | 🚏 **Nuove Fermate (Pool & Starter)** | *"Cattura 8 ragazze contemporaneamente con una sola Fermata"* | **Fermata Goth-Industrial** o **Fermata VIP Limousine** selezionabile a inizio run o trovabile negli Shop. |
 | 🎨 **Skin Protagonista, Costumi, Bus & Titoli** | *"Sopravvivi per 45s a 5★ senza danni" / "Affinità Totale" / "Autobus Pieno"* | **Costumi Alfredo (`Neon Drip`, `Alfredo Banana`, `Alfredo Aletta di Pollo`, `Cyber-Samurai Zero`)** + **Autobus Dorato Drift** + **Titoli Profilo** equipaggiabili. |
 | 🎭 **Modificatori & Boss Rush** | *"Batti tutti e 6 i Boss del gioco almeno una volta"* | Modalità **"Rush Orario di Punta"** (tutti e 6 i Boss in una singola run estrema). |
+
+### 6.4 Evoluzione Roguelite: Build Diversity, Agenzia & Rigiocabilità *(Stato Misto: Punto 5 Svolto ✅ / Punti 1–4 Idee Future P2)*
+
+La build attuale possiede fondamenta solide su game feel, Boss e risk/reward Polizia, ma espone un pool di **12 Card Level-Up** e **6 Reliquie** prevalentemente lineari (bonus numerici/stat-stick) e sblocchi Challenge quasi solo cosmetici. Di seguito distinguiamo nettamente **quanto già implementato** dalle **idee future ancora da approfondire** (nessuna scartata):
+
+* **Già Implementato & Verificato ✅ (Onboarding, Personalità & Riepilogo Build/Seed)**:
+  * **Onboarding Primi 60s**: prima della prima cattura nei primi `60s` della run (fuori da Tutorial/Boss Rush), un lancio a vuoto rimborsa il `-40%` di cooldown con consiglio diegetico su Graze/Dash-Parry; la prima cattura chiusa assegna `+15 XP` bonus e ripristina subito la fermata pronta; sotto al banner iniziale compare un promemoria compatto di controllo fino al primo imbarco.
+  * **Personalità Arcade / Micro-Battute**: banner non bloccante sopra la hotbar con micro-battute dedicate all'ingresso e alla rottura scudo/sconfitta di tutti e **6 i Boss**, alle **4 Synergy** e alla schermata di fine corsa.
+  * **Schermata Riepilogo Build & Seed**: pannello di fine partita condivisibile con **Seed (`#XXXXXX`)**, micro-battuta contestuale, metriche estese (`Max Streak`, `Max Wanted`, `Livello`, `Perfect Drop`, `Eventi Superati`), breakdown catture per archetipo (`EMO`, `UNI`, `POP`, `5G`), Reliquie e Upgrade attivi.
+
+* **Idee Future da Approfondire & Implementare ⏳ (Design P2 — Nessuna Scartata)**:
+  1. **Build Trasformative, Sinergie Incrociate (*Duo*), Evoluzioni & Trade-Off**:
+     * **Card / Reliquie Trasformative con Trade-Off**: scelte ad alto impatto che cambiano le regole della run (es. *"Niente Dash difensivo, ma ogni Perfect Drop lancia un doppio Bus Fantasma"*; oppure *"Livello Polizia bloccato a minimo 3★, ma le zone ZTL curano e raddoppiano le catture"*).
+     * **Sinergie Duo tra Archetipi**: combinazioni tra 2 archetipi potenziati che sbloccano un effetto ibrido dedicato (es. *Emo + Kawaii*: la nebbia converte le goccioline sfiorate in bombe Cash; *Studentessa + Cyber-Gyaru*: i nodi gialli creano archi elettrici lungo il cavo 5G).
+     * **Evoluzioni al Rank Max**: portare un archetipo/statistica al grado massimo abilita una forma evoluta visivamente e meccanicamente distinta durante la run.
+  2. **Agenzia Tattica su RNG (`Reroll / Banish / Lock`)**:
+     * **Reroll a pagamento in Cash (`$`)** nella schermata Level-Up (a costo crescente) e futuri **Banish / Lock** su Card e Shop, creando un vero dilemma economico tra *Caffè Espresso*, *Tangente Polizia*, *Slot 777* e *costruzione mirata della build*.
+  3. **Loadout / Stili di Partenza & Sblocchi di Gameplay via Challenge**:
+     * **Stili di Partenza Opzionali**: associare ai Costumi di Alfredo (con **toggle "Solo Cosmetico"** sempre disponibile) un leggero modificatore meccanico iniziale (es. *Cyber-Samurai Zero* orientato al Dash-Parry ad alto rischio, *Alfredo Banana* orientato a mobilità e Cash, *Neon Drip* orientato a Chronos/Perfect Drop), mantenendo intatta la partenza pulita della modalità classica.
+     * **Sblocchi Orizzontali nel Pool**: espandere le Challenge affinché sblocchino non solo cosmetici/titoli, ma anche **nuove Reliquie, Card Trasformative e Archetipi** nel pool delle run future.
+  4. **Scala di Difficoltà Post-Vittoria ("Grado Traffico / Rush Level 1–5")**:
+     * Selettore opzionale pre-run sbloccato dopo la prima vittoria, composto da modificatori crescenti (es. *partenza a 2★ Wanted fisso*, *raggio Tether `-20%`*, *Chronos ridotto*, *Boss con pattern accelerati*) con moltiplicatore Score e badge di completamento per grado.
 
 ---
 
@@ -249,29 +288,37 @@ Tutte le meccaniche seguenti sfruttano **esclusivamente i tasti già esistenti**
 
 ---
 
-### 8.3 Eventi Dinamici di Quartiere (Micro-Obiettivi ogni 60–90s)
-Per rompere la monotonia tra un Boss e l'altro senza introdurre popup invasivi, ogni `60–90 secondi` si attiva nell'arena un evento urbano segnalato da un banner diegetico compatto e luci dedicati:
+### 8.3 Eventi Dinamici di Quartiere (Micro-Obiettivi ogni 60–90s — *Completato ✅*)
+Per rompere la monotonia tra un Boss e l'altro senza introdurre popup invasivi, ogni `60–90 secondi` (con guardia anti-sovrapposizione prima e durante i Boss, disattivato in Tutorial e Boss Rush) si attiva nell'arena un evento urbano segnalato da un banner diegetico compatto e luci dedicati:
 
 | Evento Urbano | Durata | Modifica Arena & Gameplay | Rischio vs Ricompensa |
 | :--- | :---: | :--- | :--- |
-| **🚦 Ingorgo ZTL (`4x`)** | `22 s` | Le aree *BUS* standard diventano temporaneamente **Zone ZTL Dorate**. | Fermare dentro paga **`4×` XP e Cash**, ma fa salire subito la Polizia di `+1★`. |
+| **🚦 Ingorgo ZTL (`4x`)** | `22 s` | Le aree *BUS* standard diventano temporaneamente **Zone ZTL Dorate**. | Fermare dentro paga **`4×` XP, Cash e Score**, ma fa salire subito la Polizia di `+1★`. |
 | **🎰 Happy Hour Neon & Spin Gratis** | `20 s` | Tutti gli articoli del Distributore scontati del `-35%` + **1 Giro Gratis alla Slot 777**. | Ti spinge a tagliare l'arena sotto fuoco incrociato verso chiosco o cabinato prima che scada. |
-| **📣 Flashmob Campus (*Synergy Rush*)** | `25 s` | Sciame concentrato di `8–12` ragazze di **un solo archetipo dominante** nell'incrocio centrale. | Occasione d'oro per catena *Synergy* + Multi-Hook e *Rizz Fever `x5`* in mezzo a pattern omogenei ma densissimi. |
-| **⚡ Blackout Neon** | `18 s` | I lampioni si attenuano e i coni luminosi/laser dei proiettili diventano ultra-contrastati; carica **Chronos gratuita `+50%`**. | Visibilità ristretta ai coni di luce di Alfredo, fermate e pattuglie; Bonus **+50% Score & XP** a fine evento. |
+| **📣 Flashmob Campus (*Synergy Rush*)** | `25 s` | Sciame concentrato di `8–10` ragazze di **un solo archetipo dominante** nell'incrocio centrale (e spawn `80%` mirato). | Occasione d'oro per catena *Synergy* + Multi-Hook e *Rizz Fever `x5`* in mezzo a pattern omogenei ma densissimi. |
+| **⚡ Blackout Neon** | `18 s` | I lampioni si attenuano (`22%`), velo scuro con coni luminosi su Alfredo, fermate, boss e pattuglie e halo proiettili potenziati; carica **Chronos gratuita `+50%`**. | Visibilità ristretta ai coni di luce; Bonus **+50% Score & XP** accumulati a fine evento. |
 
 ---
 
-### 8.4 Roadmap Prioritizzata di Implementazione (Impatto vs Sforzo)
+### 8.4 Roadmap Prioritizzata di Implementazione (Svolto ✅ vs Da Approfondire ⏳)
 
 1. **Priorità P0 — Ergonomia & Game Feel Immediato *(Completato ✅)***:
    * Modalità *Zero Hand-Lift* su Mouse (`LMB` nei minigiochi 1-tasto, pad/bussola cliccabili per Pragmata & Combo, `Rotellina Mouse` cambio fermata), separazione `Click Destro` Dash vs `Cancel`, `Shift Sinistro` Chronos (Hold/Toggle), `Input Buffer 120ms`, `Tether Coyote Time 0.35s`, `Gyaru Hold-to-Rise`, `Emo BPM-Sync`, Gamepad Twin-Stick + Face Buttons, *Smart Magnetic Aim* e fallback `Frecce/IJKL`.
 2. **Priorità P1 — Meccaniche di Profondità sul Loop *(Completato ✅)***:
    * *Bullet Graze Globale* + *Dash-Parry* riduzione cooldown, *Stop Recall 50% + EMP*, *Rizz Fever Streak (`x2`→`x5`)* con layer synthwave, *Bus Slipstream + Al Volo*, *Herding Magnet-Beat*, *Overdrive* ciclico post-vittoria e modalità *Boss Rush*.
 3. **Polish, Chiarezza & Bugfix Pre-Espansione *(Completato ✅)***:
-   * Box minigioco ancorato sul punto di click fino a fine fermata, opzione **Controllo frecce** con **Pad nel riquadro** o **Attorno alla fermata**, priorità `LMB` su ragazze/minigiochi rispetto a Shop/Slot, coda Level-Up in minigioco + guardia anti-misclick `0.30s`, barre pixel-aligned (`+0.5`), indicatori debuff/buff su Alfredo, vetrata scudo con pip e flash/SFX, frecce fuori schermo (`BOSS` / `CURA` / `BAULE`), mirino radiale di cooldown/blocco, accenti italiani nitidi, 5 costumi Alfredo ripuliti + *Autobus Dorato* + Titoli equipaggiabili, `MapDef` multi-mappa predisposto e **Chiavi Boss & Forzieri Blindati Neon** (1 Chiave per Boss sconfitto, sblocco per prossimità/`[E]`/`LMB` con Reliquia garantita + Cash + Cure + onda d'urto, fallback leggendario `+1 MaxHP` + Level-Up e restock automatico in Overdrive / Boss Rush).
+   * Box minigioco ancorato sul punto di click fino a fine fermata, opzione **Controllo frecce** con **Pad nel riquadro** o **Attorno alla fermata**, priorità `LMB` su ragazze/minigiochi rispetto a Shop/Slot, coda Level-Up in minigioco + guardia anti-misclick `0.30s`, barre pixel-aligned (`+0.5`), indicatori debuff/buff su Alfredo, vetrata scudo con pip e flash/SFX, frecce fuori schermo (`BOSS` / `CURA` / `BAULE`), mirino radiale di cooldown/blocco, accenti italiani nitidi, 5 costumi Alfredo ripuliti + *Autobus Dorato* + Titoli equipaggiabili, `MapDef` multi-mappa predisposto, **Chiavi Boss & Forzieri Blindati Neon**, **12 Card Level-Up** (6 nuove build-defining con filtraggio intelligente anti-duplicati e badge `NUOVO! / LV X/Y`) e **Ribilanciamento Playtest Completo** (economia anti-vite-infinite, cariche Multi-Fermata con Grace Drain `0.25x` & Express Chain `+35%`, Boss Arena Spotlight con banner gimmick, Area Bus +40%/pulizia proiettili/attrazione e ZTL con EMP & +50% XP).
    * La rifinitura visiva di menu, HUD e arena è descritta nella sezione 8.5.
-4. **Priorità P2 — Eventi Dinamici & Espansione Contenuti *(Prossima Fase)***:
-   * I `4 Eventi Dinamici di Quartiere`, **Nuove Mappe Sbloccabili** con i nuovi archetipi (*Musicista*, *Palestrata Max Trazioni*, *Pallavolista* + concept Dual-Click `LMB+RMB`), **Multiplayer Cooperativo 2–4 Giocatori** (*Caos Condiviso*) e **HUD Touch + Build Android**.
+4. **Priorità P2-A — Eventi Dinamici, Onboarding 60s, Personalità Arcade & Riepilogo Build/Seed *(Completato ✅)***:
+   * **I `4 Eventi Dinamici di Quartiere`**: *Ingorgo ZTL 4x*, *Happy Hour Neon* (`-35%` + 1 Spin Gratis), *Flashmob Campus* e *Blackout Neon* (con overlay luci localizzate e bonus `+50%` finale).
+   * **Onboarding primi 60s**: rimborso `-40% CD` su lancio a vuoto iniziale, bonus primo imbarco (`+15 XP` & fermata subito pronta) e promemoria iniziale compatto.
+   * **Personalità Arcade & Riepilogo Build/Seed**: micro-battute non bloccanti per Boss/Synergy/Fine Corsa e schermata riepilogo fine run condivisibile (`SEED #XXXXXX`, breakdown archetipi, Reliquie e Upgrade attivi).
+5. **Priorità P2-B — Profondità Roguelite: Build Diversity, Agenzia & Difficoltà Scalabile *(Da Approfondire & Implementare ⏳)***:
+   * **Build Diversity & Agenzia RNG**: Card/Reliquie trasformative con trade-off forti, Sinergie *Duo* tra archetipi, Evoluzioni al Rank Max e **Reroll a pagamento in Cash (`$`)** sui Level-Up (con futuri Banish/Lock).
+   * **Loadout, Sblocchi Orizzontali & Difficoltà Scalabile**: Stili di partenza opzionali legati ai Costumi (con toggle *Solo Cosmetico*), Challenge che sbloccano Reliquie/Card nel pool in-run, e **Grado Traffico / Rush Level 1–5** post-vittoria.
+6. **Priorità P3 — Espansione Mappe, Archetipi, Co-op & Mobile *(Da Approfondire & Implementare ⏳)***:
+   * **Nuove Mappe Sbloccabili**: *Spiaggia*, **Atrio Universitario / Campus (Indoor con Lucernario & Bus da Portali Neon/VHS)**, *Neon Iron District (Palestra)* e *Cyber-Shibuya (Club)* con i nuovi archetipi (*Musicista*, *Palestrata Max Trazioni*, *Pallavolista* + concept Dual-Click `LMB+RMB`).
+   * **Multiplayer Cooperativo 2–4 Giocatori (*Caos Condiviso*)** e **HUD Touch + Build Android**.
 
 ### 8.5 Presentazione e leggibilità in partita
 

@@ -36,9 +36,9 @@ func HotbarSlotRect(i int) game.Rect {
 func LevelUpCardRect(i int) game.Rect {
 	return game.Rect{
 		X: float32(44 + i*188),
-		Y: 92,
+		Y: 86,
 		W: 174,
-		H: 176,
+		H: 204,
 	}
 }
 
@@ -111,6 +111,9 @@ func (r *Renderer) DrawHUDAndOverlays(screen *ebiten.Image, w *game.World) {
 	if r.playingActive && !w.PendingLevelUp && !w.ShopMenu.Active && !w.SlotModal.Active {
 		r.drawDiegeticStopUI(screen, w, r.lastCamX, r.lastCamY)
 		r.drawCriticalOffscreenArrows(screen, w)
+		if w.QuipTimer > 0 && w.QuipText != "" {
+			r.drawArcadeQuipBanner(screen, w)
+		}
 	}
 
 	if w.PendingLevelUp {
@@ -298,7 +301,8 @@ func (r *Renderer) drawRelicTray(screen *ebiten.Image, w *game.World, y float32)
 	if hovered >= 0 {
 		spec := game.GetRelicSpec(game.RelicKind(hovered))
 		width := float32(max(textPixelWidth(spec.Name, 1), textPixelWidth(spec.Desc, 1)) + 20)
-		tip := game.Rect{X: hoveredX, Y: y + 25, W: width, H: 32}
+		tipX := min(hoveredX, float32(game.ScreenWidth)-width-8)
+		tip := game.Rect{X: tipX, Y: y + 25, W: width, H: 32}
 		drawRunPanel(screen, tip, runPlum, runGold)
 		r.drawTextColored(screen, spec.Name, int(tip.X+10), int(tip.Y+1), runGold)
 		r.drawTextColored(screen, spec.Desc, int(tip.X+10), int(tip.Y+16), runCream)
@@ -340,6 +344,57 @@ func (r *Renderer) drawCenterStatusBanner(screen *ebiten.Image, w *game.World) {
 				vector.DrawFilledRect(screen, x+1, y+3, 15, 1, runLine, false)
 			}
 		}
+
+		hint := game.BossGimmickHint(w.Boss.Kind)
+		hw := float32(textPixelWidth(hint, 1) + 20)
+		hbox := game.Rect{X: centerX - hw*0.5, Y: 50, W: hw, H: 15}
+		hedge := runLine
+		if w.BossIntroTimer > 0 && int(r.tick*8)%2 == 0 {
+			hedge = runGold
+		}
+		drawRunPanel(screen, hbox, runInk, hedge)
+		r.drawRunCentered(screen, hint, centerX, int(hbox.Y), runGold)
+		return
+	}
+
+	if w.DistrictEvent.Active != game.DistrictEventNone {
+		accent := runGold
+		switch w.DistrictEvent.Active {
+		case game.DistrictEventFlashmob:
+			accent = runPink
+		case game.DistrictEventBlackout:
+			accent = runTeal
+		}
+		title := game.DistrictEventTitle(w.DistrictEvent.Active, w.DistrictEvent.FlashmobArch)
+		sub := game.DistrictEventSubtitle(w.DistrictEvent.Active, w.DistrictEvent.FlashmobArch, w.DistrictEvent.FreeSlotSpinAvailable)
+		remSec := max(0, int(math.Ceil(float64(w.DistrictEvent.Timer))))
+		timerLbl := fmt.Sprintf("%ds", remSec)
+		frac := float32(0)
+		if w.DistrictEvent.Duration > 0 {
+			frac = clampF(w.DistrictEvent.Timer/w.DistrictEvent.Duration, 0, 1)
+		}
+		titleW := textPixelWidth(title, 1) + 14 + textPixelWidth(timerLbl, 1)
+		subW := textPixelWidth(sub, 1)
+		boxW := float32(max(max(titleW, subW)+24, 240))
+		if boxW > game.ScreenWidth-16 {
+			boxW = game.ScreenWidth - 16
+		}
+		box := game.Rect{
+			X: float32(math.Floor(float64(centerX - boxW*0.5))),
+			Y: 28,
+			W: boxW,
+			H: 28,
+		}
+		borderCol := accent
+		if w.DistrictEvent.Active == game.DistrictEventFlashmob {
+			borderCol = runLilac
+		}
+		drawRunPanel(screen, box, runPlum, borderCol)
+		vector.DrawFilledRect(screen, box.X+1, box.Y+2, 3, box.H-4, accent, false)
+		r.drawTextColored(screen, title, int(box.X+10), int(box.Y), accent)
+		r.drawTextColored(screen, timerLbl, int(box.X+box.W)-textPixelWidth(timerLbl, 1)-8, int(box.Y), runCream)
+		r.drawRunCentered(screen, sub, centerX+1, int(box.Y+10), runCream)
+		drawRunMeter(screen, box.X+8, box.Y+23, box.W-16, 4, frac, accent)
 		return
 	}
 
@@ -360,22 +415,63 @@ func (r *Renderer) drawCenterStatusBanner(screen *ebiten.Image, w *game.World) {
 	}
 
 	totalBosses := len(w.BossSchedule)
-	if totalBosses == 0 {
+	if totalBosses > 0 {
+		if w.BossScheduleIdx < len(w.BossScheduleTimes) {
+			rem := max(0, int(w.BossScheduleTimes[w.BossScheduleIdx]-w.RunTime))
+			label := fmt.Sprintf("BOSS %d/%d  /  PROSSIMO %02d:%02d", w.BossesDefeated, totalBosses, rem/60, rem%60)
+			accent := runTeal
+			if w.RunTime < 6.5 && w.BossesDefeated == 0 {
+				label = fmt.Sprintf("BATTI %d BOSS  /  PRIMO BOSS TRA %02d:%02d", totalBosses, rem/60, rem%60)
+				accent = runGold
+			}
+			r.drawRunNotice(screen, label, centerX, 28, accent)
+		} else if w.Victory {
+			label := fmt.Sprintf("OVERDRIVE  /  BOSS BATTUTI %d", w.BossesDefeated)
+			r.drawRunNotice(screen, label, centerX, 28, runGold)
+		}
+	}
+
+	if !w.TutorialMode && !w.Boss.Active && w.DistrictEvent.Active == game.DistrictEventNone && !w.FirstBoardingDone && w.RunTime < 25.0 {
+		r.drawRunNotice(screen, "MIRA UNA RAGAZZA + CLICK SX  /  SPAZIO = DASH-PARRY", centerX, 48, runGold)
+	}
+}
+
+func (r *Renderer) drawArcadeQuipBanner(screen *ebiten.Image, w *game.World) {
+	if w.QuipTimer <= 0 || w.QuipText == "" {
 		return
 	}
-	if w.BossScheduleIdx < len(w.BossScheduleTimes) {
-		rem := max(0, int(w.BossScheduleTimes[w.BossScheduleIdx]-w.RunTime))
-		label := fmt.Sprintf("BOSS %d/%d  /  PROSSIMO %02d:%02d", w.BossesDefeated, totalBosses, rem/60, rem%60)
-		accent := runTeal
-		if w.RunTime < 6.5 && w.BossesDefeated == 0 {
-			label = fmt.Sprintf("BATTI %d BOSS  /  PRIMO BOSS TRA %02d:%02d", totalBosses, rem/60, rem%60)
-			accent = runGold
-		}
-		r.drawRunNotice(screen, label, centerX, 28, accent)
-	} else if w.Victory {
-		label := fmt.Sprintf("OVERDRIVE  /  BOSS BATTUTI %d", w.BossesDefeated)
-		r.drawRunNotice(screen, label, centerX, 28, runGold)
+	accent := runTeal
+	switch w.QuipAccent {
+	case 1:
+		accent = runGold
+	case 2:
+		accent = runCoral
 	}
+	speakerTag := ""
+	if w.QuipSpeaker != "" {
+		speakerTag = "[" + w.QuipSpeaker + "] "
+	}
+	totalW := textPixelWidth(speakerTag+w.QuipText, 1)
+	boxW := float32(totalW + 24)
+	if boxW > game.ScreenWidth-16 {
+		boxW = game.ScreenWidth - 16
+	}
+	box := game.Rect{
+		X: float32(math.Floor(float64(game.ScreenWidth-boxW) * 0.5)),
+		Y: 268,
+		W: boxW,
+		H: 20,
+	}
+	drawRunPanel(screen, box, runPlum, runLine)
+	vector.DrawFilledRect(screen, box.X+1, box.Y+2, 3, box.H-4, accent, false)
+
+	tx := int(box.X+(box.W-float32(totalW))*0.5) + 1
+	ty := int(box.Y + 2)
+	if speakerTag != "" {
+		r.drawTextColored(screen, speakerTag, tx, ty, accent)
+		tx += textPixelWidth(speakerTag, 1)
+	}
+	r.drawTextColored(screen, w.QuipText, tx, ty, runCream)
 }
 
 func (r *Renderer) drawBossKeyBadge(screen *ebiten.Image, w *game.World, y float32) bool {
@@ -801,16 +897,24 @@ func (r *Renderer) drawBottomHotbarDock(screen *ebiten.Image, w *game.World) {
 	}
 
 	active, capacity := w.ActiveStopCount(), w.Player.EffectiveMaxStops()
+	canThrow := w.Player.CanThrowStop(active)
 	statusX := last.X + last.W + 10
 	label, accent := "LANCIA", runTeal
 	cooldown := w.Player.EffectiveStopCooldown()
 	ready := float32(1)
 	if cooldown > 0 && w.Player.StopCooldownTimer > 0 {
 		ready -= clampF(w.Player.StopCooldownTimer/cooldown, 0, 1)
-		label, accent = "RICARICA", runGold
 	}
 	if active >= capacity {
 		label, accent = "FERMATE MAX", runCoral
+	} else if !canThrow {
+		label, accent = "RICARICA", runGold
+	} else if capacity >= 2 {
+		charges := w.Player.StopCharges
+		if charges <= 0 && w.Player.StopCooldownTimer <= 0 {
+			charges = 1
+		}
+		label = fmt.Sprintf("CARICHE %d/%d", charges, capacity)
 	}
 
 	r.DrawSpriteIcon(screen, assets.SpriteIconMouseLMB, statusX, first.Y+1, 1)
@@ -823,6 +927,8 @@ func (r *Renderer) drawBottomHotbarDock(screen *ebiten.Image, w *game.World) {
 	if w.Player.GroundedTimer > 0 {
 		label := fmt.Sprintf("PUNIZIONE  /  %.0fs", w.Player.GroundedTimer)
 		r.drawRunNotice(screen, label, game.ScreenWidth/2, first.Y-24, runCoral)
+	} else if capacity >= 2 && canThrow && active > 0 {
+		r.drawRunNotice(screen, "[F / LMB] 2A FERMATA PRONTA!", game.ScreenWidth/2, first.Y-24, runTeal)
 	}
 }
 
@@ -854,6 +960,18 @@ func upgradeTheme(kind game.UpgradeKind) (iconKey string, accent color.RGBA) {
 		return assets.SpriteIconUpgChronos, runLilac
 	case game.UpgradeVitality:
 		return assets.SpriteIconUpgVitality, runCoral
+	case game.UpgradeDashKatana:
+		return assets.SpriteIconUpgDash, runTeal
+	case game.UpgradeGlassFortress:
+		return assets.SpriteIconUpgShield, runSky
+	case game.UpgradeMinigameTurbo:
+		return assets.SpriteIconUpgRhythm, runPink
+	case game.UpgradeBasslineShock:
+		return assets.SpriteIconUpgBass, runLilac
+	case game.UpgradePerfectNova:
+		return assets.SpriteIconUpgPerfect, runGold
+	case game.UpgradeRizzMagnet:
+		return assets.SpriteIconUpgMagnet, runGold
 	default:
 		return assets.SpriteIconUpgCooldown, runTeal
 	}
@@ -898,12 +1016,28 @@ func (r *Renderer) drawLevelUpModal(screen *ebiten.Image, w *game.World) {
 		drawRunPanel(screen, game.Rect{X: center - 24, Y: art.Y + 6, W: 48, H: 48}, runFace, accent)
 		r.DrawSpriteIcon(screen, icon, center-20, art.Y+10, 2)
 
-		r.drawRunCentered(screen, card.Title, center, int(y+80), runCream)
-		drawRunWrappedText(r, screen, card.Desc, center, int(y+101), 25, runMuted)
-		for dash := x + 9; dash < x+ticket.W-9; dash += 6 {
-			vector.DrawFilledRect(screen, dash, y+135, 3, 1, runLine, false)
+		rank := w.Player.UpgradeRanks[card.Kind]
+		var badgeLabel string
+		badgeTint := accent
+		if rank == 0 {
+			badgeLabel = "NUOVO!"
+			badgeTint = runGold
+		} else if card.MaxRank > 0 {
+			badgeLabel = fmt.Sprintf("LV %d/%d", rank+1, card.MaxRank)
+		} else {
+			badgeLabel = fmt.Sprintf("LV %d", rank+1)
 		}
-		action := game.Rect{X: x + 12, Y: y + 144, W: ticket.W - 24, H: 22}
+		bw := float32(textPixelWidth(badgeLabel, 1) + 8)
+		badgeBox := game.Rect{X: art.X + art.W - bw - 3, Y: art.Y + 4, W: bw, H: 14}
+		drawRunPanel(screen, badgeBox, runPlum, badgeTint)
+		r.drawRunCentered(screen, badgeLabel, badgeBox.X+badgeBox.W*0.5, int(badgeBox.Y-1), badgeTint)
+
+		r.drawRunCentered(screen, card.Title, center, int(y+76), accent)
+		drawRunWrappedText(r, screen, card.Desc, center, int(y+94), 25, runCream)
+		for dash := x + 9; dash < x+ticket.W-9; dash += 6 {
+			vector.DrawFilledRect(screen, dash, y+167, 3, 1, runLine, false)
+		}
+		action := game.Rect{X: x + 12, Y: y + 174, W: ticket.W - 24, H: 22}
 		r.drawRunButton(screen, action, fmt.Sprintf("[%d] SCEGLI", i+1), accent, true, hovered)
 	}
 }
@@ -922,6 +1056,13 @@ func (r *Renderer) drawShopModal(screen *ebiten.Image, w *game.World) {
 
 	r.drawTextColored(screen, "DISTRIBUTORE", 144, 45, runCream)
 	r.drawScaledText(screen, "NEON", 224, 39, 2, runTeal, runInk)
+	if w.DistrictEvent.Active == game.DistrictEventHappyHour {
+		const chipLabel = "HAPPY HOUR -35%"
+		chipW := float32(textPixelWidth(chipLabel, 1) + 14)
+		chip := game.Rect{X: 144, Y: 26, W: chipW, H: 14}
+		drawRunPanel(screen, chip, runGold, runInk)
+		r.drawScaledText(screen, chipLabel, int(chip.X+7), int(chip.Y-1), 1, runInk, color.Transparent)
+	}
 	r.drawRunCounter(screen, game.Rect{X: 282, Y: 44, W: 64, H: 18}, assets.SpriteIconHeartFull, fmt.Sprintf("%d/%d", w.Player.HP, w.Player.MaxHP), runCream)
 	r.drawRunCounter(screen, game.Rect{X: 352, Y: 44, W: 98, H: 18}, assets.SpriteIconCoin, fmt.Sprintf("$%d", w.Player.Cash), runGold)
 	r.drawRunCounter(screen, game.Rect{X: 456, Y: 44, W: 40, H: 18}, assets.SpriteIconStarWanted, fmt.Sprint(w.Police.Stars), runCoral)
@@ -938,25 +1079,49 @@ func (r *Renderer) drawShopModal(screen *ebiten.Image, w *game.World) {
 		drawRunWrappedText(r, screen, msg, 320, 69, 55, runCream)
 	}
 
-	relicEffect := fmt.Sprintf("%d/%d raccolte", w.Player.RelicCountOwned(), game.RelicCount)
-	if w.Player.RelicCountOwned() == int(game.RelicCount) {
-		relicEffect = "+1 Max HP, +2 HP"
+	var shop *game.VendingShop
+	if w.ShopMenu.ShopIndex >= 0 && w.ShopMenu.ShopIndex < len(w.Shops) {
+		shop = &w.Shops[w.ShopMenu.ShopIndex]
 	}
+
+	healEffect := "+2 HP e +65 Chronos"
+	healReady := w.TutorialMode || w.Player.HP < w.Player.MaxHP
+	if !healReady {
+		healEffect = "SALUTE MAX"
+	} else if shop != nil && shop.HealCooldown > 0 {
+		healReady = false
+		healEffect = fmt.Sprintf("ATTENDI %.0fs", math.Ceil(float64(shop.HealCooldown)))
+	}
+
+	relicEffect := fmt.Sprintf("%d/%d raccolte", w.Player.RelicCountOwned(), game.RelicCount)
+	relicReady := w.Player.RelicCountOwned() < int(game.RelicCount)
+	if !relicReady {
+		relicEffect = "ESAURITO (6/6)"
+	}
+
+	upgradeEffect := "Scegli fra 3 carte"
+	upgradeReady := true
+	if shop != nil && shop.UpgradeCooldown > 0 {
+		upgradeReady = false
+		upgradeEffect = fmt.Sprintf("ATTENDI %.0fs", math.Ceil(float64(shop.UpgradeCooldown)))
+	}
+
 	stock := [...]struct {
 		sprite, label, effect string
 		price                 int
 		accent                color.RGBA
+		extraReady            bool
 	}{
-		{assets.SpriteIconShopEspresso, "Caffè Espresso", "+2 HP e Chronos", w.CurrentHealCost(), runCoral},
-		{assets.SpriteIconShopBribe, "Tangente Polizia", "-2 stelle Wanted", w.CurrentBribeCost(), runGold},
-		{assets.SpriteIconShopRelic, "Reliquia Casuale", relicEffect, 120, runTeal},
-		{assets.SpriteIconShopCrate, "Cassa Upgrade", "Scegli fra 3 carte", 140, runTeal},
+		{assets.SpriteIconShopEspresso, "Caffè Espresso", healEffect, w.CurrentHealCost(), runCoral, healReady},
+		{assets.SpriteIconShopBribe, "Tangente Polizia", "-2 stelle Wanted", w.CurrentBribeCost(), runGold, w.Police.Stars > 0},
+		{assets.SpriteIconShopRelic, "Reliquia Casuale", relicEffect, w.CurrentRelicCost(), runTeal, relicReady},
+		{assets.SpriteIconShopCrate, "Cassa Upgrade", upgradeEffect, w.CurrentUpgradeCost(), runTeal, upgradeReady},
 	}
 	for i, item := range stock {
 		row := ShopChoiceRect(i)
 		x, y := row.X, row.Y
 		hasCash := w.Player.Cash >= item.price
-		available := hasCash && (i != 1 || w.Police.Stars > 0)
+		available := hasCash && item.extraReady
 		hovered := row.Contains(r.mouseScreenX, r.mouseScreenY)
 		face, edge, title := runPlum, runLine, runMuted
 		if available {
@@ -1083,9 +1248,13 @@ func (r *Renderer) drawSlotModal(screen *ebiten.Image, w *game.World) {
 	drawRunWrappedText(r, screen, description, result.X+result.W/2, int(result.Y+21), 51, runCream)
 
 	cost := w.CurrentSlotCost()
-	label := fmt.Sprintf("[SPAZIO] GIRA  $%d", cost)
 	spinning := w.SlotModal.Spinning
+	label := fmt.Sprintf("[SPAZIO] GIRA  $%d", cost)
 	canSpin := !spinning && w.Player.Cash >= cost
+	if cost == 0 {
+		label = "[SPAZIO] GIRA GRATIS!"
+		canSpin = !spinning
+	}
 	if spinning {
 		label = "GIRANDO..."
 	}

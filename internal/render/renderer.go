@@ -215,6 +215,7 @@ func (r *Renderer) DrawWorldScene(screen *ebiten.Image, w *game.World, showHUD b
 	r.drawAmbientParticles(screen, camX, camY)
 
 	r.drawYSortedWorld(screen, w, camX, camY)
+	r.drawBlackoutOverlay(screen, w, camX, camY)
 	r.drawLightingPass(screen, w, camX, camY)
 	r.drawBuses(screen, w, camX, camY)
 	r.drawHeliSpotlight(screen, w, camX, camY)
@@ -446,11 +447,32 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 		vector.StrokeRect(screen, gx0-camX, gy0-camY, gw, gh, 1.5, color.RGBA{72, 130, 68, 220}, false)
 	}
 
-	// 5. Designated Yellow BUS Bays (pulsing green/gold border)
+	// 5. Designated Yellow BUS Bays (or Golden ZTL 4x during DistrictEventZTLJam)
 	bayPulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*4.5)))
+	isZTLJam := w.DistrictEvent.Active == game.DistrictEventZTLJam
 	for _, bay := range w.BusBays {
 		bx, by := bay.X-camX, bay.Y-camY
 		if bx+bay.W < -20 || bx > game.ScreenWidth+20 || by+bay.H < -20 || by > game.ScreenHeight+20 {
+			continue
+		}
+		if isZTLJam {
+			fillAlpha := uint8(56 + 28*bayPulse)
+			vector.DrawFilledRect(screen, bx, by, bay.W, bay.H, Premul(215, 118, 52, fillAlpha), false)
+			bayBorder := PremulColor(colGold, uint8(205+50*bayPulse))
+			vector.StrokeRect(screen, bx, by, bay.W, bay.H, 2.0, bayBorder, false)
+			for x := bx + 4; x < bx+bay.W-8; x += 10 {
+				vector.StrokeLine(screen, x, by+5, x+4, by+1, 1, PremulColor(actionCoral, 175), false)
+				vector.StrokeLine(screen, x, by+bay.H-2, x+4, by+bay.H-6, 1, PremulColor(actionCoral, 175), false)
+			}
+			vector.DrawFilledRect(screen, bx+2, by+2, 8, 3, actionCoral, false)
+			vector.DrawFilledRect(screen, bx+bay.W-10, by+bay.H-5, 8, 3, actionCoral, false)
+			badgeW := float32(98)
+			badgeX := snapPixel(bx + (bay.W-badgeW)*0.5)
+			badgeY := snapPixel(by + 10)
+			vector.DrawFilledRect(screen, badgeX, badgeY, badgeW, 15, Premul(38, 24, 43, 232), false)
+			vector.StrokeRect(screen, badgeX+0.5, badgeY+0.5, badgeW-1, 14, 1, PremulColor(colGold, 220), false)
+			r.drawTextColored(screen, "ZTL 4x$+XP +1", int(badgeX+4), int(badgeY), actionCream)
+			r.DrawSpriteIcon(screen, assets.SpriteIconStarWanted, badgeX+84, badgeY+1, 1.0)
 			continue
 		}
 		vector.DrawFilledRect(screen, bx, by, bay.W, bay.H, Premul(255, 210, 40, 38), false)
@@ -464,7 +486,7 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 		// Corner chevrons
 		vector.DrawFilledRect(screen, bx+2, by+2, 8, 3, colGold, false)
 		vector.DrawFilledRect(screen, bx+bay.W-10, by+bay.H-5, 8, 3, colGold, false)
-		r.drawScaledText(screen, "AREA BUS", int(bx+20), int(by+11), 1.0, colGold, colOutline)
+		r.drawScaledText(screen, "AREA BUS +40%", int(bx+5), int(by+11), 1.0, colGold, colOutline)
 	}
 
 	// Restricted bays use the same coral edge language as the police warnings.
@@ -479,9 +501,9 @@ func (r *Renderer) drawArenaTiles(screen *ebiten.Image, w *game.World, camX, cam
 			vector.StrokeLine(screen, x, zy+5, x+4, zy+1, 1, PremulColor(actionCoral, 155), false)
 			vector.StrokeLine(screen, x, zy+z.H-2, x+4, zy+z.H-6, 1, PremulColor(actionCoral, 155), false)
 		}
-		vector.DrawFilledRect(screen, zx+5, zy+9, 73, 15, Premul(38, 24, 43, 220), false)
-		r.drawTextColored(screen, "ZTL 3x +1", int(zx)+9, int(zy)+9, actionCream)
-		r.DrawSpriteIcon(screen, assets.SpriteIconStarWanted, zx+64, zy+10, 1.0)
+		vector.DrawFilledRect(screen, zx+5, zy+9, 98, 15, Premul(38, 24, 43, 220), false)
+		r.drawTextColored(screen, "ZTL 3x$+XP +1", int(zx)+9, int(zy)+9, actionCream)
+		r.DrawSpriteIcon(screen, assets.SpriteIconStarWanted, zx+89, zy+10, 1.0)
 	}
 
 	// La Rettrice Martial ZTL Half-Arena Overlay
@@ -1340,7 +1362,13 @@ func (r *Renderer) drawBossEntity(screen *ebiten.Image, w *game.World, camX, cam
 			opClone.ColorScale.Reset()
 			opClone.ColorScale.Scale(0.70, 0.95, 1.35, 0.72)
 			screen.DrawImage(img, opClone)
+			if int(r.tick*4)%2 == 0 {
+				lbl := "ESCA?"
+				lw := textPixelWidth(lbl, 1.0)
+				r.drawScaledText(screen, lbl, int(cx)-lw/2, int(cy-29), 1.0, colGyaru, colOutline)
+			}
 		}
+		vector.StrokeCircle(screen, bx, by, 26, 1.4, PremulColor(colGold, 210), true)
 	}
 
 	// La Dirigente Aziendale orbiting intern escorts
@@ -1365,6 +1393,16 @@ func (r *Renderer) drawBossEntity(screen *ebiten.Image, w *game.World, camX, cam
 			screen.DrawImage(escImg, opEsc)
 			vector.StrokeCircle(screen, ex, ey, 12, 1.2, colGold, true)
 		}
+		if escCnt := w.Boss.ActiveEscortCount(); escCnt > 0 {
+			lbl := fmt.Sprintf("SCORTA x%d", escCnt)
+			lw := textPixelWidth(lbl, 1.0)
+			r.drawScaledText(screen, lbl, int(bx)-lw/2, int(by-39), 1.0, colGold, colOutline)
+		}
+	}
+	if w.Boss.Kind == game.BossRector && w.Boss.MartialZTLActive {
+		lbl := "SOLO PERFECT!"
+		lw := textPixelWidth(lbl, 1.0)
+		r.drawScaledText(screen, lbl, int(bx)-lw/2, int(by-39), 1.0, colRedAlert, colOutline)
 	}
 
 	drawContactShadow(screen, bx, by+15, 25)
@@ -1834,10 +1872,10 @@ func (r *Renderer) drawAimAndRange(screen *ebiten.Image, w *game.World, camX, ca
 	sx, sy := fb.ClampedX-camX, fb.ClampedY-camY
 	ac := archetypeColor(w.Player.SelectedStopArch)
 
-	// When on cooldown or at max active stops, draw a clear blocked/loading indicator directly
+	// When out of stop charges or at max active stops, draw a clear blocked/loading indicator directly
 	// on the crosshair (radial recharge ring + countdown, or padlock + MAX indicator when slots are full),
 	// while still showing the Mouse-LMB recall pill if hovering over an active stop for Stop Recall.
-	if w.Player.StopCooldownTimer > 0 || w.ActiveStopCount() >= w.Player.EffectiveMaxStops() {
+	if !w.Player.CanThrowStop(w.ActiveStopCount()) {
 		showingRecall := false
 		for i := range w.Stops {
 			st := &w.Stops[i]

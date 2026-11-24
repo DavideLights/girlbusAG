@@ -32,14 +32,20 @@ type Player struct {
 	XP, NextLevelXP, Level int
 	Cash                   int
 	BossKeys               int
+	EspressoBuys           int
+	ShopRelicBuys          int
+	ShopUpgradeBuys        int
 
 	SelectedStopArch Archetype
 	UnlockedArchs    [ArchCount]bool
 	Relics           [RelicCount]bool
+	UpgradeRanks     [UpgradeCount]int
 
 	// Balanced Lv1 baseline stats that scale dramatically via In-Run Level-Up Upgrades
 	StopCooldownBase     float32 // Starts at 6.5s, upgrades down to 1.5s
 	StopCooldownTimer    float32
+	StopCharges          int
+	StopBurstDelay       float32
 	MaxSimultaneousStops int     // Starts at 1, upgrades up to 4
 	MaxMultiHook         int     // Starts at 1 girl per stop, upgrades up to 12
 	RangeMult            float32 // Starts at 0.85, upgrades up to 1.60
@@ -77,6 +83,7 @@ func NewPlayer() Player {
 		SelectedStopArch:     ArchEmo,
 		UnlockedArchs:        [ArchCount]bool{true, true, true, true},
 		StopCooldownBase:     6.5,
+		StopCharges:          1,
 		MaxSimultaneousStops: 1,
 		MaxMultiHook:         1,
 		RangeMult:            0.85,
@@ -131,9 +138,9 @@ func (p *Player) EffectiveMaxMultiHook() int {
 	return clampInt(p.MaxMultiHook, 1, 12)
 }
 
-// ShieldBonus returns extra BusStop back-glass shield pips from passive relics.
+// ShieldBonus returns extra BusStop back-glass shield pips from passive relics and upgrades.
 func (p *Player) ShieldBonus() int {
-	bonus := 0
+	bonus := p.UpgradeRanks[UpgradeGlassFortress] * 2
 	if p.HasRelic(RelicMonthlyPass) {
 		bonus++
 	}
@@ -143,17 +150,18 @@ func (p *Player) ShieldBonus() int {
 	return bonus
 }
 
-// MinigameSpeedMult returns minigame charge speed multiplier from passive relics.
+// MinigameSpeedMult returns minigame charge speed multiplier from passive relics and upgrades.
 func (p *Player) MinigameSpeedMult() float32 {
+	m := float32(1.0) + 0.22*float32(p.UpgradeRanks[UpgradeMinigameTurbo])
 	if p.HasRelic(RelicDoubleEspresso) {
-		return 1.25
+		m += 0.25
 	}
-	return 1.0
+	return m
 }
 
-// CashBonusMult returns passive cash multiplier from relics.
+// CashBonusMult returns passive cash multiplier from relics and upgrades.
 func (p *Player) CashBonusMult() float32 {
-	m := float32(1.0)
+	m := float32(1.0) + 0.20*float32(p.UpgradeRanks[UpgradeRizzMagnet])
 	if p.HasRelic(RelicLuckySocks) {
 		m += 0.15
 	}
@@ -163,12 +171,69 @@ func (p *Player) CashBonusMult() float32 {
 	return m
 }
 
-// XPBonusMult returns passive XP multiplier from relics.
+// XPBonusMult returns passive XP multiplier from relics and upgrades.
 func (p *Player) XPBonusMult() float32 {
+	m := float32(1.0) + 0.20*float32(p.UpgradeRanks[UpgradeRizzMagnet])
 	if p.HasRelic(RelicFakeVIPPass) {
-		return 1.25
+		m += 0.25
 	}
-	return 1.0
+	return m
+}
+
+// EffectiveDashCooldown returns the Dash cooldown reduced by UpgradeDashKatana.
+func (p *Player) EffectiveDashCooldown() float32 {
+	cd := float32(0.72)
+	for i := 0; i < p.UpgradeRanks[UpgradeDashKatana]; i++ {
+		cd *= 0.80
+	}
+	if cd < 0.36 {
+		cd = 0.36
+	}
+	return cd
+}
+
+// DashParryBonusRadius returns extra parry reach from UpgradeDashKatana.
+func (p *Player) DashParryBonusRadius() float32 {
+	return float32(p.UpgradeRanks[UpgradeDashKatana]) * 10.0
+}
+
+// DashParryBonusShave returns extra stop cooldown shave per Dash-Parry from UpgradeDashKatana.
+func (p *Player) DashParryBonusShave() float32 {
+	return float32(p.UpgradeRanks[UpgradeDashKatana]) * 0.35
+}
+
+// DashParryBonusChronos returns extra Chronos restored per Dash-Parry from UpgradeDashKatana.
+func (p *Player) DashParryBonusChronos() float32 {
+	return float32(p.UpgradeRanks[UpgradeDashKatana]) * 6.0
+}
+
+// StopDurationBonus returns extra BusStop LifeTimer seconds from UpgradeMinigameTurbo.
+func (p *Player) StopDurationBonus() float32 {
+	return float32(p.UpgradeRanks[UpgradeMinigameTurbo]) * 2.5
+}
+
+// ComboDurationBonus returns extra Boarding Combo timer seconds from UpgradeMinigameTurbo.
+func (p *Player) ComboDurationBonus() float32 {
+	return float32(p.UpgradeRanks[UpgradeMinigameTurbo]) * 1.5
+}
+
+// EffectiveBasslinePeriod returns the Bassline pulse interval shortened by UpgradeBasslineShock.
+func (p *Player) EffectiveBasslinePeriod() float32 {
+	period := BasslinePulsePeriod - 0.5*float32(p.UpgradeRanks[UpgradeBasslineShock])
+	if period < 1.0 {
+		period = 1.0
+	}
+	return period
+}
+
+// EffectivePerfectRadius returns the Perfect Drop tolerance radius expanded by UpgradePerfectNova.
+func (p *Player) EffectivePerfectRadius() float32 {
+	return PerfectHitRadius + 8.0*float32(p.UpgradeRanks[UpgradePerfectNova])
+}
+
+// EffectiveStreakWindow returns the Streak window duration extended by UpgradeRizzMagnet.
+func (p *Player) EffectiveStreakWindow() float32 {
+	return StreakWindowDuration + 2.5*float32(p.UpgradeRanks[UpgradeRizzMagnet])
 }
 
 // EffectiveMaxStops returns current allowed simultaneous stops, factoring in La Mamma's Grounded debuff.
@@ -188,6 +253,58 @@ func (p *Player) IsInvulnerable() bool {
 	return p.DashTimer > 0 || p.InvulnTimer > 0
 }
 
+// SyncStopCharges keeps multi-stop charge count aligned with StopCooldownTimer and EffectiveMaxStops.
+func (p *Player) SyncStopCharges() {
+	maxS := p.EffectiveMaxStops()
+	if maxS <= 1 {
+		if p.StopCooldownTimer <= 0 {
+			p.StopCharges = 1
+		} else {
+			p.StopCharges = 0
+		}
+		return
+	}
+	if p.StopCharges > maxS {
+		p.StopCharges = maxS
+	}
+	if p.StopCharges < maxS && p.StopCooldownTimer <= 0 {
+		p.StopCharges++
+		if p.StopCharges < maxS {
+			p.StopCooldownTimer = p.EffectiveStopCooldown()
+		}
+	}
+}
+
+// CanThrowStop reports whether Alfredo can throw a Bus Stop right now.
+func (p *Player) CanThrowStop(activeStops int) bool {
+	if p.StunTimer > 0 || activeStops >= p.EffectiveMaxStops() {
+		return false
+	}
+	if activeStops > 0 && p.StopBurstDelay > 0 {
+		return false
+	}
+	if p.EffectiveMaxStops() <= 1 {
+		return p.StopCooldownTimer <= 0
+	}
+	return p.StopCharges > 0 || p.StopCooldownTimer <= 0
+}
+
+// ConsumeStopCharge spends one stop charge after throwing and updates cooldown/burst timers.
+func (p *Player) ConsumeStopCharge(cd float32) {
+	p.StopBurstDelay = 0.22
+	if p.EffectiveMaxStops() <= 1 {
+		p.StopCharges = 0
+		p.StopCooldownTimer = cd
+		return
+	}
+	if p.StopCharges > 0 {
+		p.StopCharges--
+	}
+	if p.StopCooldownTimer <= 0 || cd < p.StopCooldownTimer {
+		p.StopCooldownTimer = cd
+	}
+}
+
 // ReduceStopCooldown shaves sec seconds off the active Bus Stop throw cooldown.
 func (p *Player) ReduceStopCooldown(sec float32) {
 	if sec <= 0 || p.StopCooldownTimer <= 0 {
@@ -197,6 +314,7 @@ func (p *Player) ReduceStopCooldown(sec float32) {
 	if p.StopCooldownTimer < 0 {
 		p.StopCooldownTimer = 0
 	}
+	p.SyncStopCharges()
 }
 
 // Update advances Alfredo's movement, dash, Chronos focus, cooldowns, and animations.
@@ -221,12 +339,19 @@ func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog 
 			p.DashCooldown = 0
 		}
 	}
+	if p.StopBurstDelay > 0 {
+		p.StopBurstDelay -= dt
+		if p.StopBurstDelay < 0 {
+			p.StopBurstDelay = 0
+		}
+	}
 	if p.StopCooldownTimer > 0 {
 		p.StopCooldownTimer -= dt
 		if p.StopCooldownTimer < 0 {
 			p.StopCooldownTimer = 0
 		}
 	}
+	p.SyncStopCharges()
 	if p.ThrowAnimTimer > 0 {
 		p.ThrowAnimTimer -= dt
 		if p.ThrowAnimTimer < 0 {
@@ -333,7 +458,7 @@ func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog 
 	// Passive Bassline Pulse (PokéBonk crowd-control rhythm ring)
 	p.BasslinePulseTimer -= dt
 	if p.BasslinePulseTimer <= 0 {
-		p.BasslinePulseTimer = BasslinePulsePeriod
+		p.BasslinePulseTimer = p.EffectiveBasslinePeriod()
 		basslineTriggered = true
 	}
 
@@ -362,7 +487,7 @@ func (p *Player) Update(in InputState, dt float32, inExpressLane bool, inEmoFog 
 		p.DashParryHitStopDone = false
 		p.DashParryShaveUsed = 0
 		p.DashTimer = 0.16
-		p.DashCooldown = 0.72
+		p.DashCooldown = p.EffectiveDashCooldown()
 		if mLen > 0.05 {
 			p.DashDirX, p.DashDirY = mx, my
 		} else {

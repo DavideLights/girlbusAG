@@ -44,6 +44,7 @@ type World struct {
 	HitStopTimer           float32
 	ScreenShake            float32
 	BulletFreezeTimer      float32
+	Seed                   int64
 	RunTime                float32
 	MusicBPM               float32
 	StreakCount            int
@@ -51,6 +52,10 @@ type World struct {
 	MaxStreak              int
 	Score                  int
 	GirlsBoarded           int
+	BoardedByArch          [ArchCount]int
+	PeakWanted             int
+	PerfectDrops           int
+	EventsCompleted        int
 	DifficultyTier         int
 	BossRushMode           bool
 	BossSchedule           []BossKind
@@ -63,9 +68,20 @@ type World struct {
 	OverdriveActive        bool
 	OverdriveWave          int
 	NextOverdriveBossTimer float32
+	BossIntroTimer         float32
+	DistrictEvent          DistrictEventState
 	chestRestockTimer      float32
 	GameOver               bool
 	Victory                bool
+
+	QuipSpeaker       string
+	QuipText          string
+	QuipTimer         float32
+	QuipMaxTimer      float32
+	QuipAccent        int
+	synergyQuipCD     float32
+	FirstBoardingDone bool
+	EarlyMissTipShown bool
 
 	TutorialMode         bool
 	TutorialStep         int
@@ -148,9 +164,11 @@ func NewWorldWithOptions(seed int64, bossRush bool) *World {
 		Slipstreams:    make([]BusSlipstream, 0, 4),
 		HealPickups:    make([]HealPickup, 0, 8),
 		WorldEvents:    make([]WorldEvent, 0, 32),
+		Seed:           seed,
 		MusicBPM:       108.0,
 		DifficultyTier: 1,
 		BossRushMode:   bossRush,
+		DistrictEvent:  DistrictEventState{NextEventTimer: 65.0},
 		girlSpawnTimer: 1.5,
 		healSpawnTimer: 24.0,
 		nextEntityID:   1,
@@ -332,10 +350,10 @@ func (w *World) ActiveStopCount() int {
 
 // StopSafeTopY returns the top screen-space safe margin below the active HUD banners.
 func (w *World) StopSafeTopY() float32 {
-	if w.TutorialMode {
+	if w.TutorialMode || w.Boss.Active {
 		return 68
 	}
-	if w.Boss.Active || w.BossRushMode || w.OverdriveActive || w.Police.Heli.Active || len(w.BossSchedule) > 0 {
+	if w.BossRushMode || w.OverdriveActive || w.Police.Heli.Active || len(w.BossSchedule) > 0 || w.DistrictEvent.Active != DistrictEventNone {
 		return 52
 	}
 	return 30
@@ -353,7 +371,7 @@ func (w *World) EnterOverdrive() {
 	w.addPopup(w.Player.X, w.Player.Y-38, "MODALITA OVERDRIVE!", 4)
 }
 
-// ForceSpawnBoss immediately spawns a Boss of the requested kind.
+// ForceSpawnBoss immediately spawns a Boss of the requested kind and clears arena clutter for readability.
 func (w *World) ForceSpawnBoss(kind BossKind) {
 	if w.Boss.Active {
 		return
@@ -363,7 +381,28 @@ func (w *World) ForceSpawnBoss(kind BossKind) {
 	if kind >= 0 && kind < BossCount {
 		w.BossesSpawned[kind] = true
 	}
+	// Boss Arena Spotlight: clear airborne bullets and thin unhooked crowd down to <= 4
+	w.Bullets.Count = 0
+	w.BossIntroTimer = 2.6
+	w.addWaveRing(w.Boss.X, w.Boss.Y, 180, WaveBossBreak)
+	if w.ScreenShake < 8.0 {
+		w.ScreenShake = 8.0
+	}
+	if len(w.Girls) > 4 {
+		kept := make([]Girl, 0, len(w.Girls))
+		freeKept := 0
+		for i := range w.Girls {
+			if w.Girls[i].HookedByStop != -1 {
+				kept = append(kept, w.Girls[i])
+			} else if freeKept < 4 {
+				kept = append(kept, w.Girls[i])
+				freeKept++
+			}
+		}
+		w.Girls = kept
+	}
 	w.addPopup(w.Player.X, w.Player.Y-36, "BOSS: "+w.Boss.Name+"!", 4)
+	w.ShowQuip(w.Boss.Name, BossIntroQuip(kind), 2, 3.8)
 	w.emitEvent(EventBossSpawn, int(kind), false)
 }
 
@@ -422,6 +461,9 @@ func (w *World) Update(in InputState, dt float32) {
 	// Rizz-Slots 777 modal pauses simulation cleanly
 	if w.SlotModal.Active {
 		w.UpdateSlotMachine(dt, in)
+		if w.Police.Stars > w.PeakWanted {
+			w.PeakWanted = w.Police.Stars
+		}
 		if w.TutorialMode {
 			w.syncTutorialStep()
 		}
@@ -446,6 +488,21 @@ func (w *World) Update(in InputState, dt float32) {
 	}
 
 	w.RunTime += dt
+	if w.QuipTimer > 0 {
+		w.QuipTimer -= dt
+		if w.QuipTimer < 0 {
+			w.QuipTimer = 0
+		}
+	}
+	if w.synergyQuipCD > 0 {
+		w.synergyQuipCD -= dt
+		if w.synergyQuipCD < 0 {
+			w.synergyQuipCD = 0
+		}
+	}
+	if w.Police.Stars > w.PeakWanted {
+		w.PeakWanted = w.Police.Stars
+	}
 
 	if w.TutorialMode && w.tutHealRestoreTimer > 0 {
 		w.tutHealRestoreTimer -= dt
@@ -500,6 +557,13 @@ func (w *World) Update(in InputState, dt float32) {
 		bulletTimeScale = 0.08
 	}
 
+	if w.BossIntroTimer > 0 {
+		w.BossIntroTimer -= dt
+		if w.BossIntroTimer < 0 {
+			w.BossIntroTimer = 0
+		}
+	}
+
 	// Mouse-click interaction with nearby Vending Shop / Slot Machine (when not inside an active stop)
 	if w.tryMouseClickInteract(in) {
 		return
@@ -518,7 +582,7 @@ func (w *World) Update(in InputState, dt float32) {
 			w.Player.ThrowBufferTimer = InputBufferDuration
 		}
 	}
-	if !recalled && w.Player.ThrowBufferTimer > 0 && w.Player.StunTimer <= 0 && w.Player.StopCooldownTimer <= 0 && w.ActiveStopCount() < w.Player.EffectiveMaxStops() {
+	if !recalled && w.Player.ThrowBufferTimer > 0 && w.Player.CanThrowStop(w.ActiveStopCount()) {
 		w.Player.ThrowBufferTimer = 0
 		w.tryThrowBusStop(aimX, aimY)
 	}
@@ -539,6 +603,7 @@ func (w *World) Update(in InputState, dt float32) {
 	if !w.TutorialMode {
 		w.checkTimedBossSpawns(dt)
 	}
+	w.updateDistrictEvents(dt)
 
 	// Update Girls & horde spawning
 	w.updateGirlSpawner(dt)
@@ -548,12 +613,16 @@ func (w *World) Update(in InputState, dt float32) {
 	}
 	for i := range w.Girls {
 		expressSlow := w.isPointInExpressLane(w.Girls[i].X, w.Girls[i].Y)
+		if w.Boss.Active && w.Girls[i].ShootTimer > 0 {
+			w.Girls[i].ShootTimer += dt * enemyTimeScale * 0.55
+		}
 		w.Girls[i].Update(dt, enemyTimeScale, w.DifficultyTier, diffScale, w.Player.X, w.Player.Y, w.Stops, expressSlow, &w.Bullets)
 		w.constrainGirlPos(&w.Girls[i])
 	}
 
 	// Update Police & Boss (skipped in TutorialMode so urban events/bosses do not interrupt)
 	if !w.TutorialMode {
+		w.Police.BossFightMode = w.Boss.Active
 		w.Police.Update(dt, enemyTimeScale, w.Player.X, w.Player.Y, w.Stops, &w.Bullets, &w.Telegraphs, w.rng)
 		w.Boss.Update(dt, enemyTimeScale, w.Player.X, w.Player.Y, w.Stops, w.Girls, &w.Bullets, &w.Telegraphs)
 		if w.Boss.PendingKnockback {
@@ -576,6 +645,12 @@ func (w *World) Update(in InputState, dt float32) {
 	w.Bullets.Update(dt, bulletTimeScale, w.Player.X, w.Player.Y, w.Stops)
 	for _, sh := range w.Bullets.DrainShieldHits() {
 		w.emitEvent(EventStopShieldHit, 0, sh.Broken)
+		if sh.Broken && w.Player.UpgradeRanks[UpgradeGlassFortress] > 0 {
+			empR := float32(90.0) + float32(w.Player.UpgradeRanks[UpgradeGlassFortress])*25.0
+			w.Bullets.ClearRadius(sh.StopX, sh.StopY, empR)
+			w.addWaveRing(sh.StopX, sh.StopY, empR, 1)
+			w.addPopup(sh.StopX, sh.StopY-46, "CONTRO-EMP VETRATA!", 1)
+		}
 		if sh.TimerShaved {
 			w.addPopup(sh.StopX, sh.StopY-34, "SWAT ATTACCA FERMATA!", 2)
 		}
@@ -596,6 +671,9 @@ func (w *World) Update(in InputState, dt float32) {
 
 	if w.TutorialMode {
 		w.syncTutorialStep()
+	}
+	if w.Police.Stars > w.PeakWanted {
+		w.PeakWanted = w.Police.Stars
 	}
 
 	// Smooth camera follow
@@ -718,8 +796,14 @@ func (w *World) updateSlipstreams(dt float32) {
 }
 
 func (w *World) triggerBasslinePulse() {
-	w.addWaveRing(w.Player.X, w.Player.Y, BasslinePulseRadius, 0)
-	rSq := BasslinePulseRadius * BasslinePulseRadius
+	bassRank := w.Player.UpgradeRanks[UpgradeBasslineShock]
+	pulseR := BasslinePulseRadius + float32(bassRank)*30.0
+	w.addWaveRing(w.Player.X, w.Player.Y, pulseR, 0)
+	rSq := pulseR * pulseR
+
+	if bassRank > 0 {
+		w.Bullets.ClearRadius(w.Player.X, w.Player.Y, 44.0+float32(bassRank)*14.0)
+	}
 
 	// Herding & Magnet-Beat: push Police officers away
 	for i := range w.Police.Officers {
@@ -732,7 +816,7 @@ func (w *World) triggerBasslinePulse() {
 	}
 
 	// Gently pull matching-archetype girls inward to cluster Synergy drops; push others back
-	pullMax := BasslinePulseRadius * 1.45
+	pullMax := pulseR * 1.45
 	pullMaxSq := pullMax * pullMax
 	for i := range w.Girls {
 		g := &w.Girls[i]
@@ -804,11 +888,14 @@ func (w *World) resolveBulletPropCollisions() {
 
 func (w *World) isPointInZTL(x, y float32) bool {
 	for _, z := range w.ZTLZones {
-		if z.Contains(x, y) {
+		if z.IntersectsCircle(x, y, 10.0) {
 			return true
 		}
 	}
 	if w.Boss.Active && w.Boss.MartialZTLActive && w.Boss.MartialZTLRect.Contains(x, y) {
+		return true
+	}
+	if w.DistrictEvent.Active == DistrictEventZTLJam && w.isPointInBusBay(x, y) {
 		return true
 	}
 	return false
@@ -825,7 +912,7 @@ func (w *World) hasZTLRect(r Rect) bool {
 
 func (w *World) isPointInBusBay(x, y float32) bool {
 	for _, bay := range w.BusBays {
-		if bay.Contains(x, y) {
+		if bay.IntersectsCircle(x, y, 18.0) {
 			return true
 		}
 	}
@@ -956,6 +1043,7 @@ func (w *World) tryRecallStop(aimX, aimY float32, anyNearest bool) bool {
 
 	st.Active = false
 	w.Player.StopCooldownTimer *= 0.50
+	w.Player.SyncStopCharges()
 	w.Bullets.ClearRadius(st.X, st.Y, 95.0)
 	w.addWaveRing(st.X, st.Y, 95.0, 1)
 	w.addPopup(st.X, st.Y-26, "RICHIAMO! -50% CD", 1)
@@ -987,11 +1075,12 @@ func (w *World) EvaluateAim(aimX, aimY float32) AimFeedback {
 
 	previewR := spec.CaptureRadius * rangeMult
 	if inZTL {
-		previewR *= 1.25
+		previewR *= 1.30
 	}
 
 	perfectDrop := false
-	perfSq := PerfectHitRadius * PerfectHitRadius
+	perfR := w.Player.EffectivePerfectRadius()
+	perfSq := perfR * perfR
 	if w.Boss.Active && w.Boss.HookedByStop == -1 && distSq(tx, ty, w.Boss.X, w.Boss.Y) <= perfSq {
 		perfectDrop = true
 	}
@@ -1041,10 +1130,7 @@ func (w *World) EvaluateAim(aimX, aimY float32) AimFeedback {
 }
 
 func (w *World) tryThrowBusStop(aimX, aimY float32) {
-	if w.Player.StunTimer > 0 || w.Player.StopCooldownTimer > 0 {
-		return
-	}
-	if w.ActiveStopCount() >= w.Player.EffectiveMaxStops() {
+	if !w.Player.CanThrowStop(w.ActiveStopCount()) {
 		return
 	}
 
@@ -1070,7 +1156,7 @@ func (w *World) tryThrowBusStop(aimX, aimY float32) {
 				cl := &w.Boss.Clones[c]
 				if cl.Active && distSq(tx, ty, cl.X, cl.Y) <= decoyR*decoyR {
 					cl.Active = false
-					w.Player.StopCooldownTimer = w.Player.EffectiveStopCooldown() * 0.65
+					w.Player.ConsumeStopCharge(w.Player.EffectiveStopCooldown() * 0.65)
 					w.Player.ThrowAnimTimer = 0.22
 					w.ScreenShake = 5.0
 					w.addWaveRing(cl.X, cl.Y, 96.0, 2)
@@ -1095,6 +1181,11 @@ func (w *World) tryThrowBusStop(aimX, aimY float32) {
 	}
 
 	stop := NewBusStop(w.allocID(), tx, ty, w.Player.SelectedStopArch, w.Player.EffectiveRangeMult(), inZTL, inBusBay, perfectDrop, w.rng)
+	if w.DistrictEvent.Active == DistrictEventZTLJam && inBusBay {
+		stop.GoldenZTL = true
+		stop.InZTL = true
+		inZTL = true
+	}
 	ax, ay := ComputeStopUIAnchor(tx-w.CameraX, ty-w.CameraY, w.StopSafeTopY())
 	stop.UIAnchorX = ax
 	stop.UIAnchorY = ay
@@ -1102,21 +1193,37 @@ func (w *World) tryThrowBusStop(aimX, aimY float32) {
 	shieldBonus := w.Player.ShieldBonus()
 	stop.ShieldHP += shieldBonus
 	stop.MaxShieldHP += shieldBonus
+	if durBonus := w.Player.StopDurationBonus(); durBonus > 0 {
+		stop.LifeTimer += durBonus
+		stop.MaxLifeTimer += durBonus
+	}
 
-	w.Player.StopCooldownTimer = w.Player.EffectiveStopCooldown()
-	w.Player.ThrowAnimTimer = 0.22
-
+	cd := w.Player.EffectiveStopCooldown()
 	if perfectDrop {
 		cdFactor := float32(0.65)
 		if w.StreakCount >= 5 {
 			cdFactor = 0.50
 		}
-		w.Player.StopCooldownTimer *= cdFactor
+		cd *= cdFactor
+	}
+	if inBusBay {
+		cd *= 0.75
+	}
+	w.Player.ConsumeStopCharge(cd)
+	w.Player.ThrowAnimTimer = 0.22
+
+	if perfectDrop {
+		w.PerfectDrops++
 		w.HitStopTimer = 0.090 // 90ms Perfect Drop Hit-Stop
 		w.ScreenShake = 6.5
-		clearR := float32(130.0)
+		novaRank := w.Player.UpgradeRanks[UpgradePerfectNova]
+		clearR := float32(130.0) + float32(novaRank)*45.0
 		if w.Player.HasRelic(RelicArmoredGlass) {
 			clearR += 35.0
+		}
+		if novaRank > 0 {
+			w.Player.ChronosMeter = clamp32(w.Player.ChronosMeter+float32(novaRank)*15.0, 0, w.Player.ChronosMax)
+			w.Player.Cash += novaRank * 12
 		}
 		w.Bullets.ClearRadius(tx, ty, clearR)
 		w.addWaveRing(tx, ty, clearR, 1)
@@ -1129,19 +1236,35 @@ func (w *World) tryThrowBusStop(aimX, aimY float32) {
 	}
 
 	if inZTL {
+		w.Bullets.ClearRadius(tx, ty, 110.0)
+		ringKind := 2
+		if stop.GoldenZTL {
+			ringKind = 1
+		}
+		w.addWaveRing(tx, ty, 110.0, ringKind)
 		if !w.TutorialMode {
 			added := w.Police.AddStar(1)
 			if added > 0 {
-				w.addPopup(tx, ty-44, "ZTL! +1* WANTED!", 2)
+				if stop.GoldenZTL {
+					w.addPopup(tx, ty-44, "INGORGO ZTL 4x! +1* WANTED!", 1)
+				} else {
+					w.addPopup(tx, ty-44, "ZTL! +1* WANTED!", 2)
+				}
 				w.emitEvent(EventPoliceStarUp, w.Police.Stars, false)
 			} else {
-				w.addPopup(tx, ty-44, "BONUS ZTL 3x!", 2)
+				if stop.GoldenZTL {
+					w.addPopup(tx, ty-44, "BONUS INGORGO ZTL 4x!", 1)
+				} else {
+					w.addPopup(tx, ty-44, "BONUS ZTL 3x!", 2)
+				}
 			}
 		} else {
 			w.addPopup(tx, ty-44, "BONUS ZTL 3x!", 2)
 		}
 	} else if inBusBay {
-		w.addPopup(tx, ty-44, "BUS BAY +25% VELOCITA!", 1)
+		w.Bullets.ClearRadius(tx, ty, 105.0)
+		w.addWaveRing(tx, ty, 105.0, 0)
+		w.addPopup(tx, ty-44, "AREA BUS (+40% / SCUDO+2)!", 1)
 	}
 
 	// La Rettrice Martial Law: non-perfect throws raise Wanted Stars!
@@ -1224,6 +1347,10 @@ func (w *World) tryThrowBusStop(aimX, aimY float32) {
 		}
 		w.addPopup(tx, ty-16, synPopup, 1)
 		w.emitEvent(EventSynergy, int(stop.Arch), false)
+		if w.synergyQuipCD <= 0 && !w.Boss.Active {
+			w.ShowQuip(GetArchetypeSpec(stop.Arch).Name, SynergyQuip(stop.Arch), 0, 2.8)
+			w.synergyQuipCD = 9.0
+		}
 		switch stop.Arch {
 		case ArchEmo:
 			w.Player.Heal(1) // Black Heart heal
@@ -1253,6 +1380,15 @@ func (w *World) tryThrowBusStop(aimX, aimY float32) {
 			stop.AlVoloBoosted = true
 			w.addPopup(tx, ty-42, "AL VOLO! +50%!", 1)
 			break
+		}
+	}
+
+	if !w.TutorialMode && !w.BossRushMode && w.RunTime <= 60.0 && !w.FirstBoardingDone && len(stop.HookedGirlIDs) == 0 && !stop.HookedBoss {
+		w.Player.StopCooldownTimer *= 0.60
+		w.addPopup(tx, ty-38, "LANCIO A VUOTO (-40% CD)", 1)
+		if !w.EarlyMissTipShown {
+			w.EarlyMissTipShown = true
+			w.ShowQuip("CONSIGLIO", "Sfiora i colpi o fai Dash-Parry per ricaricare prima!", 1, 3.6)
 		}
 	}
 
@@ -1346,6 +1482,22 @@ func (w *World) updateStops(dt float32, actionDir int, actionHeld bool) {
 			continue
 		}
 
+		// Area Bus tactical perk: gentle curbside pull draws nearby free girls toward the shelter
+		if st.InBusBay {
+			const pullR2 = float32(220.0 * 220.0)
+			for g := range w.Girls {
+				gr := &w.Girls[g]
+				if gr.HookedByStop == -1 {
+					dx, dy, d := normalize2D(st.X-gr.X, st.Y-gr.Y)
+					if d > 18 && d*d <= pullR2 {
+						gr.X += dx * 42.0 * dt
+						gr.Y += dy * 42.0 * dt
+						w.constrainGirlPos(gr)
+					}
+				}
+			}
+		}
+
 		dir := ActionNone
 		held := false
 		if i == primaryStopIdx {
@@ -1356,7 +1508,11 @@ func (w *World) updateStops(dt float32, actionDir int, actionHeld bool) {
 		if !st.Combo.Active {
 			drain := float32(0.55)
 			if !st.PlayerInside {
-				drain = 1.25
+				if primaryStopIdx >= 0 && primaryStopIdx != i {
+					drain = 0.25
+				} else {
+					drain = 1.25
+				}
 			}
 			st.LifeTimer -= dt * drain
 			if st.LifeTimer <= 0 {
@@ -1372,7 +1528,7 @@ func (w *World) updateStops(dt float32, actionDir int, actionHeld bool) {
 				mgDT *= 1.15
 			}
 			if st.InBusBay && (st.Minigame.Arch == ArchKawaii || st.Minigame.Arch == ArchGyaru) {
-				mgDT *= 1.25
+				mgDT *= 1.40
 			}
 			prevProg := st.Minigame.Progress
 			prevGX, prevGY := st.Minigame.GridX, st.Minigame.GridY
@@ -1393,17 +1549,17 @@ func (w *World) updateStops(dt float32, actionDir int, actionHeld bool) {
 				switch st.Minigame.Arch {
 				case ArchEmo:
 					if st.Minigame.Progress > prevProg {
-						st.Minigame.Progress += (st.Minigame.Progress - prevProg) * 0.25
+						st.Minigame.Progress += (st.Minigame.Progress - prevProg) * 0.40
 					}
 				case ArchKawaii:
 					contGain := float32(0.24) * mgDT
 					if st.PlayerInside && st.Minigame.Progress > prevProg+contGain+0.01 {
 						discrete := st.Minigame.Progress - prevProg - contGain
-						st.Minigame.Progress += discrete * 0.25
+						st.Minigame.Progress += discrete * 0.40
 					}
 				case ArchStudent:
 					if st.Minigame.GridX != prevGX || st.Minigame.GridY != prevGY {
-						boosted := float32(st.Minigame.GridX+st.Minigame.GridY) / 6.0 * 0.92 * 1.25
+						boosted := float32(st.Minigame.GridX+st.Minigame.GridY) / 6.0 * 0.92 * 1.40
 						if boosted > st.Minigame.Progress {
 							st.Minigame.Progress = boosted
 						}
@@ -1436,6 +1592,10 @@ func (w *World) updateStops(dt float32, actionDir int, actionHeld bool) {
 			}
 			strict := st.HookedBoss && w.Boss.Active && w.Boss.Kind == BossProfessor
 			st.Combo.Start(st.Arch == ArchEmo && st.SynergyActive, strict, w.rng)
+			if comboBonus := w.Player.ComboDurationBonus(); comboBonus > 0 {
+				st.Combo.Timer += comboBonus
+				st.Combo.MaxTimer += comboBonus
+			}
 		} else if st.Combo.Active && !st.Combo.Completed && !st.Combo.Failed {
 			prevStep := st.Combo.ComboIndex
 			prevErr := st.Combo.LastErrorFlash
@@ -1500,10 +1660,16 @@ func (w *World) updateBuses(dt float32) {
 		prevX := bus.X
 		bus.X += bus.Speed * dt
 
-		// Neon Bus Purification Wave clears bullets along its streak (Rush Hour converts to Cash!)
+		// Neon Bus Purification Wave clears bullets along its streak (Rush Hour / Biglietto d'Oro convert to Cash!)
 		cleared := w.Bullets.ClearLine(prevX, bus.Y, bus.X+42, bus.Y, 46.0)
-		if cleared > 0 && w.StreakCount >= 5 {
-			w.Player.Cash += cleared * 3
+		if cleared > 0 {
+			cashPerBullet := w.Player.UpgradeRanks[UpgradeRizzMagnet] * 2
+			if w.StreakCount >= 5 {
+				cashPerBullet += 3
+			}
+			if cashPerBullet > 0 {
+				w.Player.Cash += cleared * cashPerBullet
+			}
 		}
 
 		// Spawn/refresh aerodynamic Bus Slipstream ribbon along the streak lane
@@ -1583,13 +1749,18 @@ func (w *World) completeStopBoarding(st *BusStop) {
 			if w.Girls[i].ID == gid {
 				g := w.Girls[i]
 				gXP := float32(26.0)
-				gCash := float32(40.0)
+				gCash := float32(18.0)
 				gScore := float32(100.0)
 				if g.IsVIP {
 					gCash *= 3.0
 					gScore *= 3.0
 				}
-				if st.InZTL {
+				if st.GoldenZTL {
+					gXP *= 4.0
+					gCash *= 4.0
+					gScore *= 4.0
+				} else if st.InZTL {
+					gXP *= 1.5
 					gCash *= 3.0
 					gScore *= 3.0
 				}
@@ -1597,6 +1768,9 @@ func (w *World) completeStopBoarding(st *BusStop) {
 				totalCash += int(gCash * cashMult)
 				totalScore += int(gScore)
 				w.GirlsBoarded++
+				if g.Arch >= 0 && g.Arch < ArchCount {
+					w.BoardedByArch[g.Arch]++
+				}
 				boardedHere++
 
 				// Swap-remove girl
@@ -1664,7 +1838,9 @@ func (w *World) completeStopBoarding(st *BusStop) {
 			w.Bullets.ClearRadius(bossX, bossY, 240)
 			w.addWaveRing(bossX, bossY, 116, WaveBossBreak)
 			bossKind := w.Boss.Kind
+			bossName := w.Boss.Name
 			defeated := w.Boss.BreakShield()
+			w.ShowQuip(bossName, BossBreakQuip(bossKind, w.Boss.Shields), 2, 3.2)
 
 			// Boss shield break ALWAYS drops a Big (+2 HP, +35 Chronos) healing pickup near the boss!
 			w.spawnHealPickupNear(bossX, bossY, 2, 35.0, true)
@@ -1672,7 +1848,7 @@ func (w *World) completeStopBoarding(st *BusStop) {
 			if defeated {
 				starsAtKill := w.Police.Stars
 				totalXP += int(240 * xpMult)
-				totalCash += int(500 * cashMult)
+				totalCash += int(200 * cashMult)
 				totalScore += 2500
 				w.Police.ReduceStar(2)
 				w.DifficultyTier++
@@ -1719,7 +1895,7 @@ func (w *World) completeStopBoarding(st *BusStop) {
 				}
 			} else {
 				totalXP += int(80 * xpMult)
-				totalCash += int(150 * cashMult)
+				totalCash += int(80 * cashMult)
 				totalScore += 600
 				w.addPopup(st.X, st.Y-48, fmt.Sprintf("SCUDO ROTTO! (%d/%d)", w.Boss.MaxShields-w.Boss.Shields, w.Boss.MaxShields), 4)
 				w.emitEvent(EventBossBreak, int(bossKind), false)
@@ -1729,7 +1905,7 @@ func (w *World) completeStopBoarding(st *BusStop) {
 
 	if boardedHere > 0 || bossBroken {
 		w.StreakCount++
-		w.StreakTimer = StreakWindowDuration
+		w.StreakTimer = w.Player.EffectiveStreakWindow()
 		if w.StreakCount > w.MaxStreak {
 			w.MaxStreak = w.StreakCount
 		}
@@ -1741,12 +1917,48 @@ func (w *World) completeStopBoarding(st *BusStop) {
 		}
 	}
 
+	if !w.FirstBoardingDone && boardedHere > 0 {
+		w.FirstBoardingDone = true
+		if !w.TutorialMode && !w.BossRushMode && w.RunTime <= 60.0 {
+			totalXP += 15
+			w.Player.StopCooldownTimer = 0
+			if w.Player.StopCharges == 0 {
+				w.Player.StopCharges = 1
+			}
+			w.addPopup(st.X, st.Y-54, "PRIMO IMBARCO! +15XP & FERMATA PRONTA!", 1)
+		}
+	}
+
+	if w.DistrictEvent.Active == DistrictEventBlackout {
+		w.DistrictEvent.BlackoutScoreEarned += totalScore
+		w.DistrictEvent.BlackoutXPEarned += totalXP
+	}
+
 	if totalCash > 0 || totalXP > 0 {
 		w.Player.Cash += totalCash
 		w.Score += totalScore
 		w.addPopup(st.X, st.Y-24, fmt.Sprintf("+$%d  +%dXP", totalCash, totalXP), 3)
 		if w.Player.AddXP(totalXP) {
 			w.triggerLevelUp()
+		}
+	}
+
+	// Express Chain Bonus: completing a linked stop refreshes sibling LifeTimer & boosts minigame +35%
+	for idx := range w.Stops {
+		other := &w.Stops[idx]
+		if other.ID == st.ID || !other.Active || other.BusRushTriggered {
+			continue
+		}
+		if distSq(st.X, st.Y, other.X, other.Y) <= ExpressLinkMaxDist*ExpressLinkMaxDist {
+			other.LifeTimer = other.MaxLifeTimer
+			if !other.Minigame.Completed {
+				other.Minigame.Progress += 0.35
+				if other.Minigame.Progress >= 1.0 {
+					other.Minigame.Progress = 1.0
+					other.Minigame.Completed = true
+				}
+			}
+			w.addPopup(other.X, other.Y-32, "EXPRESS CHAIN +35%!", 1)
 		}
 	}
 
@@ -1793,20 +2005,29 @@ func (w *World) updateGirlSpawner(dt float32) {
 		return
 	}
 
-	targetCap := 10 + int(w.RunTime/18.0) + (w.DifficultyTier-1)*4
-	if targetCap > 42 {
-		targetCap = 42
+	targetCap := 8 + int(w.RunTime/24.0) + (w.DifficultyTier-1)*3
+	if targetCap > 26 {
+		targetCap = 26
+	}
+	interval := float32(2.4) - float32(w.DifficultyTier-1)*0.35 - w.RunTime*0.0025
+	if interval < 0.85 {
+		interval = 0.85
+	}
+	if w.Boss.Active {
+		targetCap = 5
+		interval = 4.5
 	}
 	w.girlSpawnTimer -= dt
 	if w.girlSpawnTimer <= 0 && len(w.Girls) < targetCap {
-		interval := float32(2.4) - float32(w.DifficultyTier-1)*0.35 - w.RunTime*0.0025
-		if interval < 0.75 {
-			interval = 0.75
-		}
 		w.girlSpawnTimer = interval
 
-		arch := Archetype(w.rng.Intn(int(ArchCount)))
-		vipAllowed := w.RunTime >= 45.0 || w.DifficultyTier >= 2
+		var arch Archetype
+		if w.DistrictEvent.Active == DistrictEventFlashmob && w.rng.Float32() < 0.80 {
+			arch = w.DistrictEvent.FlashmobArch
+		} else {
+			arch = Archetype(w.rng.Intn(int(ArchCount)))
+		}
+		vipAllowed := !w.Boss.Active && (w.RunTime >= 45.0 || w.DifficultyTier >= 2)
 		isVIP := false
 		if vipAllowed {
 			vipChance := float32(0.10)
@@ -1847,27 +2068,29 @@ func (w *World) handleBulletInteractions() {
 
 		// Dash-Parry: dashing through a bullet destroys it, triggers micro hit-stop, and shaves cooldown
 		if w.Player.DashTimer > 0 {
-			parryR := hitR + 6.0
+			parryR := hitR + 6.0 + w.Player.DashParryBonusRadius()
 			if d2 <= parryR*parryR {
 				w.Bullets.RemoveAt(i)
 				w.Score += 40
-				w.Player.ChronosMeter = clamp32(w.Player.ChronosMeter+10.0, 0, w.Player.ChronosMax)
+				w.Player.ChronosMeter = clamp32(w.Player.ChronosMeter+10.0+w.Player.DashParryBonusChronos(), 0, w.Player.ChronosMax)
+				bonusShave := w.Player.DashParryBonusShave()
+				shaveCap := float32(1.5) + bonusShave
 				if !w.Player.DashParryHitStopDone {
 					w.Player.DashParryHitStopDone = true
 					if w.HitStopTimer < 0.025 {
 						w.HitStopTimer = 0.025
 					}
-					w.addWaveRing(w.Player.X, w.Player.Y, 36.0, 1)
-					w.addPopup(w.Player.X, w.Player.Y-26, "PARRY! -1.0s CD", 1)
+					w.addWaveRing(w.Player.X, w.Player.Y, 36.0+w.Player.DashParryBonusRadius(), 1)
+					w.addPopup(w.Player.X, w.Player.Y-26, fmt.Sprintf("PARRY! -%.1fs CD", 1.0+bonusShave), 1)
 					w.emitEvent(EventDashParry, 0, false)
 				}
-				if w.Player.DashParryShaveUsed < 1.5 {
-					shave := float32(1.0)
+				if w.Player.DashParryShaveUsed < shaveCap {
+					shave := float32(1.0) + bonusShave
 					if w.Player.DashParryShaveUsed > 0 {
 						shave = 0.5
 					}
-					if w.Player.DashParryShaveUsed+shave > 1.5 {
-						shave = 1.5 - w.Player.DashParryShaveUsed
+					if w.Player.DashParryShaveUsed+shave > shaveCap {
+						shave = shaveCap - w.Player.DashParryShaveUsed
 					}
 					w.Player.ReduceStopCooldown(shave)
 					w.Player.DashParryShaveUsed += shave
@@ -1905,7 +2128,7 @@ func (w *World) handleBulletInteractions() {
 				w.Player.ReduceStopCooldown(0.25)
 				w.Score += 15
 				if w.StreakCount > 0 {
-					w.StreakTimer = clamp32(w.StreakTimer+0.35, 0, StreakWindowDuration)
+					w.StreakTimer = clamp32(w.StreakTimer+0.35, 0, w.Player.EffectiveStreakWindow())
 				}
 				w.emitEvent(EventGraze, 0, false)
 			}
@@ -2044,7 +2267,7 @@ func (w *World) tryMouseClickInteract(in InputState) bool {
 	if w.Boss.Active && w.Boss.HookedByStop == -1 && distSq(clickX, clickY, w.Boss.X, w.Boss.Y) <= 38.0*38.0 {
 		return false
 	}
-	if w.Player.StopCooldownTimer <= 0 && w.ActiveStopCount() < w.Player.EffectiveMaxStops() {
+	if w.Player.CanThrowStop(w.ActiveStopCount()) {
 		if fb := w.EvaluateAim(clickX, clickY); fb.HookCandidateCount > 0 {
 			return false
 		}
@@ -2200,11 +2423,11 @@ func (w *World) spawnBlackHeartNear(x, y float32) {
 func (w *World) updateHealPickups(dt float32) {
 	dt64 := float64(dt)
 
-	// Periodic world heal spawning: every 24s if fewer than 3 pickups exist
+	// Periodic world heal spawning: every 30s if fewer than 2 pickups exist
 	w.healSpawnTimer -= dt64
 	if w.healSpawnTimer <= 0 {
-		w.healSpawnTimer = 24.0
-		if len(w.HealPickups) < 3 {
+		w.healSpawnTimer = 30.0
+		if len(w.HealPickups) < 2 {
 			px, py := w.findSafePickupSpot(0, 0, false)
 			w.HealPickups = append(w.HealPickups, HealPickup{
 				X:         px,
@@ -2278,11 +2501,15 @@ func (w *World) syncTutorialStep() {
 
 func (w *World) updateShops(dt float32, interactPressed bool) {
 	for i := range w.Shops {
-		if w.Shops[i].Cooldown > 0 {
-			w.Shops[i].Cooldown -= dt
-			if w.Shops[i].Cooldown < 0 {
-				w.Shops[i].Cooldown = 0
-			}
+		sh := &w.Shops[i]
+		if sh.Cooldown > 0 {
+			sh.Cooldown = max(0, sh.Cooldown-dt)
+		}
+		if sh.HealCooldown > 0 {
+			sh.HealCooldown = max(0, sh.HealCooldown-dt)
+		}
+		if sh.UpgradeCooldown > 0 {
+			sh.UpgradeCooldown = max(0, sh.UpgradeCooldown-dt)
 		}
 	}
 	if !interactPressed {
@@ -2310,12 +2537,37 @@ func (w *World) updateShops(dt float32, interactPressed bool) {
 }
 
 var allUpgradeCards = []UpgradeCard{
-	{Kind: UpgradeCooldown, Title: "ORARI TURBO", Desc: "-22% Cooldown Fermate (min 1.5s)"},
-	{Kind: UpgradeMultiHook, Title: "GANCIO DOPPIO PIANO", Desc: "+2 Ragazze per Fermata (max 12)"},
-	{Kind: UpgradeMaxStops, Title: "RETE EXPRESS", Desc: "+1 Fermata Simultanea (max 4)"},
-	{Kind: UpgradeRange, Title: "PENSILINA XL", Desc: "+15% Gittata Lancio & Raggio"},
-	{Kind: UpgradeChronos, Title: "KATANA RIZZ-FOCUS", Desc: "Chronos piu lento (-0.10x) & +25 Barra"},
-	{Kind: UpgradeVitality, Title: "ESPRESSO OVERDRIVE", Desc: "+1 Max HP, Cura +2 HP, +12% Vel."},
+	{Kind: UpgradeCooldown, Title: "ORARI TURBO", Desc: "Ricarica fermate -22% più veloce (fino a 1.5s)", MaxRank: 5},
+	{Kind: UpgradeMultiHook, Title: "GANCIO DOPPIO PIANO", Desc: "Aggancia +2 ragazze insieme per fermata (max 12)", MaxRank: 5},
+	{Kind: UpgradeMaxStops, Title: "RETE EXPRESS", Desc: "Piazza +1 fermata in più contemporaneamente (max 4)", MaxRank: 3},
+	{Kind: UpgradeRange, Title: "PENSILINA XL", Desc: "Lanci più lontano e cerchio cattura più largo (+15%)", MaxRank: 5},
+	{Kind: UpgradeChronos, Title: "KATANA RIZZ-FOCUS", Desc: "Chronos (rallentatore) ancora più forte (-10%) e dura +25% barra", MaxRank: 4},
+	{Kind: UpgradeVitality, Title: "ESPRESSO OVERDRIVE", Desc: "+1 Vita max, cura subito +2 cuori e corri +12% più veloce", MaxRank: 0},
+	{Kind: UpgradeDashKatana, Title: "SCATTO KATANA", Desc: "Scatto (Dash) più frequente (-20%); attraversare i colpi ricarica prima le fermate", MaxRank: 3},
+	{Kind: UpgradeGlassFortress, Title: "VETRATA BLINDATA", Desc: "Vetro fermata blocca +2 colpi; se si rompe pulisce i colpi vicini", MaxRank: 3},
+	{Kind: UpgradeMinigameTurbo, Title: "DITA VELOCI", Desc: "Minigiochi +22% più rapidi e +2.5s extra per chiudere fermata e combo", MaxRank: 3},
+	{Kind: UpgradeBasslineShock, Title: "SUBWOOFER URBANO", Desc: "L'onda attorno ad Alfredo scatta prima, è più larga e cancella i colpi", MaxRank: 3},
+	{Kind: UpgradePerfectNova, Title: "IMPATTO PERFECT", Desc: "Lancio Perfetto (mirino oro) più facile, pulisce più colpi e dà +15 Chronos", MaxRank: 3},
+	{Kind: UpgradeRizzMagnet, Title: "BIGLIETTO D'ORO", Desc: "+20% XP e soldi, serie +2.5s più lunga e il bus fa +$2 per ogni colpo pulito", MaxRank: 3},
+}
+
+func (w *World) isUpgradeEligible(card UpgradeCard) bool {
+	if card.MaxRank > 0 && w.Player.UpgradeRanks[card.Kind] >= card.MaxRank {
+		return false
+	}
+	switch card.Kind {
+	case UpgradeCooldown:
+		return w.Player.StopCooldownBase > 1.51
+	case UpgradeMultiHook:
+		return w.Player.MaxMultiHook < 12
+	case UpgradeMaxStops:
+		return w.Player.MaxSimultaneousStops < 4
+	case UpgradeRange:
+		return w.Player.RangeMult < 1.59
+	case UpgradeChronos:
+		return w.Player.ChronosTimeScale > 0.21
+	}
+	return true
 }
 
 func (w *World) triggerLevelUp() {
@@ -2330,18 +2582,48 @@ func (w *World) triggerLevelUp() {
 
 func (w *World) openLevelUpModal() {
 	w.PendingLevelUp = true
-	pool := [6]UpgradeCard{}
-	copy(pool[:], allUpgradeCards)
-	for i := len(pool) - 1; i > 0; i-- {
-		j := w.rng.Intn(i + 1)
-		pool[i], pool[j] = pool[j], pool[i]
+	eligible := make([]UpgradeCard, 0, len(allUpgradeCards))
+	for _, card := range allUpgradeCards {
+		if w.isUpgradeEligible(card) {
+			eligible = append(eligible, card)
+		}
 	}
-	w.UpgradeChoices[0] = pool[0]
-	w.UpgradeChoices[1] = pool[1]
-	w.UpgradeChoices[2] = pool[2]
+	if len(eligible) < 3 {
+		fallbacks := []UpgradeKind{UpgradeVitality, UpgradeRizzMagnet, UpgradePerfectNova}
+		for _, fk := range fallbacks {
+			already := false
+			for _, ex := range eligible {
+				if ex.Kind == fk {
+					already = true
+					break
+				}
+			}
+			if !already {
+				for _, card := range allUpgradeCards {
+					if card.Kind == fk {
+						eligible = append(eligible, card)
+						break
+					}
+				}
+			}
+			if len(eligible) >= 3 {
+				break
+			}
+		}
+	}
+	for i := len(eligible) - 1; i > 0; i-- {
+		j := w.rng.Intn(i + 1)
+		eligible[i], eligible[j] = eligible[j], eligible[i]
+	}
+	w.UpgradeChoices[0] = eligible[0]
+	w.UpgradeChoices[1] = eligible[1]
+	w.UpgradeChoices[2] = eligible[2]
 }
 
 func (w *World) applyUpgrade(card UpgradeCard) {
+	if card.Kind >= 0 && card.Kind < UpgradeCount {
+		w.Player.UpgradeRanks[card.Kind]++
+	}
 	switch card.Kind {
 	case UpgradeCooldown:
 		w.Player.StopCooldownBase *= 0.78
@@ -2356,6 +2638,7 @@ func (w *World) applyUpgrade(card UpgradeCard) {
 	case UpgradeMaxStops:
 		if w.Player.MaxSimultaneousStops < 4 {
 			w.Player.MaxSimultaneousStops++
+			w.Player.StopCharges = clampInt(w.Player.StopCharges+1, 1, w.Player.EffectiveMaxStops())
 		} else {
 			w.Player.MaxMultiHook = clampInt(w.Player.MaxMultiHook+1, 1, 12)
 		}
@@ -2375,6 +2658,21 @@ func (w *World) applyUpgrade(card UpgradeCard) {
 		w.Player.MaxHP++
 		w.Player.Heal(2)
 		w.Player.SpeedMult += 0.12
+	case UpgradeGlassFortress:
+		for i := range w.Stops {
+			if w.Stops[i].Active {
+				w.Stops[i].ShieldHP += 2
+				w.Stops[i].MaxShieldHP += 2
+			}
+		}
+	case UpgradeBasslineShock:
+		if period := w.Player.EffectiveBasslinePeriod(); w.Player.BasslinePulseTimer > period {
+			w.Player.BasslinePulseTimer = period
+		}
+	case UpgradeRizzMagnet:
+		if w.StreakCount > 0 {
+			w.StreakTimer = w.Player.EffectiveStreakWindow()
+		}
 	}
 	w.addPopup(w.Player.X, w.Player.Y-32, card.Title+"!", 1)
 }

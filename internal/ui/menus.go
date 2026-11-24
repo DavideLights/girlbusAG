@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 
+	"girlbusAG/assets"
 	"girlbusAG/internal/game"
 	"girlbusAG/internal/meta"
 	"girlbusAG/internal/render"
@@ -59,7 +60,7 @@ func (m *Manager) drawPaused(dst *ebiten.Image, r *render.Renderer, w *game.Worl
 		y := 183 + count*22
 		fill(dst, 307, float32(y+6), 3, 3, menuTeal)
 		r.DrawTextColored(dst, spec.Name, 318, y-2, menuCream)
-		r.DrawTextColored(dst, spec.Desc, 318, y+8, menuMuted)
+		r.DrawTextColored(dst, fitText(spec.Desc, 282), 318, y+8, menuMuted)
 		count++
 	}
 	if count == 0 {
@@ -178,7 +179,7 @@ func (m *Manager) drawControls(dst *ebiten.Image, r *render.Renderer, mx, my flo
 }
 
 func (m *Manager) drawEndRun(dst *ebiten.Image, r *render.Renderer, save *meta.SaveData, victory bool, mx, my float32) {
-	screenShade(dst, 178)
+	screenShade(dst, 182)
 	accent, title := menuCoral, "Corsa terminata"
 	if victory {
 		accent, title = menuGold, "Corsa completata"
@@ -186,51 +187,60 @@ func (m *Manager) drawEndRun(dst *ebiten.Image, r *render.Renderer, save *meta.S
 			title = "Boss Rush completata"
 		}
 	}
-	menuBoard(dst, 78, 28, 484, 301, accent)
-	menuHeading(dst, r, title, 93, 41)
-	if m.NewRecord {
-		menuChip(dst, r, "NUOVO RECORD", 448, 47, 99, menuGold)
-	}
+	menuBoard(dst, 36, 12, 568, 336, accent)
+	menuHeading(dst, r, title, 50, 15)
+
 	stats := m.LastWorldStats
-	mins, secs := int(stats.RunTime)/60, int(stats.RunTime)%60
-	fill(dst, 93, 80, 454, 60, menuSurface)
-	fill(dst, 93, 80, 3, 60, accent)
-	r.DrawTextColored(dst, "PUNTEGGIO", 107, 84, menuMuted)
-	value := fitText(fmt.Sprint(stats.Score), 118)
-	r.DrawScaledText(dst, value, 107, 99, 2, menuCream, menuInk)
-	fill(dst, 300, 91, 1, 39, menuRule)
-	r.DrawTextColored(dst, "RECORD PERSONALE", 315, 89, menuMuted)
-	r.DrawTextColored(dst, fmt.Sprint(save.Profile.BestScore), 315, 108, menuGold)
-	if save.Profile.SelectedTitle != "" {
-		title := fitText(save.Profile.SelectedTitle, 127)
-		r.DrawTextColored(dst, title, 540-render.TextPixelWidth(title, 1), 111, menuTeal)
+	seedTag := "SEED " + game.FormatRunSeed(stats.Seed)
+	if m.NewRecord {
+		menuChip(dst, r, "NUOVO RECORD", 388, 21, 96, menuGold)
 	}
-	for i, metric := range [...]struct{ label, value string }{
-		{"TEMPO", fmt.Sprintf("%02d:%02d", mins, secs)},
-		{"TIER", fmt.Sprint(stats.Tier)},
-		{"PASSEGGERI", fmt.Sprint(stats.GirlsBoarded)},
-		{"BOSS", fmt.Sprint(stats.Bosses)},
-	} {
-		x := 93 + float32(i)*115
-		fill(dst, x, 146, 108, 38, menuSurface)
-		centerText(dst, r, metric.label, x, 147, 108, menuMuted)
-		centerText(dst, r, metric.value, x, 164, 108, menuCream)
+	menuChip(dst, r, seedTag, 492, 21, 98, menuTeal)
+	if stats.Quip != "" {
+		r.DrawTextColored(dst, fitText(stats.Quip, 540), 50, 44, menuMuted)
+	}
+	fill(dst, 50, 60, 540, 1, menuRule)
+
+	mins, secs := int(stats.RunTime)/60, int(stats.RunTime)%60
+	fill(dst, 50, 64, 540, 48, menuSurface)
+	fill(dst, 50, 64, 3, 48, accent)
+	r.DrawTextColored(dst, "PUNTEGGIO", 62, 66, menuMuted)
+	scoreText := fitText(fmt.Sprint(stats.Score), 118)
+	r.DrawScaledText(dst, scoreText, 62, 80, 2, menuCream, menuInk)
+	fill(dst, 305, 71, 1, 34, menuRule)
+	r.DrawTextColored(dst, "RECORD PERSONALE", 318, 70, menuMuted)
+	bestScore := 0
+	selectedTitle := ""
+	if save != nil {
+		bestScore = save.Profile.BestScore
+		selectedTitle = save.Profile.SelectedTitle
+	}
+	r.DrawTextColored(dst, fmt.Sprint(bestScore), 318, 88, menuGold)
+	if selectedTitle != "" {
+		profileTitle := fitText(selectedTitle, 150)
+		r.DrawTextColored(dst, profileTitle, 580-render.TextPixelWidth(profileTitle, 1), 88, menuTeal)
 	}
 
-	if len(m.RunUnlocks) > 0 {
-		r.DrawTextColored(dst, "SFIDE SBLOCCATE", 93, 194, menuTeal)
-		for i, challenge := range m.RunUnlocks[:min(3, len(m.RunUnlocks))] {
-			fill(dst, 93, float32(216+i*15), 3, 3, menuTeal)
-			line := fitText(challenge.TitleIT+" / "+challenge.RewardIT, 442)
-			r.DrawTextColored(dst, line, 103, 209+i*15, menuCream)
-		}
-		if len(m.RunUnlocks) > 3 {
-			r.DrawTextColored(dst, fmt.Sprintf("+%d in Sfide & Skin", len(m.RunUnlocks)-3), 103, 254, menuMuted)
-		}
-	} else {
-		r.DrawTextColored(dst, "Raccogli le Cure Espresso in strada.", 93, 210, menuMuted)
-		r.DrawTextColored(dst, "Le zone ZTL pagano di più e attirano la polizia.", 93, 230, menuMuted)
+	metrics := [...]struct {
+		label, value string
+		col          color.RGBA
+	}{
+		{"TEMPO", fmt.Sprintf("%02d:%02d", mins, secs), menuCream},
+		{"TIER", fmt.Sprint(stats.Tier), menuCream},
+		{"PASSEGGERI", fmt.Sprint(stats.GirlsBoarded), menuCream},
+		{"BOSS", fmt.Sprint(stats.Bosses), menuCream},
+		{"STREAK / MAX *", fmt.Sprintf("x%d / %d*", stats.MaxStreak, stats.PeakWanted), menuGold},
 	}
+	for i, metric := range metrics {
+		x := 50 + float32(i)*109
+		fill(dst, x, 117, 104, 34, menuSurface)
+		fill(dst, x, 117, 22, 1, menuRule)
+		centerText(dst, r, metric.label, x, 119, 104, menuMuted)
+		centerText(dst, r, fitText(metric.value, 96), x, 134, 104, metric.col)
+	}
+
+	drawEndRunBuildColumn(dst, r, stats)
+	drawEndRunRightColumn(dst, r, stats, m.RunUnlocks)
 
 	labels := []string{"RIGIOCA [R]", "MENU PRINCIPALE"}
 	if victory {
@@ -241,5 +251,181 @@ func (m *Manager) drawEndRun(dst *ebiten.Image, r *render.Renderer, save *meta.S
 		style := m.buttonStyle(i, rect, mx, my)
 		style.primary = i == 0
 		drawMenuButton(dst, r, rect, label, style)
+	}
+}
+
+func drawEndRunBuildColumn(dst *ebiten.Image, r *render.Renderer, stats RunSummary) {
+	fill(dst, 50, 157, 264, 142, menuSurface)
+	fill(dst, 50, 157, 3, 142, menuTeal)
+	r.DrawTextColored(dst, "RIEPILOGO BUILD", 60, 159, menuTeal)
+
+	archs := [...]struct {
+		kind  game.Archetype
+		label string
+		col   color.RGBA
+	}{
+		{game.ArchEmo, "EMO", render.ColEmo},
+		{game.ArchStudent, "UNI", render.ColStudent},
+		{game.ArchKawaii, "POP", render.ColKawaii},
+		{game.ArchGyaru, "5G", render.ColGyaru},
+	}
+	for i, arch := range archs {
+		bx := 60 + float32(i)*62
+		fill(dst, bx, 176, 58, 20, menuPanel)
+		fill(dst, bx, 176, 58, 2, arch.col)
+		r.DrawTextColored(dst, arch.label, int(bx+5), 179, arch.col)
+		cnt := fmt.Sprint(stats.BoardedByArch[arch.kind])
+		r.DrawTextColored(dst, cnt, int(bx+53)-render.TextPixelWidth(cnt, 1), 179, menuCream)
+	}
+
+	r.DrawTextColored(dst, "RELIQUIE", 60, 201, menuMuted)
+	relicX := float32(116)
+	relicCount := 0
+	for rk := game.RelicKind(0); rk < game.RelicCount; rk++ {
+		if !stats.Relics[rk] {
+			continue
+		}
+		fill(dst, relicX-1, 200, 18, 18, menuPanel)
+		fill(dst, relicX-1, 217, 18, 1, menuGold)
+		r.DrawSpriteIcon(dst, endRunRelicIconKey(rk), relicX, 201, 1)
+		relicX += 21
+		relicCount++
+	}
+	if relicCount == 0 {
+		r.DrawTextColored(dst, "Nessuna reliquia", 116, 201, menuMuted)
+	}
+
+	fill(dst, 60, 221, 246, 1, menuRule)
+	r.DrawTextColored(dst, "UPGRADE ATTIVI", 60, 223, menuGold)
+
+	type activeUpgrade struct {
+		title string
+		rank  int
+	}
+	var active []activeUpgrade
+	for kind := game.UpgradeKind(0); kind < game.UpgradeCount; kind++ {
+		rank := stats.UpgradeRanks[kind]
+		if rank > 0 {
+			active = append(active, activeUpgrade{title: endRunUpgradeTitle(kind), rank: rank})
+		}
+	}
+	if len(active) == 0 {
+		r.DrawTextColored(dst, "Nessun upgrade", 60, 242, menuMuted)
+		return
+	}
+
+	const maxShown = 4
+	shown := active
+	if len(shown) > maxShown {
+		shown = shown[:maxShown]
+	}
+	for i, upg := range shown {
+		y := 238 + i*12
+		fill(dst, 60, float32(y+6), 3, 3, menuTeal)
+		r.DrawTextColored(dst, fitText(upg.title, 204), 68, y, menuCream)
+		rankTxt := fmt.Sprintf("x%d", upg.rank)
+		r.DrawTextColored(dst, rankTxt, 304-render.TextPixelWidth(rankTxt, 1), y, menuGold)
+	}
+	if len(active) > maxShown {
+		r.DrawTextColored(dst, fmt.Sprintf("+%d altri", len(active)-maxShown), 68, 286, menuMuted)
+	}
+}
+
+func drawEndRunRightColumn(dst *ebiten.Image, r *render.Renderer, stats RunSummary, unlocks []meta.ChallengeDef) {
+	accent := guideSky
+	if len(unlocks) > 0 {
+		accent = menuGold
+	}
+	fill(dst, 326, 157, 264, 142, menuSurface)
+	fill(dst, 326, 157, 3, 142, accent)
+
+	if len(unlocks) > 0 {
+		r.DrawTextColored(dst, "SFIDE SBLOCCATE", 336, 159, menuGold)
+		for i, challenge := range unlocks[:min(3, len(unlocks))] {
+			y := 178 + i*35
+			fill(dst, 336, float32(y+6), 3, 3, menuTeal)
+			r.DrawTextColored(dst, fitText(challenge.TitleIT, 234), 345, y, menuCream)
+			r.DrawTextColored(dst, fitText(challenge.RewardIT, 234), 345, y+13, menuTeal)
+		}
+		if len(unlocks) > 3 {
+			r.DrawTextColored(dst, fmt.Sprintf("+%d in Sfide & Skin", len(unlocks)-3), 345, 283, menuMuted)
+		}
+		return
+	}
+
+	r.DrawTextColored(dst, "HIGHLIGHTS RUN", 336, 159, guideSky)
+	highlights := [...]struct {
+		label string
+		value string
+		col   color.RGBA
+	}{
+		{"LIVELLO", fmt.Sprintf("LIV %d", stats.Level), menuCream},
+		{"PERFECT DROP", fmt.Sprint(stats.PerfectDrops), menuTeal},
+		{"EVENTI SUPERATI", fmt.Sprint(stats.EventsCompleted), menuGold},
+	}
+	for i, row := range highlights {
+		y := float32(179 + i*24)
+		fill(dst, 336, y, 244, 20, menuPanel)
+		r.DrawTextColored(dst, row.label, 344, int(y+2), menuMuted)
+		r.DrawTextColored(dst, row.value, 572-render.TextPixelWidth(row.value, 1), int(y+2), row.col)
+	}
+	fill(dst, 336, 254, 244, 1, menuRule)
+	tip1 := "TIP: Le zone ZTL pagano di piu,"
+	tip2 := "ma attirano la polizia. Usa il Dash!"
+	if stats.BossRush {
+		tip1 = "TIP: In Boss Rush alterna Chronos"
+		tip2 = "e Dash per spezzare gli scudi!"
+	}
+	r.DrawTextColored(dst, tip1, 336, 261, menuMuted)
+	r.DrawTextColored(dst, tip2, 336, 276, menuMuted)
+}
+
+func endRunRelicIconKey(rk game.RelicKind) string {
+	switch rk {
+	case game.RelicNoiseCancel:
+		return assets.SpriteIconRelicHeadphones
+	case game.RelicMonthlyPass:
+		return assets.SpriteIconRelicPass
+	case game.RelicArmoredGlass:
+		return assets.SpriteIconRelicShield
+	case game.RelicLuckySocks:
+		return assets.SpriteIconRelicClover
+	case game.RelicDoubleEspresso:
+		return assets.SpriteIconRelicEspresso
+	case game.RelicFakeVIPPass:
+		return assets.SpriteIconRelicVIP
+	default:
+		return assets.SpriteIconRelicVIP
+	}
+}
+
+func endRunUpgradeTitle(kind game.UpgradeKind) string {
+	switch kind {
+	case game.UpgradeCooldown:
+		return "ORARI TURBO"
+	case game.UpgradeMultiHook:
+		return "GANCIO DOPPIO PIANO"
+	case game.UpgradeMaxStops:
+		return "RETE EXPRESS"
+	case game.UpgradeRange:
+		return "PENSILINA XL"
+	case game.UpgradeChronos:
+		return "KATANA RIZZ-FOCUS"
+	case game.UpgradeVitality:
+		return "ESPRESSO OVERDRIVE"
+	case game.UpgradeDashKatana:
+		return "SCATTO KATANA"
+	case game.UpgradeGlassFortress:
+		return "VETRATA BLINDATA"
+	case game.UpgradeMinigameTurbo:
+		return "DITA VELOCI"
+	case game.UpgradeBasslineShock:
+		return "SUBWOOFER URBANO"
+	case game.UpgradePerfectNova:
+		return "IMPATTO PERFECT"
+	case game.UpgradeRizzMagnet:
+		return "BIGLIETTO D'ORO"
+	default:
+		return "UPGRADE"
 	}
 }
