@@ -144,5 +144,6 @@ Le facciate mantengono colori più saturi del pavimento. Asfalto bagnato e mosai
 | Pizzeria, Vinyl Bar e Gelateria `96×64` | [gen_map_buildings_v2.py](./tools/gen_map_buildings_v2.py) |
 | Slot `32×32` e pavé della piazza `32×32` | [gen_layered_map_assets.py](./tools/gen_layered_map_assets.py) |
 | Asfalto bagnato e mosaico della piazza `32×32` | [gen_tiles_and_icons.py](./tools/gen_tiles_and_icons.py) |
+| Forzieri Blindati Neon (`chest_closed`/`chest_open` `32×28`) & Chiave Boss (`icon_boss_key` `16×16`) | [gen_chest_key_assets.py](./tools/gen_chest_key_assets.py) |
 
 Le pensiline si riconoscono dalle sigle **EMO**, **UNI**, **POP** e **5G**. La livrea Neon usa una fascia menta, vetri prugna e fanali crema. Il renderer colloca scie, ombre a contatto e lampi in scena secondo lo stato dell'azione.

@@ -21,6 +21,7 @@ type World struct {
 	ZTLZones     []Rect
 	Shops        []VendingShop
 	SlotMachines []SlotMachine
+	Chests       []NeonChest
 	Popups       []FloatingText
 	Telegraphs   []TelegraphLine
 	Express      []ExpressLine
@@ -58,9 +59,11 @@ type World struct {
 	NextBossRushTimer      float32
 	BossesSpawned          [BossCount]bool
 	BossesDefeated         int
+	ChestsOpened           int
 	OverdriveActive        bool
 	OverdriveWave          int
 	NextOverdriveBossTimer float32
+	chestRestockTimer      float32
 	GameOver               bool
 	Victory                bool
 
@@ -188,6 +191,9 @@ func NewWorldWithOptions(seed int64, bossRush bool) *World {
 	// Seed 2 initial world healing pickups on clear avenue/plaza spots
 	w.spawnInitialHealPickups()
 
+	// Seed Armored Neon Chests from MapDef.ChestSpots
+	w.initChestsFromMap()
+
 	w.snapCamera()
 	return w
 }
@@ -201,6 +207,7 @@ func NewTutorialWorld(save *meta.SaveData) *World {
 	w.TutorialStep = 0
 	w.BossSchedule = nil
 	w.BossScheduleTimes = nil
+	w.Chests = nil
 
 	w.Player.X = 540
 	w.Player.Y = 360
@@ -580,6 +587,9 @@ func (w *World) Update(in InputState, dt float32) {
 
 	// Update World Healing Pickups ("Cure in giro")
 	w.updateHealPickups(dt)
+
+	// Update Armored Neon Chests (proximity / [E] unlock with Boss Keys)
+	w.updateChests(dt, in.InteractJustPressed)
 
 	// Vending Machine Shop & Slot Machine interaction [E]
 	w.updateShops(dt, in.InteractJustPressed)
@@ -1667,9 +1677,15 @@ func (w *World) completeStopBoarding(st *BusStop) {
 				w.Police.ReduceStar(2)
 				w.DifficultyTier++
 				w.BossesDefeated++
+				w.Player.BossKeys++
 				w.addPopup(st.X, st.Y-48, "BOSS A BORDO! TIER UP!", 4)
+				w.addPopup(bossX, bossY-24, "+1 CHIAVE BOSS! CERCA UN BAULE!", 1)
 				w.emitEvent(EventBossBreak, int(bossKind), true)
 				w.emitEvent(EventBossDefeated, int(bossKind), starsAtKill >= 3)
+				w.emitEvent(EventBossKeyGained, w.Player.BossKeys, false)
+				if len(w.Chests) > 0 && w.ClosedChestCount() == 0 {
+					w.restockChests()
+				}
 
 				if bossKind == BossLover {
 					extraZTLs := [2]Rect{
@@ -2061,6 +2077,22 @@ func (w *World) tryMouseClickInteract(in InputState) bool {
 		if (pD2 <= nearPlayerSq && cD2 <= nearClickSq) || (pD2 <= farPlayerSq && cD2 <= tightClickSq) {
 			w.OpenSlotMachine(i)
 			return true
+		}
+	}
+
+	if w.Player.BossKeys > 0 {
+		for i := range w.Chests {
+			ch := &w.Chests[i]
+			if ch.Opened {
+				continue
+			}
+			pD2 := distSq(w.Player.X, w.Player.Y, ch.X, ch.Y)
+			cD2 := distSq(clickX, clickY, ch.X, ch.Y)
+			if (pD2 <= nearPlayerSq && cD2 <= nearClickSq) || (pD2 <= farPlayerSq && cD2 <= tightClickSq) {
+				if w.OpenChest(i) {
+					return true
+				}
+			}
 		}
 	}
 	return false

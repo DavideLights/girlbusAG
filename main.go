@@ -479,6 +479,10 @@ func (a *App) processWorldEvents() {
 			} else {
 				a.audio.PlaySFX(audio.SFXShieldBlock)
 			}
+		case game.EventBossKeyGained:
+			a.audio.PlaySFX(audio.SFXKeyPickup)
+		case game.EventChestOpened:
+			a.audio.PlaySFX(audio.SFXChestOpen)
 		}
 	}
 

@@ -433,5 +433,40 @@ func buildSFXBank() [sfxCount][]byte {
 		})
 	}
 
+	// 26. SFXKeyPickup: crystalline golden key chime (ascending major triad shimmer).
+	bank[SFXKeyPickup] = buildArpSFX([]float64{880.0, 1318.51, 1760.0}, 0.055, 0.16, oscSine, 0.68)
+
+	// 27. SFXChestOpen: crisp mechanical latch click followed by golden synthwave fanfare.
+	{
+		var ph1, ph2, phSub float64
+		notes := [4]float64{523.25, 659.25, 783.99, 1046.50}
+		bank[SFXChestOpen] = renderSFX(0.52, func(_ int, t, dt, _ float64) (float64, float64) {
+			if t < 0.05 {
+				// Crisp latch click
+				phSub += 240.0 * dt
+				ph1 += 1920.0 * dt
+				latch := (oscSine(phSub)*0.45 + oscSquare(ph1)*0.25) * math.Exp(-t*55.0)
+				return latch * 0.8, latch * 0.8
+			}
+			nt := t - 0.05
+			idx := int(nt / 0.075)
+			if idx >= len(notes) {
+				idx = len(notes) - 1
+			}
+			localT := nt - float64(idx)*0.075
+			freq := notes[idx]
+			ph1 += (freq * 1.003) * dt
+			ph2 += (freq * 0.997) * dt
+			phSub += (freq * 0.5) * dt
+			env := math.Exp(-localT * 8.0)
+			if idx == len(notes)-1 {
+				env = math.Exp(-localT * 5.2)
+			}
+			l := (oscTri(ph1)*0.58 + oscSaw(ph2)*0.22 + oscSine(phSub)*0.20) * env * 0.72
+			r := (oscTri(ph2)*0.58 + oscSaw(ph1)*0.22 + oscSine(phSub)*0.20) * env * 0.72
+			return l, r
+		})
+	}
+
 	return bank
 }

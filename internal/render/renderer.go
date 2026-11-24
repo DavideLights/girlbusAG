@@ -36,6 +36,7 @@ const (
 	drawHealPickup
 	drawShop
 	drawSlot
+	drawChest
 	drawStop
 	drawGirl
 	drawOfficer
@@ -714,6 +715,9 @@ func (r *Renderer) drawYSortedWorld(screen *ebiten.Image, w *game.World, camX, c
 	for i := range w.SlotMachines {
 		r.drawables = append(r.drawables, renderItem{sortY: w.SlotMachines[i].Y + 14, kind: drawSlot, idx: i})
 	}
+	for i := range w.Chests {
+		r.drawables = append(r.drawables, renderItem{sortY: w.Chests[i].Y + 14, kind: drawChest, idx: i})
+	}
 	for i := range w.Stops {
 		if w.Stops[i].Active {
 			r.drawables = append(r.drawables, renderItem{sortY: w.Stops[i].Y + 16, kind: drawStop, idx: i})
@@ -754,6 +758,8 @@ func (r *Renderer) drawYSortedWorld(screen *ebiten.Image, w *game.World, camX, c
 			r.drawSingleShop(screen, w, &w.Shops[item.idx], camX, camY)
 		case drawSlot:
 			r.drawSingleSlotMachine(screen, w, &w.SlotMachines[item.idx], camX, camY)
+		case drawChest:
+			r.drawSingleChest(screen, w, &w.Chests[item.idx], camX, camY)
 		case drawStop:
 			r.drawSingleStop(screen, &w.Stops[item.idx], camX, camY)
 		case drawGirl:
@@ -1037,6 +1043,80 @@ func (r *Renderer) drawSingleSlotMachine(screen *ebiten.Image, w *game.World, sm
 		drawPillBadge(screen, px, py, pw, 20, colHudBg, colGold)
 		r.drawMouseLMBIcon(screen, px+3, py+3, 0.88)
 		r.drawTextColored(screen, lbl, int(px+20), int(py+2), colGold)
+	}
+}
+
+func (r *Renderer) drawSingleChest(screen *ebiten.Image, w *game.World, ch *game.NeonChest, camX, camY float32) {
+	sx, sy := snapPixel(ch.X-camX), snapPixel(ch.Y-camY)
+	vector.DrawFilledCircle(screen, sx, sy+11, 13, Premul(20, 12, 32, 118), true)
+
+	spriteKey := assets.SpriteChestClosed
+	if ch.Opened {
+		spriteKey = assets.SpriteChestOpen
+	}
+	img := r.sprites.Get(spriteKey)
+	bw := float64(img.Bounds().Dx())
+	bh := float64(img.Bounds().Dy())
+
+	bob := float32(0)
+	if !ch.Opened && w.Player.BossKeys > 0 {
+		pulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*6.0+ch.BobPhase)))
+		ringR := float32(18.0 + 3.0*pulse)
+		vector.StrokeCircle(screen, sx, sy+6, ringR, 1.8, PremulColor(colGold, uint8(165+80*pulse)), true)
+		vector.StrokeCircle(screen, sx, sy+6, ringR*0.72, 1.2, PremulColor(colGyaru, uint8(150+75*pulse)), true)
+		bob = float32(math.Round(math.Sin(float64(r.tick*5.2+ch.BobPhase)) * 1.5))
+	}
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(-bw*0.5, -bh*0.5)
+	op.GeoM.Translate(float64(sx), float64(sy+bob))
+	screen.DrawImage(img, op)
+
+	if ch.Opened {
+		if ch.OpenAnimTimer > 0 {
+			frac := clampF(ch.OpenAnimTimer/0.65, 0, 1)
+			beamW := 18 * (0.65 + 0.35*frac)
+			beamH := 38 + 20*(1-frac)
+			vector.DrawFilledRect(screen, sx-beamW*0.5, sy-beamH, beamW, beamH, PremulColor(colGold, uint8(135*frac)), false)
+			vector.DrawFilledRect(screen, sx-beamW*0.25, sy-beamH*0.85, beamW*0.5, beamH*0.85, Premul(255, 250, 215, uint8(170*frac)), false)
+			for p := 0; p < 4; p++ {
+				ang := float64(r.tick*8.0) + float64(p)*math.Pi*0.5
+				dist := 10.0 + float64(1-frac)*22.0
+				px := sx + float32(math.Cos(ang)*dist)
+				py := sy - 8 - float32(1-frac)*18.0 + float32(math.Sin(ang)*4.0)
+				vector.DrawFilledRect(screen, px-1.5, py-1.5, 3, 3, PremulColor(colGold, uint8(230*frac)), false)
+			}
+		}
+		return
+	}
+
+	d2 := (w.Player.X-ch.X)*(w.Player.X-ch.X) + (w.Player.Y-ch.Y)*(w.Player.Y-ch.Y)
+	if w.Player.BossKeys > 0 {
+		keyBob := float32(math.Round(math.Sin(float64(r.tick*5.5+ch.BobPhase)) * 2.5))
+		keyImg := r.sprites.Get(assets.SpriteIconBossKey)
+		kw := float64(keyImg.Bounds().Dx())
+		kh := float64(keyImg.Bounds().Dy())
+		kop := &ebiten.DrawImageOptions{}
+		kop.GeoM.Translate(-kw*0.5, -kh*0.5)
+		kop.GeoM.Translate(float64(sx), float64(sy-24+keyBob))
+		screen.DrawImage(keyImg, kop)
+
+		if d2 <= 90*90 {
+			lbl := "AVVICINATI / [E] APRI BAULE (1 CHIAVE)"
+			pw := float32(textPixelWidth(lbl, 1.0) + 26)
+			px := clampF(sx-pw*0.5, 4, game.ScreenWidth-pw-4)
+			py := clampF(sy-48, w.StopSafeTopY(), game.ScreenHeight-24)
+			drawPillBadge(screen, px, py, pw, 20, colHudBg, colGold)
+			r.DrawSpriteIcon(screen, assets.SpriteIconBossKey, px+4, py+2, 1)
+			r.drawTextColored(screen, lbl, int(px+22), int(py+2), colGold)
+		}
+	} else if d2 <= 66*66 {
+		lbl := "BAULE BLOCCATO - SERVE 1 CHIAVE BOSS"
+		pw := float32(textPixelWidth(lbl, 1.0) + 16)
+		px := clampF(sx-pw*0.5, 4, game.ScreenWidth-pw-4)
+		py := clampF(sy-38, w.StopSafeTopY(), game.ScreenHeight-24)
+		drawPillBadge(screen, px, py, pw, 18, colHudBg, actionCream)
+		r.drawTextColored(screen, lbl, int(px+8), int(py+1), actionCream)
 	}
 }
 

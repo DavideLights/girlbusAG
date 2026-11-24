@@ -13,7 +13,7 @@ import (
 )
 
 //go:embed sprites/characters/alfredo_*.png sprites/characters/girl_*.png sprites/characters/vip_aura.png
-//go:embed sprites/world/boss_*.png sprites/world/bullet_*.png sprites/world/bus_*.png sprites/world/police_*.png sprites/world/shop_*.png sprites/world/stop_*.png sprites/world/tile_*.png
+//go:embed sprites/world/boss_*.png sprites/world/bullet_*.png sprites/world/bus_*.png sprites/world/chest_*.png sprites/world/police_*.png sprites/world/shop_*.png sprites/world/stop_*.png sprites/world/tile_*.png
 //go:embed sprites/map/building_*.png sprites/map/prop_*.png sprites/map/car_*.png sprites/map/tile_*.png
 //go:embed sprites/ui/icon_*.png
 var spriteFS embed.FS
@@ -87,6 +87,8 @@ const (
 	SpriteStopStudent = "sprites/world/stop_student.png"
 	SpriteStopGyaru   = "sprites/world/stop_gyaru.png"
 	SpriteShopVending = "sprites/world/shop_vending.png"
+	SpriteChestClosed = "sprites/world/chest_closed.png"
+	SpriteChestOpen   = "sprites/world/chest_open.png"
 
 	// Bus & police
 	SpriteBusNeon       = "sprites/world/bus_neon.png"
@@ -200,6 +202,7 @@ const (
 	SpriteIconCoin            = "sprites/ui/icon_coin.png"
 	SpriteIconBolt            = "sprites/ui/icon_bolt.png"
 	SpriteIconPickupHeal      = "sprites/ui/icon_pickup_heal.png"
+	SpriteIconBossKey         = "sprites/ui/icon_boss_key.png"
 )
 
 type spriteSpec struct {
@@ -278,6 +281,8 @@ var expectedSpecs = []spriteSpec{
 	{SpriteStopStudent, 48, 48, color.RGBA{59, 105, 152, 255}, color.RGBA{0, 245, 212, 255}, "stop"},
 	{SpriteStopGyaru, 48, 48, color.RGBA{255, 184, 77, 255}, color.RGBA{0, 240, 255, 255}, "stop"},
 	{SpriteShopVending, 32, 32, color.RGBA{220, 48, 65, 255}, color.RGBA{0, 245, 212, 255}, "stop"},
+	{SpriteChestClosed, 32, 28, color.RGBA{255, 209, 102, 255}, color.RGBA{0, 240, 255, 255}, "stop"},
+	{SpriteChestOpen, 32, 28, color.RGBA{255, 209, 102, 255}, color.RGBA{255, 232, 153, 255}, "stop"},
 
 	// Bus & Police
 	{SpriteBusNeon, 96, 48, color.RGBA{255, 42, 133, 255}, color.RGBA{0, 245, 212, 255}, "bus"},
@@ -391,6 +396,7 @@ var expectedSpecs = []spriteSpec{
 	{SpriteIconCoin, 12, 12, color.RGBA{255, 212, 56, 255}, color.RGBA{255, 246, 178, 255}, "bullet"},
 	{SpriteIconBolt, 12, 12, color.RGBA{0, 245, 212, 255}, color.RGBA{255, 240, 120, 255}, "bullet"},
 	{SpriteIconPickupHeal, 16, 16, color.RGBA{176, 98, 62, 255}, color.RGBA{255, 88, 128, 255}, "bullet"},
+	{SpriteIconBossKey, 16, 16, color.RGBA{255, 209, 102, 255}, color.RGBA{0, 240, 255, 255}, "stop"},
 }
 
 // SpriteBank caches all embedded sprites and guarantees crisp fallback images for any missing asset.

@@ -520,6 +520,29 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 		r.drawAdditiveGlow(dst, hx, hy-2, baseR*0.56, color.RGBA{255, 242, 168, 255}, 0.22*pulse)
 	}
 
+	// 3b. Armored Neon Chests additive beacons & unlock bursts
+	for i := range w.Chests {
+		ch := &w.Chests[i]
+		cx, cy := ch.X-camX, ch.Y-camY
+		if cx < -96 || cx > game.ScreenWidth+96 || cy < -96 || cy > game.ScreenHeight+96 {
+			continue
+		}
+		if ch.Opened {
+			if ch.OpenAnimTimer > 0 {
+				frac := clampF(ch.OpenAnimTimer/0.65, 0, 1)
+				r.drawAdditiveGlow(dst, cx, cy-4, 84, colGold, 0.65*frac)
+			}
+			continue
+		}
+		if w.Player.BossKeys > 0 {
+			pulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*6.0+ch.BobPhase)))
+			r.drawAdditiveGlow(dst, cx, cy-2, 64, colGold, 0.40+0.15*pulse)
+			r.drawAdditiveBeam(dst, cx, cy-10, 20, 32, colGyaru, 0.16+0.10*pulse)
+		} else {
+			r.drawAdditiveGlow(dst, cx, cy, 42, colGyaru, 0.22)
+		}
+	}
+
 	// 4. Active Bus Stops Soft Archetype Ground Glow + Beacon Pillar
 	for i := range w.Stops {
 		st := &w.Stops[i]

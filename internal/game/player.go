@@ -31,6 +31,7 @@ type Player struct {
 
 	XP, NextLevelXP, Level int
 	Cash                   int
+	BossKeys               int
 
 	SelectedStopArch Archetype
 	UnlockedArchs    [ArchCount]bool

@@ -14,7 +14,7 @@
    * **Costumi Pixel-Art & Challenge**: **10 Challenge** sbloccabili con premi visivi in `SFIDE & SKIN`, **5 Skin di Alfredo** (*Base*, *Neon Drip*, *Alfredo Banana*, *Aletta di Pollo*, *Cyber-Samurai Zero*), **Autobus Dorato Drift** e **Titoli Profilo** equipaggiabili.
 
 2. **[02_TECH_STACK_AND_ARCHITECTURE.md](./02_TECH_STACK_AND_ARCHITECTURE.md)** — **Technical Stack, Risk Analysis & Architecture Blueprint (v2.4)**
-   * Stack ufficiale **`Go + Ebitengine v2.8`**, pool proiettili *Zero-GC* pre-allocato (`4096` slot), shader **Kage** unico (`Pixel Crisp` / `Warm CRT` / `VHS Noir` + Chronos/Rewind), audio procedurale Synthwave + 25 SFX senza file esterni e astrazione `MapDef` pronta per nuove arene.
+   * Stack ufficiale **`Go + Ebitengine v2.8`**, pool proiettili *Zero-GC* pre-allocato (`4096` slot), shader **Kage** unico (`Pixel Crisp` / `Warm CRT` / `VHS Noir` + Chronos/Rewind), audio procedurale Synthwave + 27 SFX senza file esterni e astrazione `MapDef` pronta per nuove arene.
 
 3. **[03_ART_STYLE_AND_SPRITE_BIBLE.md](./03_ART_STYLE_AND_SPRITE_BIBLE.md)** — **Art Direction & Sprite Bible (v1.1)**
    * Direzione *Vibrant Pop-Urban Chibi Pixel Art*, palette unificata, regole `1px` senza dithering sporco, costumi 32×32 e bus 96×48 generati via pipeline Python (`tools/`).
@@ -24,13 +24,12 @@
 ## ✅ Stato Attuale vs Prossima Fase (Espansione P2)
 
 * **Completato & Verificato (Pre-Espansione)**:
-  * Intero gameplay loop singolo giocatore, 6 Boss, Polizia 1★–5★, Distributori Neon, Slot 777, 6 Reliquie, Tutorial interattivo a 4 step, Overdrive ciclico, Boss Rush, P0 Ergonomia, P1 Meccaniche Loop e **49 test automatici superati**.
+  * Intero gameplay loop singolo giocatore, 6 Boss, **Chiavi Boss & Forzieri Blindati Neon** (sui `ChestSpots` di `MapDef`), Polizia 1★–5★, Distributori Neon, Slot 777, 6 Reliquie, Tutorial interattivo a 4 step, Overdrive ciclico, Boss Rush, P0 Ergonomia, P1 Meccaniche Loop e test automatici superati.
   * Dalla home, **Centro Neon** è giocabile. **Spiaggia** è un'anteprima bloccata e **Upcoming soon** annuncia le mappe future. Usa i pulsanti del selettore, la rotellina sopra l'anteprima, `A/D`, le frecce o la croce direzionale. **Impara a giocare** apre la guida e il tutorial interattivo.
   * La schermata titolo, i menu e i pannelli di partita condividono la grafica della segnaletica urbana. L'HUD mostra salute attuale e massima, Chronos, ricercato, XP e cooldown delle fermate. I riquadri dei minigiochi restano ancorati al lancio.
   * Il quartiere ha 13 sprite rifiniti, luci più localizzate e riflessi sul canale. Corsa, dash, posa di lancio, Perfect Drop, scudi dei boss e passaggio del bus hanno animazioni ed effetti dedicati.
 * **Prossima Fase (Espansione Contenuti P2)**:
   * **Nuove Mappe Sbloccabili & Nuovi Archetipi**: *Ragazza Musicista* (Virtuoso Hero 4 colonne + Time-Freeze), *Ragazza Palestrata* (Max Trazioni / Pull-Up Mash `LMB`), *Ragazza Pallavolista* (Mini-Rally Volley) + concept Dual-Click (`LMB + RMB`).
-  * **Chiavi Boss & Forzieri Blindati Neon** sulle posizioni `ChestSpots` predisposte in `MapDef`.
   * **4 Eventi Dinamici di Quartiere**, **Co-op 2–4 Giocatori ("Caos Condiviso")** e **HUD Touch + Build Android**.
 
 ---

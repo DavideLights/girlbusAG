@@ -40,6 +40,8 @@ const (
 	SFXChallengeUnlock
 	SFXShieldBlock
 	SFXShieldBreak
+	SFXKeyPickup
+	SFXChestOpen
 	sfxCount
 )
 
@@ -87,6 +89,8 @@ func NewEngine() *Engine {
 	e.cooldowns[SFXBusHorn] = 60 * time.Millisecond
 	e.cooldowns[SFXBossSpawn] = 60 * time.Millisecond
 	e.cooldowns[SFXBossBreak] = 60 * time.Millisecond
+	e.cooldowns[SFXKeyPickup] = 50 * time.Millisecond
+	e.cooldowns[SFXChestOpen] = 80 * time.Millisecond
 
 	return e
 }

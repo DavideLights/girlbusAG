@@ -128,7 +128,7 @@ func DefaultDistrictMap() MapDef {
 		Width:         ArenaWidth,
 		Height:        ArenaHeight,
 		UnlockedArchs: []Archetype{ArchEmo, ArchStudent, ArchKawaii, ArchGyaru},
-		ChestSpots:    [][2]float32{{140, 260}, {640, 352}, {1140, 440}},
+		ChestSpots:    [][2]float32{{140, 260}, {488, 576}, {1140, 440}},
 		Layout:        BuildDistrictLayout(),
 	}
 }

@@ -222,6 +222,8 @@ const (
 	EventHealPickup
 	EventRelicAcquired
 	EventStopShieldHit
+	EventBossKeyGained
+	EventChestOpened
 )
 
 // WorldEvent records a single simulation event emitted during World.Update.
@@ -345,6 +347,16 @@ type HealPickup struct {
 	BobPhase   float64
 	Big        bool
 	BlackHeart bool
+}
+
+// NeonChest represents an armored lockbox placed in key spots of the district,
+// unlocked using Boss Keys dropped by defeated Gatekeeper Bosses.
+type NeonChest struct {
+	X, Y          float32
+	Radius        float32
+	Opened        bool
+	OpenAnimTimer float32
+	BobPhase      float32
 }
 
 // UpgradeKind identifies an in-run Level-Up upgrade card.

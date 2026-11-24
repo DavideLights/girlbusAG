@@ -93,7 +93,11 @@ func (r *Renderer) DrawHUDAndOverlays(screen *ebiten.Image, w *game.World) {
 	} else {
 		r.drawCenterStatusBanner(screen, w)
 	}
-	r.drawStreakBadge(screen, w, subBarY)
+	streakY := subBarY
+	if r.drawBossKeyBadge(screen, w, subBarY) {
+		streakY += 23
+	}
+	r.drawStreakBadge(screen, w, streakY)
 
 	toastY := subBarY + 26
 	if r.drawChallengeToast(screen, toastY) {
@@ -374,6 +378,35 @@ func (r *Renderer) drawCenterStatusBanner(screen *ebiten.Image, w *game.World) {
 	}
 }
 
+func (r *Renderer) drawBossKeyBadge(screen *ebiten.Image, w *game.World, y float32) bool {
+	if w.Player.BossKeys <= 0 {
+		return false
+	}
+	label := fmt.Sprintf("CHIAVE x%d", w.Player.BossKeys)
+	if w.Player.BossKeys > 1 {
+		label = fmt.Sprintf("CHIAVI x%d", w.Player.BossKeys)
+	}
+	width := float32(textPixelWidth(label, 1) + 32)
+	box := game.Rect{X: game.ScreenWidth - width - 8, Y: y, W: width, H: 20}
+	pulse := float32(0.5 + 0.5*math.Sin(float64(r.tick*6.5)))
+	edge := runGold
+	if pulse > 0.65 {
+		edge = runTeal
+	}
+	drawRunPanel(screen, box, runPlum, edge)
+	r.DrawSpriteIcon(screen, assets.SpriteIconBossKey, box.X+6, box.Y+2, 1)
+	r.drawTextColored(screen, label, int(box.X+25), int(box.Y+2), runGold)
+
+	if box.Contains(r.mouseScreenX, r.mouseScreenY) {
+		tipText := "APRI UN BAULE NEON NELLA MAPPA!"
+		tw := float32(textPixelWidth(tipText, 1) + 20)
+		tip := game.Rect{X: game.ScreenWidth - tw - 8, Y: y + 23, W: tw, H: 19}
+		drawRunPanel(screen, tip, runPlum, runGold)
+		r.drawTextColored(screen, tipText, int(tip.X+10), int(tip.Y+1), runCream)
+	}
+	return true
+}
+
 func (r *Renderer) drawStreakBadge(screen *ebiten.Image, w *game.World, y float32) {
 	if w.StreakCount < 2 {
 		return
@@ -494,6 +527,25 @@ func (r *Renderer) drawCriticalOffscreenArrows(screen *ebiten.Image, w *game.Wor
 	safeTop := w.StopSafeTopY()
 	if w.Boss.Active {
 		r.drawOffscreenEdgeArrow(screen, w.Boss.X, w.Boss.Y, safeTop, "BOSS", runCoral)
+	}
+	if w.Player.BossKeys > 0 && len(w.Chests) > 0 {
+		bestIdx := -1
+		bestD2 := float32(1e12)
+		for i := range w.Chests {
+			if w.Chests[i].Opened {
+				continue
+			}
+			cx, cy := w.Chests[i].X, w.Chests[i].Y
+			d2 := (cx-w.Player.X)*(cx-w.Player.X) + (cy-w.Player.Y)*(cy-w.Player.Y)
+			if d2 < bestD2 {
+				bestD2 = d2
+				bestIdx = i
+			}
+		}
+		if bestIdx >= 0 {
+			ch := &w.Chests[bestIdx]
+			r.drawOffscreenEdgeArrow(screen, ch.X, ch.Y, safeTop, "BAULE", runGold)
+		}
 	}
 	if w.Player.HP <= 2 && len(w.HealPickups) > 0 {
 		bestIdx := -1

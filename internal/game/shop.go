@@ -95,6 +95,29 @@ func (w *World) OpenShop(shopIdx int) {
 	}
 }
 
+// grantRandomUnownedRelic selects and equips a random unowned passive Relic, returning (kind, true).
+// If all RelicCount relics are already owned, it returns (0, false).
+func (w *World) grantRandomUnownedRelic() (RelicKind, bool) {
+	var unowned [RelicCount]RelicKind
+	count := 0
+	for i := 0; i < int(RelicCount); i++ {
+		if !w.Player.Relics[i] {
+			unowned[count] = RelicKind(i)
+			count++
+		}
+	}
+	if count == 0 {
+		return 0, false
+	}
+	picked := unowned[w.rng.Intn(count)]
+	w.Player.Relics[picked] = true
+	if picked == RelicFakeVIPPass {
+		w.Player.MaxMultiHook = clampInt(w.Player.MaxMultiHook+1, 1, 12)
+	}
+	w.emitEvent(EventRelicAcquired, int(picked), false)
+	return picked, true
+}
+
 // HandleShopInput processes choices [1..4] or cancel/exit while the Vending Shop modal is open.
 func (w *World) HandleShopInput(in InputState) {
 	if in.CancelJustPressed {
@@ -144,26 +167,12 @@ func (w *World) HandleShopInput(in InputState) {
 			w.ShopMenu.Message = fmt.Sprintf("SERVONO $%d PER LA RELIQUIA!", cost)
 			return
 		}
-		var unowned [RelicCount]RelicKind
-		count := 0
-		for i := 0; i < int(RelicCount); i++ {
-			if !w.Player.Relics[i] {
-				unowned[count] = RelicKind(i)
-				count++
-			}
-		}
 		w.Player.Cash -= cost
 		w.TutUsedSlotOrShop = true
-		if count > 0 {
-			picked := unowned[w.rng.Intn(count)]
-			w.Player.Relics[picked] = true
+		if picked, ok := w.grantRandomUnownedRelic(); ok {
 			spec := GetRelicSpec(picked)
-			if picked == RelicFakeVIPPass {
-				w.Player.MaxMultiHook = clampInt(w.Player.MaxMultiHook+1, 1, 12)
-			}
 			w.ShopMenu.Message = spec.Name + ": " + spec.Desc
 			w.addPopup(w.Player.X, w.Player.Y-32, spec.Name+"!", 1)
-			w.emitEvent(EventRelicAcquired, int(picked), false)
 		} else {
 			// All 6 relics already owned: bonus vitality boost
 			w.Player.MaxHP++

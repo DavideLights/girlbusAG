@@ -171,8 +171,8 @@ func TestSynthReaderDynamicBPM(t *testing.T) {
 }
 
 func TestSFXBankBuffers(t *testing.T) {
-	if sfxCount != 25 {
-		t.Fatalf("expected 25 SFXID values, got %d", sfxCount)
+	if sfxCount != 27 {
+		t.Fatalf("expected 27 SFXID values, got %d", sfxCount)
 	}
 
 	bank := buildSFXBank()
