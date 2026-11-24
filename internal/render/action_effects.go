@@ -30,7 +30,8 @@ func drawContactShadow(dst *ebiten.Image, x, y, width float32) {
 }
 
 func drawImpactSparks(dst *ebiten.Image, x, y, radius, fade float32, tint color.RGBA, shield bool) {
-	vector.StrokeCircle(dst, x, y, max(3, radius*0.72), 1, PremulColor(tint, uint8(114*fade)), true)
+	vector.StrokeCircle(dst, x, y, max(3, radius*0.72), 1.5, PremulColor(tint, uint8(136*fade)), true)
+	vector.StrokeCircle(dst, x, y, max(2, radius*0.48), 1, PremulColor(actionCream, uint8(105*fade)), true)
 	sparks := 8
 	if shield {
 		sparks = 6
@@ -38,22 +39,32 @@ func drawImpactSparks(dst *ebiten.Image, x, y, radius, fade float32, tint color.
 	for i := 0; i < sparks; i++ {
 		angle := (float64(i) + 0.5) * 2 * math.Pi / float64(sparks)
 		dx, dy := float32(math.Cos(angle)), float32(math.Sin(angle))
-		x1, y1 := x+dx*(radius-3), y+dy*(radius-3)
-		x2, y2 := x+dx*(radius+3+5*fade), y+dy*(radius+3+5*fade)
-		vector.StrokeLine(dst, x1, y1, x2, y2, 2.0, PremulColor(tint, uint8(225*fade)), true)
-		vector.DrawFilledRect(dst, snapPixel(x2)-1, snapPixel(y2)-1, 2, 2, PremulColor(actionCream, uint8(235*fade)), false)
+		x1, y1 := x+dx*(radius-4), y+dy*(radius-4)
+		x2, y2 := x+dx*(radius+4+6*fade), y+dy*(radius+4+6*fade)
+		vector.StrokeLine(dst, x1, y1, x2, y2, 2.2, PremulColor(tint, uint8(230*fade)), true)
+		vector.StrokeLine(dst, x1, y1, (x1+x2)*0.5, (y1+y2)*0.5, 1.0, PremulColor(actionCream, uint8(210*fade)), true)
+		vector.DrawFilledRect(dst, snapPixel(x2)-1, snapPixel(y2)-1, 2, 2, PremulColor(actionCream, uint8(240*fade)), false)
 	}
 }
 
 func drawTether(dst *ebiten.Image, x1, y1, x2, y2, clock float32, tint color.RGBA) {
-	vector.StrokeLine(dst, x1, y1, x2, y2, 3, Premul(27, 18, 42, 168), true)
-	vector.StrokeLine(dst, x1, y1, x2, y2, 1.5, PremulColor(tint, 235), true)
-	for i := 0; i < 2; i++ {
-		phase := clock*1.8 + float32(i)*0.5
+	dx, dy := x2-x1, y2-y1
+	length := float32(math.Hypot(float64(dx), float64(dy)))
+	nx, ny := float32(0), float32(0)
+	if length > 1 {
+		nx, ny = -dy/length, dx/length
+	}
+	vector.StrokeLine(dst, x1, y1, x2, y2, 5, PremulColor(tint, 42), true)
+	vector.StrokeLine(dst, x1, y1, x2, y2, 3, Premul(27, 18, 42, 172), true)
+	vector.StrokeLine(dst, x1, y1, x2, y2, 1.5, PremulColor(tint, 240), true)
+	for i := 0; i < 3; i++ {
+		phase := clock*2.1 + float32(i)/3.0
 		phase -= float32(math.Floor(float64(phase)))
-		x := snapPixel(x1 + (x2-x1)*phase)
-		y := snapPixel(y1 + (y2-y1)*phase)
-		vector.DrawFilledRect(dst, x-1, y-1, 3, 3, actionCream, false)
+		wobble := float32(math.Sin(float64(phase*math.Pi*4+clock*6))) * 2.2
+		x := snapPixel(x1 + dx*phase + nx*wobble)
+		y := snapPixel(y1 + dy*phase + ny*wobble)
+		vector.DrawFilledRect(dst, x-1.5, y-1.5, 3, 3, PremulColor(tint, 220), false)
+		vector.DrawFilledRect(dst, x-0.5, y-0.5, 2, 2, actionCream, false)
 	}
 }
 
@@ -89,8 +100,10 @@ func drawStopDeployment(dst *ebiten.Image, x, y, height, age float32, tint color
 }
 
 func drawDashStreak(dst *ebiten.Image, x, y, dx, dy, fade float32, tint color.RGBA) {
-	vector.StrokeLine(dst, x-dx*34-dy*5, y-dy*34+dx*5, x-dx*8-dy*5, y-dy*8+dx*5, 1.4, PremulColor(tint, uint8(135*fade)), true)
-	vector.StrokeLine(dst, x-dx*23+dy*7, y-dy*23-dx*7, x-dx*5+dy*7, y-dy*5-dx*7, 1, PremulColor(actionCream, uint8(160*fade)), true)
+	vector.StrokeLine(dst, x-dx*36-dy*5, y-dy*36+dx*5, x-dx*8-dy*5, y-dy*8+dx*5, 1.8, PremulColor(tint, uint8(165*fade)), true)
+	vector.StrokeLine(dst, x-dx*25+dy*7, y-dy*25-dx*7, x-dx*5+dy*7, y-dy*5-dx*7, 1.2, PremulColor(actionCream, uint8(190*fade)), true)
+	vector.StrokeLine(dst, x-dx*28, y-dy*28, x-dx*4, y-dy*4, 1.5, PremulColor(tint, uint8(125*fade)), true)
+	vector.DrawFilledRect(dst, snapPixel(x-dx*10)-1, snapPixel(y-dy*10)-1, 2, 2, PremulColor(actionCream, uint8(220*fade)), false)
 }
 
 func drawStopPanel(dst *ebiten.Image, x, y, width, height float32, accent color.RGBA) {

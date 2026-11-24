@@ -155,6 +155,17 @@ func (a *App) Update() error {
 	}
 	a.audio.UpdateMusicState(isPlaying, tier, bossActive, wanted, chronos, isPaused)
 	a.audio.SetFever(fever)
+	feverLevel := float32(0)
+	if fever {
+		feverLevel = 1.0
+	} else if isPlaying && bossActive {
+		feverLevel = 0.40
+	}
+	a.post.SetFever(feverLevel)
+	a.post.Advance(dt)
+	if isPlaying && !isPaused && a.world != nil {
+		a.renderer.UpdateWorldVFX(a.world, dt)
+	}
 
 	// Handle non-gameplay UI scenes
 	if a.ui.Scene != ui.ScenePlaying {
@@ -389,11 +400,13 @@ func (a *App) processWorldEvents() {
 	isTutorial := a.world != nil && a.world.TutorialMode
 	events := a.world.DrainEvents()
 	for _, ev := range events {
+		a.renderer.EmitWorldEvent(ev, a.world)
 		switch ev.Kind {
 		case game.EventThrow:
 			a.audio.PlaySFX(audio.SFXThrow)
 		case game.EventPerfectDrop:
 			a.audio.PlaySFX(audio.SFXPerfectDrop)
+			a.post.TriggerImpact(0.35)
 			if !isTutorial {
 				a.tracker.PerfectDrops++
 			}
@@ -416,10 +429,12 @@ func (a *App) processWorldEvents() {
 			a.audio.PlaySFX(audio.SFXComboStep1 + audio.SFXID(step))
 		case game.EventBusRush:
 			a.audio.PlaySFX(audio.SFXBusHorn)
+			a.post.TriggerImpact(0.25)
 		case game.EventDash:
 			a.audio.PlaySFX(audio.SFXDash)
 		case game.EventPlayerHit:
 			a.audio.PlaySFX(audio.SFXPlayerHit)
+			a.post.TriggerImpact(0.72)
 			if !isTutorial {
 				a.tracker.OnPlayerHit(ev.Flag)
 			}
@@ -429,7 +444,13 @@ func (a *App) processWorldEvents() {
 			a.audio.PlaySFX(audio.SFXBossSpawn)
 		case game.EventBossBreak:
 			a.audio.PlaySFX(audio.SFXBossBreak)
+			if ev.Flag {
+				a.post.TriggerImpact(1.0)
+			} else {
+				a.post.TriggerImpact(0.85)
+			}
 		case game.EventBossDefeated:
+			a.post.TriggerImpact(1.0)
 			if !isTutorial {
 				starsArg := 0
 				if ev.Flag {
@@ -447,6 +468,7 @@ func (a *App) processWorldEvents() {
 			a.audio.PlaySFX(audio.SFXSlotWin)
 		case game.EventSlotJackpot:
 			a.audio.PlaySFX(audio.SFXSlotJackpot)
+			a.post.TriggerImpact(0.65)
 			if !isTutorial {
 				a.tracker.JackpotWon = true
 			}
@@ -464,6 +486,7 @@ func (a *App) processWorldEvents() {
 			a.audio.PlaySFX(audio.SFXSlotTick)
 		case game.EventDashParry:
 			a.audio.PlaySFX(audio.SFXPerfectDrop)
+			a.post.TriggerImpact(0.30)
 		case game.EventStopRecall:
 			a.audio.PlaySFX(audio.SFXThrow)
 		case game.EventSlipstream:
@@ -481,6 +504,7 @@ func (a *App) processWorldEvents() {
 		case game.EventStopShieldHit:
 			if ev.Flag {
 				a.audio.PlaySFX(audio.SFXShieldBreak)
+				a.post.TriggerImpact(0.35)
 			} else {
 				a.audio.PlaySFX(audio.SFXShieldBlock)
 			}
@@ -489,6 +513,7 @@ func (a *App) processWorldEvents() {
 		case game.EventChestOpened:
 			a.audio.PlaySFX(audio.SFXChestOpen)
 		case game.EventDistrictEventStart:
+			a.post.TriggerImpact(0.42)
 			if game.DistrictEventKind(ev.Value) == game.DistrictEventZTLJam {
 				a.audio.PlaySFX(audio.SFXPoliceSiren)
 			} else {

@@ -26,6 +26,9 @@ type PostProcessor struct {
 	drawOpts     ebiten.DrawImageOptions
 	screenSize   []float32
 	chronosBlend float32
+	impactAmt    float32
+	feverTarget  float32
+	feverBlend   float32
 }
 
 // NewPostProcessor allocates the 640x360 scene buffer and compiles the embedded
@@ -51,9 +54,50 @@ func NewPostProcessor() *PostProcessor {
 		"Mode":       float32(FilterWarmCRT),
 		"Chronos":    float32(0),
 		"Rewind":     float32(0),
+		"Impact":     float32(0),
+		"Fever":      float32(0),
 		"ScreenSize": screenSize,
 	}
 	return p
+}
+
+// TriggerImpact pulses the shader's radial edge chromatic split and impact flash.
+func (p *PostProcessor) TriggerImpact(strength float32) {
+	if p == nil {
+		return
+	}
+	s := clampF(strength, 0, 1)
+	if s > p.impactAmt {
+		p.impactAmt = s
+	}
+}
+
+// SetFever sets the target intensity [0..1] for the rhythmic Rush Hour / Boss Fever rim glow.
+func (p *PostProcessor) SetFever(target float32) {
+	if p == nil {
+		return
+	}
+	p.feverTarget = clampF(target, 0, 1)
+}
+
+// Advance steps transient post-processing curves (impact decay and fever easing).
+func (p *PostProcessor) Advance(dt float32) {
+	if p == nil || dt <= 0 {
+		return
+	}
+	if p.impactAmt > 0 {
+		p.impactAmt -= dt * 5.0 // ~0.20s crisp exponential-feel decay
+		if p.impactAmt < 0 {
+			p.impactAmt = 0
+		}
+	}
+	diff := p.feverTarget - p.feverBlend
+	step := clampF(dt*6.0, 0, 1)
+	if diff > -0.002 && diff < 0.002 {
+		p.feverBlend = p.feverTarget
+	} else {
+		p.feverBlend = clampF(p.feverBlend+diff*step, 0, 1)
+	}
 }
 
 // BeginScene clears the offscreen 640x360 scene buffer and returns it as the
@@ -108,6 +152,8 @@ func (p *PostProcessor) Present(dst *ebiten.Image, mode int, tick, chronosAmt, r
 	p.shaderOpts.Uniforms["Mode"] = float32(mode)
 	p.shaderOpts.Uniforms["Chronos"] = p.chronosBlend
 	p.shaderOpts.Uniforms["Rewind"] = rewindAmt
+	p.shaderOpts.Uniforms["Impact"] = p.impactAmt
+	p.shaderOpts.Uniforms["Fever"] = p.feverBlend
 	p.shaderOpts.Uniforms["ScreenSize"] = p.screenSize
 
 	dst.DrawRectShader(game.ScreenWidth, game.ScreenHeight, p.shader, &p.shaderOpts)

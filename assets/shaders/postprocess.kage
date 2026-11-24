@@ -5,6 +5,8 @@ var Time float
 var Mode float
 var Chronos float
 var Rewind float
+var Impact float
+var Fever float
 var ScreenSize vec2
 
 func hash21(p vec2) float {
@@ -88,6 +90,43 @@ func applyChronos(rgb vec3, cUV vec2, t float, chronosAmt float, intensity float
 	return graded + rimColor*(rim*pulse*chronosAmt*0.30*intensity)
 }
 
+// applyImpactSplit adds a subtle radial edge chromatic split and crisp neon impact flash
+// while keeping the central playfield razor-sharp.
+func applyImpactSplit(rgb vec3, uv vec2, cUV vec2, impactAmt float, origin vec2, srcSize vec2, minPos vec2, maxPos vec2) vec3 {
+	if impactAmt <= 0.001 {
+		return rgb
+	}
+	rad := length(cUV)
+	edgeMask := smoothstep(0.25, 1.15, rad)
+	dir := vec2(0.0, 0.0)
+	if rad > 0.0001 {
+		dir = cUV / rad
+	}
+	shiftPx := (0.8 + 1.8*impactAmt) * edgeMask * impactAmt
+	shiftUV := (dir * shiftPx) / srcSize
+	rSplit := sampleClamped(uv+shiftUV, origin, srcSize, minPos, maxPos).r
+	bSplit := sampleClamped(uv-shiftUV, origin, srcSize, minPos, maxPos).b
+	splitCol := vec3(rSplit, rgb.g, bSplit)
+	mixed := mix(rgb, splitCol, 0.65*edgeMask*impactAmt)
+	flashTint := mix(vec3(0.10, 0.22, 0.24), vec3(0.28, 0.18, 0.08), edgeMask)
+	return mixed + flashTint*(impactAmt*0.14)
+}
+
+// applyFeverGlow adds a rhythmic magenta/cyan edge pulse and mild saturation punch during Fever/Boss moments.
+func applyFeverGlow(rgb vec3, cUV vec2, t float, feverAmt float) vec3 {
+	if feverAmt <= 0.001 {
+		return rgb
+	}
+	rad := length(cUV * vec2(0.90, 1.0))
+	rim := smoothstep(0.55, 1.22, rad)
+	pulse := 0.72 + 0.28*sin(t*9.5)
+	wave := 0.5 + 0.5*sin(t*4.2+cUV.x*2.4-cUV.y*1.8)
+	rimCol := mix(vec3(1.0, 0.16, 0.56), vec3(0.0, 0.94, 0.86), wave)
+	luma := dot(rgb, vec3(0.299, 0.587, 0.114))
+	boosted := mix(vec3(luma, luma, luma), rgb, 1.0+0.06*feverAmt)
+	return boosted + rimCol*(rim*pulse*feverAmt*0.16)
+}
+
 func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 	origin := imageSrc0Origin()
 	srcSize := max(imageSrc0Size(), vec2(1.0, 1.0))
@@ -100,6 +139,8 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 	t := mod(Time, 1024.0)
 	chronosAmt := clamp(Chronos, 0.0, 1.0)
 	rewindAmt := clamp(Rewind, 0.0, 1.0)
+	impactAmt := clamp(Impact, 0.0, 1.0)
+	feverAmt := clamp(Fever, 0.0, 1.0)
 
 	outRGB := vec3(0.0, 0.0, 0.0)
 	outAlpha := 1.0
@@ -109,9 +150,11 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 		// with subtle 8-tap optical bloom, gentle evening polish, and smooth Chronos/Rewind.
 		base := imageSrc0UnsafeAt(clamp(srcPos, minPos, maxPos))
 		bloom := dualRingBloom(uv, origin, srcSize, minPos, maxPos)
-		bloomAdd := bloom * vec3(1.03, 0.99, 0.96) * 0.10
+		bloomAdd := bloom * vec3(1.03, 0.99, 0.96) * 0.15
 
 		rgb := eveningGrade(base.rgb, 0.55) + bloomAdd
+		rgb = applyImpactSplit(rgb, uv, cUV, impactAmt, origin, srcSize, minPos, maxPos)
+		rgb = applyFeverGlow(rgb, cUV, t, feverAmt)
 		effectAlpha := max(bloomAdd.r, max(bloomAdd.g, bloomAdd.b))
 
 		if chronosAmt > 0.001 {
@@ -160,7 +203,9 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 
 		// Rich 8-tap dual-ring warm halation & neon bloom.
 		bloom := dualRingBloom(crtUV, origin, srcSize, minPos, maxPos)
-		rgb = eveningGrade(rgb, 1.0) + bloom*(vec3(1.09, 0.97, 0.88)*0.20)
+		rgb = eveningGrade(rgb, 1.0) + bloom*(vec3(1.09, 0.97, 0.88)*0.24)
+		rgb = applyImpactSplit(rgb, crtUV, cUV, impactAmt, origin, srcSize, minPos, maxPos)
+		rgb = applyFeverGlow(rgb, cUV, t, feverAmt)
 
 		// Soft subtle Trinitron horizontal scanlines (4.5% modulation) + delicate phosphor warmth.
 		scanPhase := 0.5 + 0.5*sin(crtUV.y*screenDim.y*3.14159265)
@@ -219,7 +264,9 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 
 		// Stylized 8-tap dual-ring neon bleed + evening contrast & noir magenta/cyan shadow grade.
 		bloom := dualRingBloom(vhsUV, origin, srcSize, minPos, maxPos)
-		rgb = eveningGrade(rgb, 0.70) + bloom*(vec3(1.08, 0.92, 1.14)*0.20)
+		rgb = eveningGrade(rgb, 0.70) + bloom*(vec3(1.08, 0.92, 1.14)*0.25)
+		rgb = applyImpactSplit(rgb, vhsUV, cUV, impactAmt, origin, srcSize, minPos, maxPos)
+		rgb = applyFeverGlow(rgb, cUV, t, feverAmt)
 
 		luma := dot(rgb, vec3(0.299, 0.587, 0.114))
 		shadowTone := smoothstep(0.15, 0.85, 1.0-luma)

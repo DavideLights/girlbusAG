@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	numAmbientParticles = 92
+	numAmbientParticles = 128
 	radialLightSize     = 64
 )
 
@@ -26,6 +26,7 @@ const (
 	partStoreSteam
 	partCanalSparkle
 	partLampMote
+	partNeonBokeh
 )
 
 type ambientParticle struct {
@@ -104,8 +105,10 @@ func (r *Renderer) initAmbientParticles() {
 			kind = partStoreSteam
 		case i < 74:
 			kind = partCanalSparkle
-		default:
+		case i < 96:
 			kind = partLampMote
+		default:
+			kind = partNeonBokeh
 		}
 		r.respawnParticle(i, kind, fi*0.37)
 	}
@@ -168,6 +171,14 @@ func (r *Renderer) respawnParticle(idx int, kind particleKind, seed float32) {
 		p.maxLife = 4.5 + h2*3.5
 		p.life = p.maxLife * (0.2 + 0.8*h1)
 		p.size = 1.5
+	case partNeonBokeh:
+		p.x = h1 * game.ArenaWidth
+		p.y = 48.0 + h2*(game.ArenaHeight-96.0)
+		p.vx = -5.0 + h1*10.0
+		p.vy = -8.0 - h2*8.0
+		p.maxLife = 4.0 + h1*4.0
+		p.life = p.maxLife * (0.2 + 0.8*h2)
+		p.size = 2.4 + h1*2.2
 	}
 }
 
@@ -202,6 +213,9 @@ func (r *Renderer) updateAmbientParticles(dt float32) {
 			ang := float64(p.phase * 0.72)
 			p.x = p.baseX + float32(math.Cos(ang))*p.vx
 			p.y = p.baseY + 8.0 + float32(math.Sin(ang*1.35))*p.vy
+		case partNeonBokeh:
+			p.x += (p.vx + sway*0.35) * dt
+			p.y += p.vy * dt
 		}
 
 		if p.kind != partLampMote && p.kind != partStoreSteam {
@@ -255,6 +269,17 @@ func (r *Renderer) drawAmbientParticles(dst *ebiten.Image, camX, camY float32) {
 			a := uint8(205 * fade * twinkle)
 			vector.DrawFilledCircle(dst, sx, sy, 2.2, Premul(255, 214, 128, a/2), true)
 			vector.DrawFilledRect(dst, sx-0.7, sy-0.7, 1.5, 1.5, Premul(255, 244, 198, a), false)
+		case partNeonBokeh:
+			twinkle := float32(0.50 + 0.50*math.Sin(float64(p.phase*2.2)))
+			a := uint8(82 * fade * twinkle)
+			c := colGyaru
+			if i%3 == 0 {
+				c = colKawaii
+			} else if i%3 == 1 {
+				c = colGold
+			}
+			vector.DrawFilledCircle(dst, sx, sy, p.size, Premul(c.R, c.G, c.B, a/2), true)
+			vector.DrawFilledRect(dst, sx-0.5, sy-0.5, 1.4, 1.4, Premul(255, 246, 232, a), false)
 		}
 	}
 }
@@ -375,19 +400,20 @@ func (r *Renderer) drawAdditiveBeam(dst *ebiten.Image, sx, sy, rx, ry float32, c
 	if sx+rx < 0 || sx-rx > game.ScreenWidth || sy+ry < 0 || sy-ry > game.ScreenHeight {
 		return
 	}
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(-radialLightSize/2, -radialLightSize/2)
-	op.GeoM.Scale(float64(rx*2.0)/radialLightSize, float64(ry*2.0)/radialLightSize)
-	op.GeoM.Translate(float64(sx), float64(sy))
-	op.Blend = ebiten.BlendLighter
-	op.Filter = ebiten.FilterLinear
-	op.ColorScale.Scale(
+	r.lightOp.GeoM.Reset()
+	r.lightOp.GeoM.Translate(-radialLightSize/2, -radialLightSize/2)
+	r.lightOp.GeoM.Scale(float64(rx*2.0)/radialLightSize, float64(ry*2.0)/radialLightSize)
+	r.lightOp.GeoM.Translate(float64(sx), float64(sy))
+	r.lightOp.Blend = ebiten.BlendLighter
+	r.lightOp.Filter = ebiten.FilterLinear
+	r.lightOp.ColorScale.Reset()
+	r.lightOp.ColorScale.Scale(
 		float32(c.R)/255.0*intensity,
 		float32(c.G)/255.0*intensity,
 		float32(c.B)/255.0*intensity,
 		1.0,
 	)
-	dst.DrawImage(r.lightTex, op)
+	dst.DrawImage(r.lightTex, &r.lightOp)
 }
 
 func brightenLightColor(c color.RGBA, boost float32) color.RGBA {
@@ -411,9 +437,18 @@ func (r *Renderer) drawDistrictLighting(dst *ebiten.Image, w *game.World, camX, 
 	if w.DistrictEvent.Active == game.DistrictEventBlackout {
 		ambientScale = 0.22
 	}
+	bpmPulse := float32(1.0)
+	if w.StreakCount >= 3 {
+		bpm := w.MusicBPM
+		if bpm <= 0 {
+			bpm = 120
+		}
+		beat := 0.5 + 0.5*math.Sin(float64(r.tick)*float64(bpm)/60.0*math.Pi)
+		bpmPulse = float32(0.88 + 0.26*beat)
+	}
 	vector.DrawFilledRect(dst, 0, 0, game.ScreenWidth, game.ScreenHeight, Premul(27, 21, 50, veil), false)
-	r.drawAdditiveBeam(dst, 454-camX, 52-camY, 770, 245, color.RGBA{255, 172, 118, 255}, 0.064*ambientScale)
-	r.drawAdditiveBeam(dst, 1000-camX, w.CanalY-camY, 720, 191, color.RGBA{104, 170, 229, 255}, 0.046*ambientScale)
+	r.drawAdditiveBeam(dst, 454-camX, 52-camY, 770, 245, color.RGBA{255, 172, 118, 255}, 0.068*ambientScale)
+	r.drawAdditiveBeam(dst, 1000-camX, w.CanalY-camY, 720, 191, color.RGBA{104, 170, 229, 255}, 0.050*ambientScale)
 
 	for i := range w.Lights {
 		l := &w.Lights[i]
@@ -431,35 +466,39 @@ func (r *Renderer) drawDistrictLighting(dst *ebiten.Image, w *game.World, camX, 
 		switch l.Kind {
 		case game.LightStreetlamp:
 			warmPool := color.RGBA{255, 210, 128, 255}
-			r.drawAdditiveBeam(dst, lx+6, ly+33, l.Radius*0.93, l.Radius*0.43, warmPool, 0.22*intensity*flicker)
-			r.drawAdditiveBeam(dst, lx+6, ly+32, l.Radius*0.43, l.Radius*0.20, color.RGBA{255, 224, 152, 255}, 0.14*intensity*flicker)
-			r.drawAdditiveBeam(dst, lx, ly+15, 18, 30, warmPool, 0.12*intensity*flicker)
-			r.drawAdditiveGlow(dst, lx, ly+2, 22, color.RGBA{255, 240, 195, 255}, 0.22*flicker*ambientScale)
+			r.drawAdditiveBeam(dst, lx+6, ly+33, l.Radius*0.95, l.Radius*0.44, warmPool, 0.24*intensity*flicker)
+			r.drawAdditiveBeam(dst, lx+6, ly+32, l.Radius*0.44, l.Radius*0.21, color.RGBA{255, 228, 160, 255}, 0.16*intensity*flicker)
+			r.drawAdditiveBeam(dst, lx+3, ly+18, 20, 32, warmPool, 0.14*intensity*flicker)
+			r.drawAdditiveGlow(dst, lx, ly+2, 23, color.RGBA{255, 242, 202, 255}, 0.24*flicker*ambientScale)
 
 		case game.LightShopWindow:
-			r.drawAdditiveBeam(dst, lx+6, ly+23, l.Radius*0.90, l.Radius*0.40, c, 0.20*intensity*flicker)
-			r.drawAdditiveBeam(dst, lx+4, ly+18, 31, 12, brightenLightColor(c, 0.30), 0.12*intensity*flicker)
+			r.drawAdditiveBeam(dst, lx+6, ly+23, l.Radius*0.90, l.Radius*0.40, c, 0.21*intensity*flicker)
+			r.drawAdditiveBeam(dst, lx+4, ly+18, 31, 12, brightenLightColor(c, 0.30), 0.13*intensity*flicker)
 
 		case game.LightNeonSign:
-			r.drawAdditiveBeam(dst, lx, ly, l.Radius*0.71, l.Radius*0.33, c, 0.16*intensity*flicker)
-			r.drawAdditiveBeam(dst, lx+5, ly+48, l.Radius*0.51, l.Radius*0.19, c, 0.13*intensity*flicker)
+			signInt := intensity * flicker * bpmPulse
+			r.drawAdditiveBeam(dst, lx, ly, l.Radius*0.74, l.Radius*0.35, c, 0.18*signInt)
+			r.drawAdditiveBeam(dst, lx+5, ly+48, l.Radius*0.54, l.Radius*0.21, c, 0.15*signInt)
+			r.drawAdditiveBeam(dst, lx+5, ly+56, 16, 10, brightenLightColor(c, 0.25), 0.10*signInt)
 			for glint := 0; glint < 3; glint++ {
 				step := float32(glint)
 				width := l.Radius * (0.26 - 0.058*step)
 				x := float32(math.Floor(float64(lx - width/2 + 4*step)))
 				y := float32(math.Floor(float64(ly + 46 + step*4)))
-				alpha := uint8((52 - step*10) * intensity * flicker)
+				alpha := uint8(clampF((56-step*10)*signInt, 0, 255))
 				vector.DrawFilledRect(dst, x, y, width, 1, Premul(c.R, c.G, c.B, alpha), false)
 			}
 
 		case game.LightVending:
-			r.drawAdditiveBeam(dst, lx, ly+17, l.Radius*0.46, l.Radius*0.21, c, 0.23*intensity*flicker)
-			r.drawAdditiveBeam(dst, lx, ly-3, 22, 21, c, 0.14*intensity*flicker)
+			r.drawAdditiveBeam(dst, lx, ly+17, l.Radius*0.48, l.Radius*0.22, c, 0.25*intensity*flicker)
+			r.drawAdditiveBeam(dst, lx, ly-3, 22, 21, c, 0.15*intensity*flicker)
+			r.drawAdditiveBeam(dst, lx, ly+26, 14, 7, brightenLightColor(c, 0.30), 0.11*intensity*flicker)
 
 		case game.LightSlotMachine:
-			pulse := float32(0.91 + 0.09*math.Sin(float64(r.tick*3.3+l.X*0.03)))
-			r.drawAdditiveBeam(dst, lx, ly+19, l.Radius*0.49, l.Radius*0.24, color.RGBA{255, 89, 169, 255}, 0.19*intensity*pulse)
-			r.drawAdditiveBeam(dst, lx, ly-7, 24, 14, c, 0.20*intensity*pulse)
+			pulse := float32(0.91 + 0.09*math.Sin(float64(r.tick*3.3+l.X*0.03))) * bpmPulse
+			r.drawAdditiveBeam(dst, lx, ly+19, l.Radius*0.52, l.Radius*0.25, color.RGBA{255, 89, 169, 255}, 0.21*intensity*pulse)
+			r.drawAdditiveBeam(dst, lx, ly-7, 25, 15, c, 0.22*intensity*pulse)
+			r.drawAdditiveBeam(dst, lx, ly+28, 15, 7, color.RGBA{255, 120, 190, 255}, 0.10*intensity*pulse)
 
 		case game.LightLantern:
 			swayX := float32(math.Sin(float64(r.tick*2.1+l.X*0.045))) * 1.2
@@ -776,6 +815,16 @@ func (r *Renderer) drawLightingPass(dst *ebiten.Image, w *game.World, camX, camY
 			gc = color.RGBA{255, 90, 120, 255}
 		}
 		r.drawAdditiveGlow(dst, bx, by, rad, gc, bulletIntensity)
+	}
+
+	// 10. Transient Combat Dynamic Light Flashes (Perfect Drop, Dash-Parry, Boss Break, Pickups)
+	for i := 0; i < r.fxFlashCount; i++ {
+		f := &r.fxFlashes[i]
+		fx, fy := f.x-camX, f.y-camY
+		fade := clampF(f.life/f.maxLife, 0, 1)
+		c := color.RGBA{R: f.r, G: f.g, B: f.b, A: 255}
+		r.drawAdditiveGlow(dst, fx, fy, f.radius, c, f.intensity*fade*0.58)
+		r.drawAdditiveGlow(dst, fx, fy, f.radius*0.42, brightenLightColor(c, 0.45), f.intensity*fade*0.52)
 	}
 }
 

@@ -65,6 +65,20 @@ type Renderer struct {
 	lightTex             *ebiten.Image
 	whitePixel           *ebiten.Image
 	particles            [numAmbientParticles]ambientParticle
+	fxParticles          [maxFXParticles]fxParticle
+	fxParticleCount      int
+	fxFlashes            [maxFXFlashes]fxLightFlash
+	fxFlashCount         int
+	fxRain               [numNeonRain]fxRainDrop
+	fxRainInit           bool
+	rainIntensity        float32
+	damageFlashTimer     float32
+	footstepTimer        float32
+	busEmitTimer         float32
+	bossEmberTimer       float32
+	fxRandState          uint32
+	lightOp              ebiten.DrawImageOptions
+	fxOp                 ebiten.DrawImageOptions
 	drawables            []renderItem
 	playerSkin           int
 	busSkin              int
@@ -158,6 +172,7 @@ func (r *Renderer) ShowRelicToast(rk game.RelicKind) {
 func (r *Renderer) AdvanceVisuals(dt float32) {
 	r.tick += dt
 	r.updateAmbientParticles(dt)
+	r.updateFX(dt)
 	r.toastTimer = max(0, r.toastTimer-dt)
 	r.relicToastTimer = max(0, r.relicToastTimer-dt)
 }
@@ -213,10 +228,13 @@ func (r *Renderer) DrawWorldScene(screen *ebiten.Image, w *game.World, showHUD b
 	r.drawStopCirclesAndTethers(screen, w, camX, camY)
 	r.drawPoliceHazards(screen, w, camX, camY)
 	r.drawAmbientParticles(screen, camX, camY)
+	r.drawFXParticlesGround(screen, camX, camY)
 
 	r.drawYSortedWorld(screen, w, camX, camY)
 	r.drawBlackoutOverlay(screen, w, camX, camY)
 	r.drawLightingPass(screen, w, camX, camY)
+	r.drawFXParticlesAdditive(screen, camX, camY)
+	r.drawNeonRain(screen, camX, camY)
 	r.drawBuses(screen, w, camX, camY)
 	r.drawHeliSpotlight(screen, w, camX, camY)
 
@@ -548,6 +566,13 @@ func (r *Renderer) drawExpressLanes(screen *ebiten.Image, w *game.World, camX, c
 		x2, y2 := e.X2-camX, e.Y2-camY
 		vector.StrokeLine(screen, x1, y1, x2, y2, 10, Premul(0, 245, 212, 42), true)
 		vector.StrokeLine(screen, x1, y1, x2, y2, 2.5, Premul(0, 245, 212, 200), true)
+		for k := 0; k < 4; k++ {
+			phase := r.tick*0.9 + float32(k)*0.25
+			phase -= float32(math.Floor(float64(phase)))
+			px := snapPixel(x1 + (x2-x1)*phase)
+			py := snapPixel(y1 + (y2-y1)*phase)
+			vector.DrawFilledRect(screen, px-1.5, py-1.5, 3, 3, actionCream, false)
+		}
 	}
 }
 
@@ -595,15 +620,21 @@ func (r *Renderer) drawStopCirclesAndTethers(screen *ebiten.Image, w *game.World
 
 		fillAlpha := uint8(13)
 		if st.PlayerInside {
-			fillAlpha = 22
+			fillAlpha = 26
 		}
 		vector.DrawFilledCircle(screen, sx, sy, st.CaptureRadius, PremulColor(ac, fillAlpha), true)
 
-		ringC := PremulColor(ac, 176)
+		ringC := PremulColor(ac, 184)
 		if st.SynergyActive {
 			ringC = colGold
 		}
 		vector.StrokeCircle(screen, sx, sy, st.CaptureRadius, 1.5, ringC, true)
+		for notch := 0; notch < 4; notch++ {
+			ang := float64(r.tick*0.85) + float64(notch)*(math.Pi*0.5)
+			nx := sx + float32(math.Cos(ang))*(st.CaptureRadius-2)
+			ny := sy + float32(math.Sin(ang))*(st.CaptureRadius-2)
+			vector.DrawFilledRect(screen, snapPixel(nx)-1, snapPixel(ny)-1, 3, 3, ringC, false)
+		}
 
 		// Kawaii Tear-Graze ring around Alfredo
 		if st.Arch == game.ArchKawaii && st.PlayerInside {
@@ -1580,7 +1611,18 @@ func (r *Renderer) drawBuses(screen *ebiten.Image, w *game.World, camX, camY flo
 		op.GeoM.Reset()
 		op.GeoM.Translate(-bw*0.5, -bh*0.5)
 		lift := math.Round(0.5 + math.Sin(float64(b.X*0.06))*0.5)
+		for g := 2; g >= 1; g-- {
+			op.GeoM.Reset()
+			op.GeoM.Translate(-bw*0.5, -bh*0.5)
+			op.GeoM.Translate(float64(bx)-float64(g*14), float64(by)-lift)
+			op.ColorScale.Reset()
+			op.ColorScale.Scale(float32(trail.R)/255.0, float32(trail.G)/255.0, float32(trail.B)/255.0, 0.24/float32(g))
+			screen.DrawImage(busImg, op)
+		}
+		op.GeoM.Reset()
+		op.GeoM.Translate(-bw*0.5, -bh*0.5)
 		op.GeoM.Translate(float64(bx), float64(by)-lift)
+		op.ColorScale.Reset()
 		screen.DrawImage(busImg, op)
 	}
 }
@@ -1595,27 +1637,44 @@ func (r *Renderer) drawBullets(screen *ebiten.Image, w *game.World, camX, camY f
 		}
 
 		var key string
+		var trailCol color.RGBA
+		hasTrail := false
 		switch b.Kind {
 		case game.BulletRazor:
 			key = assets.SpriteBulletRazor
+			trailCol, hasTrail = color.RGBA{224, 82, 180, 255}, true
 		case game.BulletProtractor:
 			key = assets.SpriteBulletProtractor
+			trailCol, hasTrail = color.RGBA{255, 225, 70, 255}, true
 		case game.BulletTear:
 			key = assets.SpriteBulletTear
 		case game.BulletFlash:
 			key = assets.SpriteBulletFlash
 		case game.BulletPolice:
 			key = assets.SpriteBulletPolice
+			trailCol, hasTrail = color.RGBA{255, 70, 95, 255}, true
 		case game.BulletCiabatta:
 			key = assets.SpriteBulletCiabatta
+			trailCol, hasTrail = color.RGBA{255, 145, 75, 255}, true
 		case game.BulletLipstick:
 			key = assets.SpriteBulletLipstick
+			trailCol, hasTrail = color.RGBA{255, 52, 148, 255}, true
 		case game.BulletContract:
 			key = assets.SpriteBulletContract
 		case game.BulletSeal:
 			key = assets.SpriteBulletSeal
+			trailCol, hasTrail = color.RGBA{255, 215, 70, 255}, true
 		default:
 			key = assets.SpriteBulletPolice
+		}
+		if hasTrail {
+			spdSq := b.VX*b.VX + b.VY*b.VY
+			if spdSq > 1600 {
+				inv := float32(1.0 / math.Sqrt(float64(spdSq)))
+				tx, ty := -b.VX*inv, -b.VY*inv
+				vector.StrokeLine(screen, bx, by, bx+tx*7, by+ty*7, 2.0, PremulColor(trailCol, 130), true)
+				vector.StrokeLine(screen, bx+tx*6, by+ty*6, bx+tx*12, by+ty*12, 1.0, PremulColor(actionCream, 85), true)
+			}
 		}
 		img := r.sprites.Get(key)
 		bw := float64(img.Bounds().Dx())
@@ -2485,9 +2544,35 @@ func sanitizePopupText(s string) string {
 }
 
 func (r *Renderer) drawAtmosphereOverlays(screen *ebiten.Image, w *game.World) {
+	if w.Boss.Active {
+		// Subtle top/bottom/side theatrical bars framing the Boss Arena Spotlight without darkening center.
+		rim := Premul(20, 8, 32, 72)
+		vector.DrawFilledRect(screen, 0, 0, game.ScreenWidth, 10, rim, false)
+		vector.DrawFilledRect(screen, 0, game.ScreenHeight-10, game.ScreenWidth, 10, rim, false)
+		vector.StrokeRect(screen, 1, 1, game.ScreenWidth-2, game.ScreenHeight-2, 2, Premul(255, 42, 133, 85), false)
+	}
+	if w.StreakCount >= 5 {
+		pulse := float32(0.55 + 0.45*math.Sin(float64(r.tick*10.0)))
+		vector.StrokeRect(screen, 1.5, 1.5, game.ScreenWidth-3, game.ScreenHeight-3, 3, Premul(255, 220, 90, uint8(95*pulse)), false)
+	}
+	if w.Police.Stars >= 3 {
+		siren := float32(0.5 + 0.5*math.Sin(float64(r.tick*11.0)))
+		strength := float32(0.35)
+		if w.Police.Stars >= 5 {
+			strength = 0.72
+		}
+		redA := uint8(60 * strength * siren)
+		blueA := uint8(60 * strength * (1.0 - siren))
+		vector.DrawFilledRect(screen, 0, 0, 12, game.ScreenHeight, Premul(255, 45, 75, redA), false)
+		vector.DrawFilledRect(screen, game.ScreenWidth-12, 0, 12, game.ScreenHeight, Premul(65, 165, 255, blueA), false)
+	}
 	if w.Player.ChronosActive || w.BulletFreezeTimer > 0 {
 		vector.StrokeRect(screen, 2, 2, game.ScreenWidth-4, game.ScreenHeight-4, 4, Premul(0, 245, 212, 150), false)
 		vector.DrawFilledRect(screen, 0, 0, game.ScreenWidth, game.ScreenHeight, Premul(45, 20, 105, 40), false)
+	}
+	if r.damageFlashTimer > 0 {
+		df := clampF(r.damageFlashTimer/0.28, 0, 1)
+		vector.StrokeRect(screen, 2, 2, game.ScreenWidth-4, game.ScreenHeight-4, 6, Premul(255, 45, 75, uint8(170*df)), false)
 	}
 }
 
